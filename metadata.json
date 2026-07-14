@@ -1,0 +1,6 @@
+{
+  "name": "LogusQ",
+  "description": "Núcleo Quântico de Logística - Sistema SaaS B2B completo para roteirização e gestão de frotas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
