@@ -656,6 +656,18 @@ export const dbRepo = {
     dbRepo.saveCondutores(updated);
   },
 
+  deletarVeiculo: (email: string, idVeiculo: string) => {
+    const list = dbRepo.getVeiculos();
+    const filtered = list.filter(v => !(v.idVeiculo === idVeiculo && ((v as any).clienteEmail === email || (!(v as any).clienteEmail && email === 'demo@logusq.com.br'))));
+    dbRepo.saveVeiculos(filtered);
+  },
+
+  deletarCondutor: (email: string, condutorEmail: string) => {
+    const list = dbRepo.getCondutoresRaw();
+    const filtered = list.filter(c => !(c.email === condutorEmail && ((c as any).clienteEmail === email || (!(c as any).clienteEmail && email === 'demo@logusq.com.br'))));
+    dbRepo.saveCondutores(filtered);
+  },
+
   cadastrarColaborador: (params: any) => {
     const colaboradores = dbRepo.getColaboradores();
     const usuarios = dbRepo.getUsuarios();

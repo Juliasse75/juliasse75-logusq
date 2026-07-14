@@ -3,7 +3,7 @@ import { dbRepo } from '../data/mockData';
 import { Cliente, Colaborador, PlanosSaaS, PLANOS_PADRAO } from '../types';
 import { 
   Users, UserPlus, Layers, DollarSign, Award, Settings, 
-  Trash2, UserCheck, Edit3, Check, Search, Download, Plus, Play, Info
+  Trash2, UserCheck, Edit3, Check, Search, Download, Plus, Play, Info, FileText
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
@@ -188,6 +188,10 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
 
   // Search filter
   const [clientSearch, setClientSearch] = useState('');
+
+  // Modals for selected client
+  const [isFinanceModalOpen, setIsFinanceModalOpen] = useState(false);
+  const [isContractModalOpen, setIsContractModalOpen] = useState(false);
 
   // --- FINANCE METRICS ---
   const activeCount = clientes.filter(c => c.status === 'Ativo').length;
@@ -568,6 +572,62 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
     URL.revokeObjectURL(url);
   };
 
+  // Compute monthly payment history dynamically for the selected client
+  const getClientPaymentHistory = (client: Cliente) => {
+    const history: {
+      mesReferencia: string;
+      vencimento: string;
+      valor: number;
+      plano: string;
+      status: 'Pago' | 'Pendente';
+      dataPagamento?: string;
+    }[] = [];
+
+    if (!client) return history;
+
+    const [dayStr, monthStr, yearStr] = (client.clienteDesde || '14/05/2026').split('/');
+    const startDay = parseInt(dayStr) || 14;
+    const startMonth = parseInt(monthStr) || 5;
+    const startYear = parseInt(yearStr) || 2026;
+
+    const currentYear = 2026;
+    const currentMonth = 7;
+
+    let tempMonth = startMonth;
+    let tempYear = startYear;
+
+    while (tempYear < currentYear || (tempYear === currentYear && tempMonth <= currentMonth)) {
+      const isCurrentMonth = tempMonth === currentMonth && tempYear === currentYear;
+      const refStr = `${String(tempMonth).padStart(2, '0')}/${tempYear}`;
+      const dueStr = `${String(startDay).padStart(2, '0')}/${String(tempMonth).padStart(2, '0')}/${tempYear}`;
+      
+      let payStatus: 'Pago' | 'Pendente' = 'Pago';
+      let payDate: string | undefined = `${String(startDay).padStart(2, '0')}/${String(tempMonth).padStart(2, '0')}/${tempYear}`;
+
+      if (isCurrentMonth) {
+        payStatus = client.pagamentoConfirmado ? 'Pago' : 'Pendente';
+        payDate = client.pagamentoConfirmado ? (client.dataUltimoPagamento || dueStr) : undefined;
+      }
+
+      history.push({
+        mesReferencia: refStr,
+        vencimento: dueStr,
+        valor: client.valorPlano,
+        plano: client.plano,
+        status: payStatus,
+        dataPagamento: payDate
+      });
+
+      tempMonth++;
+      if (tempMonth > 12) {
+        tempMonth = 1;
+        tempYear++;
+      }
+    }
+
+    return history.reverse();
+  };
+
   // Filter clients based on search
   const filteredClientes = clientes.filter(c => 
     c.empresa.toLowerCase().includes(clientSearch.toLowerCase()) ||
@@ -840,9 +900,24 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                     </div>
 
                     <div className="pt-4 border-t border-slate-800/60 space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => setIsFinanceModalOpen(true)}
+                          className="bg-emerald-950/40 hover:bg-emerald-900/40 text-emerald-400 font-semibold py-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 border border-emerald-850/30"
+                        >
+                          <DollarSign className="w-3.5 h-3.5" /> Financeiro
+                        </button>
+                        <button
+                          onClick={() => setIsContractModalOpen(true)}
+                          className="bg-violet-950/40 hover:bg-violet-900/40 text-violet-400 font-semibold py-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 border border-violet-850/30"
+                        >
+                          <FileText className="w-3.5 h-3.5" /> Contrato PDF
+                        </button>
+                      </div>
+
                       <button
                         onClick={() => setIsClientEditModalOpen(true)}
-                        className="w-full bg-violet-600 hover:bg-violet-500 text-white font-semibold py-2.5 rounded-lg text-xs transition-colors flex items-center justify-center gap-2 shadow-lg shadow-violet-900/10"
+                        className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-2.5 rounded-lg text-xs transition-colors flex items-center justify-center gap-2 border border-slate-700/50"
                       >
                         <Edit3 className="w-4 h-4" /> Editar Cadastro Completo
                       </button>
@@ -1892,27 +1967,55 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
           <div className="space-y-6">
             <div>
               <h1 className="text-xl font-extrabold text-white">Equipe Master LogusQ</h1>
-              <p className="text-xs text-slate-400">Nesta aba estão listados os administradores da plataforma.</p>
+              <p className="text-xs text-slate-400">Nesta aba estão listados os administradores da plataforma e os colaboradores internos do RH.</p>
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden max-w-2xl">
+            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden max-w-4xl shadow-xl">
               <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left text-slate-400">
                   <thead className="text-[10px] uppercase font-mono bg-slate-950/50 text-slate-500 border-b border-slate-800">
                     <tr>
-                      <th className="px-4 py-3">Nome</th>
+                      <th className="px-4 py-3">Membro / Cargo</th>
                       <th className="px-4 py-3">E-mail</th>
                       <th className="px-4 py-3">Nível Acesso</th>
-                      <th className="px-4 py-3">Criado em</th>
+                      <th className="px-4 py-3">Departamento</th>
+                      <th className="px-4 py-3">Início / Criação</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
-                    {masters.map(m => (
-                      <tr key={m.email} className="hover:bg-slate-800/20">
-                        <td className="px-4 py-3 font-bold text-white">{m.nome}</td>
-                        <td className="px-4 py-3 font-mono">{m.email}</td>
-                        <td className="px-4 py-3 text-violet-400 font-bold uppercase">{m.perfil}</td>
-                        <td className="px-4 py-3 text-slate-500">{m.criadoEm || '14/07/2026'}</td>
+                    {[
+                      ...masters.map(m => ({
+                        nome: m.nome,
+                        email: m.email,
+                        cargo: 'Sócio / Diretor Master',
+                        departamento: 'Diretoria Executiva',
+                        nivelAcesso: 'TOTAL',
+                        criadoEm: m.criadoEm || '14/05/2026'
+                      })),
+                      ...colaboradores.map(c => ({
+                        nome: c.nome,
+                        email: c.email,
+                        cargo: c.cargo,
+                        departamento: 'RH Interno & Operações',
+                        nivelAcesso: c.nivelAcesso || 'Total',
+                        criadoEm: c.dataAdmissao || '14/05/2026'
+                      }))
+                    ].map((member, idx) => (
+                      <tr key={idx} className="hover:bg-slate-800/20">
+                        <td className="px-4 py-3">
+                          <div className="font-bold text-white">{member.nome}</div>
+                          <div className="text-[10px] text-slate-500 font-mono">{member.cargo}</div>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-slate-300">{member.email}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase ${
+                            member.nivelAcesso.toUpperCase() === 'TOTAL' ? 'bg-violet-500/10 text-violet-400' : 'bg-blue-500/10 text-blue-400'
+                          }`}>
+                            {member.nivelAcesso}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-400">{member.departamento}</td>
+                        <td className="px-4 py-3 text-slate-500 font-mono">{member.criadoEm}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -2352,6 +2455,252 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {isFinanceModalOpen && selectedClient && (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-3xl w-full p-6 shadow-2xl flex flex-col space-y-4">
+              <div className="flex justify-between items-start border-b border-slate-800 pb-3">
+                <div>
+                  <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                    <DollarSign className="w-5 h-5 text-emerald-400" /> Histórico Financeiro LogusQ
+                  </h3>
+                  <p className="text-xs text-slate-400">Controle de faturas, valores de planos e datas de pagamento para {selectedClient.empresa}.</p>
+                </div>
+                <button 
+                  onClick={() => setIsFinanceModalOpen(false)}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white px-3 py-1.5 rounded-lg text-xs"
+                >
+                  Fechar
+                </button>
+              </div>
+
+              {/* Top Quick Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="bg-slate-950 p-3 rounded-lg border border-slate-850">
+                  <span className="text-[10px] text-slate-500 block uppercase font-mono">Plano Atual</span>
+                  <span className="text-sm font-bold text-violet-400">{selectedClient.plano}</span>
+                </div>
+                <div className="bg-slate-950 p-3 rounded-lg border border-slate-850">
+                  <span className="text-[10px] text-slate-500 block uppercase font-mono">Valor Mensal</span>
+                  <span className="text-sm font-bold text-white">R$ {selectedClient.valorPlano.toLocaleString('pt-BR')}</span>
+                </div>
+                <div className="bg-slate-950 p-3 rounded-lg border border-slate-850">
+                  <span className="text-[10px] text-slate-500 block uppercase font-mono">Status da Assinatura</span>
+                  <span className={`text-xs font-bold font-mono px-2 py-0.5 rounded uppercase inline-block mt-0.5 ${
+                    selectedClient.status === 'Ativo' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                  }`}>{selectedClient.status}</span>
+                </div>
+              </div>
+
+              {/* History Table */}
+              <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950">
+                <div className="overflow-x-auto max-h-96">
+                  <table className="w-full text-xs text-left text-slate-400">
+                    <thead className="text-[10px] uppercase font-mono bg-slate-900/50 text-slate-500 border-b border-slate-800">
+                      <tr>
+                        <th className="px-4 py-2.5">Referência</th>
+                        <th className="px-4 py-2.5">Plano</th>
+                        <th className="px-4 py-2.5">Valor</th>
+                        <th className="px-4 py-2.5">Vencimento</th>
+                        <th className="px-4 py-2.5">Data Pagamento</th>
+                        <th className="px-4 py-2.5">Status</th>
+                        <th className="px-4 py-2.5 text-right">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-850">
+                      {getClientPaymentHistory(selectedClient).map((h, i) => (
+                        <tr key={i} className="hover:bg-slate-900/20">
+                          <td className="px-4 py-2.5 font-bold text-white">{h.mesReferencia}</td>
+                          <td className="px-4 py-2.5 text-slate-400">{h.plano}</td>
+                          <td className="px-4 py-2.5 text-white font-mono">R$ {h.valor.toLocaleString('pt-BR')}</td>
+                          <td className="px-4 py-2.5 text-slate-400 font-mono">{h.vencimento}</td>
+                          <td className="px-4 py-2.5 text-slate-300 font-mono">{h.dataPagamento || '-'}</td>
+                          <td className="px-4 py-2.5">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              h.status === 'Pago' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
+                            }`}>{h.status}</span>
+                          </td>
+                          <td className="px-4 py-2.5 text-right">
+                            {h.status === 'Pendente' && (
+                              <button
+                                onClick={() => {
+                                  handleConfirmPayment(selectedClient.email);
+                                }}
+                                className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-1 px-2.5 rounded text-[10px] transition-colors"
+                              >
+                                Dar Baixa
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isContractModalOpen && selectedClient && (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-4xl w-full p-6 shadow-2xl flex flex-col space-y-4 max-h-[90vh]">
+              <div className="flex justify-between items-start border-b border-slate-800 pb-3">
+                <div>
+                  <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-violet-400" /> Contrato de Adesão SaaS LogusQ (PDF)
+                  </h3>
+                  <p className="text-xs text-slate-400">Contrato gerado automaticamente em formato padrão e pronto para impressão ou exportação.</p>
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => {
+                      const printContents = document.getElementById('printable-contract')?.innerHTML;
+                      if (printContents) {
+                        const win = window.open('', '_blank');
+                        if (win) {
+                          win.document.write(`
+                            <html>
+                              <head>
+                                <title>Contrato LogusQ - ${selectedClient.empresa}</title>
+                                <style>
+                                  body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #333; line-height: 1.6; font-size: 14px; }
+                                  h1 { text-align: center; font-size: 18px; text-transform: uppercase; margin-bottom: 30px; }
+                                  h2 { font-size: 14px; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-top: 25px; }
+                                  table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+                                  table td { border: 1px solid #ddd; padding: 8px; }
+                                  @media print {
+                                    .no-print { display: none; }
+                                  }
+                                </style>
+                              </head>
+                              <body>
+                                ${printContents}
+                                <script>
+                                  window.onload = function() { window.print(); window.close(); }
+                                </script>
+                              </body>
+                            </html>
+                          `);
+                          win.document.close();
+                        }
+                      }
+                    }}
+                    className="bg-violet-600 hover:bg-violet-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Imprimir / Salvar PDF
+                  </button>
+                  <button 
+                    onClick={() => setIsContractModalOpen(false)}
+                    className="bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white px-3 py-1.5 rounded-lg text-xs transition-colors"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </div>
+
+              {/* Contract document layout */}
+              <div className="overflow-y-auto flex-1 bg-white text-slate-900 p-8 rounded-xl border border-slate-300 shadow-inner font-serif" id="printable-contract">
+                <div className="max-w-3xl mx-auto space-y-6 text-xs text-justify leading-relaxed">
+                  <div className="text-center space-y-2 pb-4 border-b border-slate-200">
+                    <div className="font-sans font-extrabold text-xl tracking-wider text-slate-800">LOGUS<span className="text-violet-600">Q</span> TECNOLOGIA</div>
+                    <div className="text-[9px] font-sans uppercase tracking-widest text-slate-500">Sistemas Inteligentes de Roteirização Científica</div>
+                  </div>
+
+                  <h1 className="text-center font-sans font-extrabold text-xs uppercase tracking-wide text-slate-950">
+                    INSTRUMENTO PARTICULAR DE CONTRATO DE LICENCIAMENTO DE SOFTWARE E PRESTAÇÃO DE SERVIÇOS DE LOGÍSTICA SAAS
+                  </h1>
+
+                  <div>
+                    <p>Por este instrumento particular de contrato, de um lado:</p>
+                    <p className="mt-2 pl-4 border-l-2 border-slate-300">
+                      <strong>LICENCIANTE:</strong> LOGUSQ TECNOLOGIA LTDA, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 12.345.678/0001-99, com sede na Avenida do Contorno, nº 4500, Savassi, Belo Horizonte - MG, neste ato representada na forma de seus atos constitutivos; e
+                    </p>
+                    <p className="mt-2 pl-4 border-l-2 border-slate-300">
+                      <strong>LICENCIADA:</strong> {selectedClient.empresa}, inscrita no CNPJ sob o nº {selectedClient.cnpj || 'CONTRATO-GERADO'}, sediada em {selectedClient.endereco}, nº {selectedClient.numero} {selectedClient.complemento && `(${selectedClient.complemento})`}, {selectedClient.bairro}, {selectedClient.cidade}/{selectedClient.estado}, representada neste ato por seu gestor responsável legal, <strong>{selectedClient.respNome}</strong>, portador do CPF nº {selectedClient.respCpf || 'Sob consulta'}.
+                    </p>
+                    <p className="mt-2">As partes acima qualificadas têm, entre si, justo e contratado o quanto segue nas seguintes cláusulas e condições:</p>
+                  </div>
+
+                  <div>
+                    <h2 className="font-sans font-bold text-[11px] text-slate-800 uppercase mt-4">CLÁUSULA PRIMEIRA – DO OBJETO E ESPECIFICAÇÃO DO PLANO</h2>
+                    <p className="mt-1">
+                      1.1 Constitui objeto do presente instrumento o licenciamento temporário de uso, de forma não exclusiva e intransferível, do Software LOGUSQ - Sistema de Roteirização Inteligente K-Means & TSP, além do suporte técnico associado à sua operação.
+                    </p>
+                    <p className="mt-1">
+                      1.2 A LICENCIADA optou pela contratação do plano especificado abaixo, cujos limites operacionais devem ser rigorosamente respeitados:
+                    </p>
+                    <table className="w-full border border-slate-300 mt-2 font-sans text-[10px]">
+                      <tbody>
+                        <tr>
+                          <td className="border border-slate-300 bg-slate-100 p-2 font-bold w-40">Identificador da Conta:</td>
+                          <td className="border border-slate-300 p-2">{selectedClient.idCliente}</td>
+                        </tr>
+                        <tr>
+                          <td className="border border-slate-300 bg-slate-100 p-2 font-bold">Plano SaaS Contratado:</td>
+                          <td className="border border-slate-300 p-2 font-bold text-violet-700">{selectedClient.plano}</td>
+                        </tr>
+                        <tr>
+                          <td className="border border-slate-300 bg-slate-100 p-2 font-bold">Valor da Mensalidade:</td>
+                          <td className="border border-slate-300 p-2 font-bold">R$ {selectedClient.valorPlano.toLocaleString('pt-BR')} (Mensais)</td>
+                        </tr>
+                        <tr>
+                          <td className="border border-slate-300 bg-slate-100 p-2 font-bold">Frota Máxima Permitida:</td>
+                          <td className="border border-slate-300 p-2">Até {PLANOS_PADRAO[selectedClient.plano as keyof PlanosSaaS]?.max_veiculos || 5} Veículos Simultâneos</td>
+                        </tr>
+                        <tr>
+                          <td className="border border-slate-300 bg-slate-100 p-2 font-bold">Vigência Inicial (Início):</td>
+                          <td className="border border-slate-300 p-2 font-mono">{selectedClient.clienteDesde || '14/07/2026'}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div>
+                    <h2 className="font-sans font-bold text-[11px] text-slate-800 uppercase mt-4">CLÁUSULA SEGUNDA – DOS VALORES, FORMA DE COBRANÇA E REAJUSTES</h2>
+                    <p className="mt-1">
+                      2.1 Pelo licenciamento e serviços prestados, a LICENCIADA pagará à LICENCIANTE o valor mensal do plano contratado, vencendo todo dia <strong>{selectedClient.vencimento?.split('/')[0] || '10'}</strong> de cada mês, através de boleto bancário ou transferência PIX homologada.
+                    </p>
+                    <p className="mt-1">
+                      2.2 O atraso superior a 10 (dez) dias ensejará o bloqueio temporário do acesso aos servidores de roteirização LogusQ, sem prejuízo da incidência de juros de mora de 1% ao mês e multa compensatória de 2%.
+                    </p>
+                    <p className="mt-1">
+                      2.3 Os valores pactuados serão reajustados anualmente com base na variação positiva do IPCA/IBGE acumulado no período, ou outro indexador oficial que venha a substituí-lo.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h2 className="font-sans font-bold text-[11px] text-slate-800 uppercase mt-4">CLÁUSULA TERCEIRA – DA SEGURANÇA DA INFORMAÇÃO E LGPD</h2>
+                    <p className="mt-1">
+                      3.1 A LICENCIANTE compromete-se a manter em sigilo absoluto todos os dados de frota, coordenadas de clientes de entrega, faturamento e informações pessoais inseridas pela LICENCIADA no software, em estrita conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018 - LGPD).
+                    </p>
+                    <p className="mt-1">
+                      3.2 Todas as conexões de tráfego de dados com as APIs de otimização LogusQ utilizam criptografia SSL SHA-256 bits de padrão militar, sendo as bases hospedadas em datacenters redundantes com conformidade de segurança Tier III.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h2 className="font-sans font-bold text-[11px] text-slate-800 uppercase mt-4">CLÁUSULA QUARTA – DA RESCISÃO E VIGÊNCIA</h2>
+                    <p className="mt-1">
+                      4.1 O presente contrato vigora por prazo indeterminado. Qualquer das partes poderá rescindir a prestação de serviços a qualquer momento, mediante envio de notificação por escrito com antecedência mínima de 30 (trinta) dias, desde que não existam débitos pendentes de pagamento.
+                    </p>
+                  </div>
+
+                  <p className="mt-6 text-center">Belo Horizonte, {selectedClient.clienteDesde || '14 de Julho de 2026'}.</p>
+
+                  <div className="signature-row pt-8 flex justify-between gap-12 font-sans text-[10px] mt-8">
+                    <div className="w-1/2 border-t border-slate-400 text-center pt-2">
+                      <strong>LOGUSQ TECNOLOGIA LTDA</strong><br />Representante Legal (Licenciante)
+                    </div>
+                    <div className="w-1/2 border-t border-slate-400 text-center pt-2">
+                      <strong>{selectedClient.empresa}</strong><br />Representante Legal: {selectedClient.respNome}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
