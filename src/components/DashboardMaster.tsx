@@ -79,6 +79,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
   const [upPlano, setUpPlano] = useState<keyof PlanosSaaS>('POC');
   const [upStatus, setUpStatus] = useState<'Ativo' | 'Bloqueado'>('Ativo');
   const [upVencimento, setUpVencimento] = useState('');
+  const [upClienteDesde, setUpClienteDesde] = useState('');
 
   // Set edit values when selection changes
   React.useEffect(() => {
@@ -118,6 +119,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
       setUpPlano(selectedClient.plano as keyof PlanosSaaS);
       setUpStatus(selectedClient.status as any);
       setUpVencimento(selectedClient.vencimento || '');
+      setUpClienteDesde(selectedClient.clienteDesde || '');
     }
   }, [selectedClientEmail, refreshKey]);
 
@@ -182,6 +184,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
   const [regEmail, setRegEmail] = useState('');
   const [regSenha, setRegSenha] = useState('AlfaLogQ@2026');
   const [regPlano, setRegPlano] = useState<keyof PlanosSaaS>('POC');
+  const [regClienteDesde, setRegClienteDesde] = useState(() => new Date().toLocaleDateString('pt-BR'));
 
   // Search filter
   const [clientSearch, setClientSearch] = useState('');
@@ -296,7 +299,8 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
       plano: upPlano,
       valorPlano: PLANOS_PADRAO[upPlano].valor,
       status: upStatus,
-      vencimento: upVencimento
+      vencimento: upVencimento,
+      clienteDesde: upClienteDesde
     }, upSenha);
 
     setIsClientEditModalOpen(false);
@@ -498,7 +502,8 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
         respEstado: regRespEstado || regEstado,
 
         senhaProvisoria: regSenha,
-        plano: regPlano
+        plano: regPlano,
+        clienteDesde: regClienteDesde
       });
 
       // Clear states
@@ -529,6 +534,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
       setRegRespEstado('');
       setRegEmail('');
       setRegSenha('AlfaLogQ@2026');
+      setRegClienteDesde(new Date().toLocaleDateString('pt-BR'));
       
       triggerRefresh();
       alert('Novo cliente ativado com sucesso!');
@@ -712,6 +718,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                           <th className="px-4 py-3">ID / Empresa</th>
                           <th className="px-4 py-3">Plano</th>
                           <th className="px-4 py-3">Status</th>
+                          <th className="px-4 py-3">Desde</th>
                           <th className="px-4 py-3">Vencimento</th>
                           <th className="px-4 py-3 text-right">Ação</th>
                         </tr>
@@ -739,6 +746,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                                 {c.status}
                               </span>
                             </td>
+                            <td className="px-4 py-3 font-mono text-slate-400">{c.clienteDesde}</td>
                             <td className="px-4 py-3 font-mono text-slate-300">{c.vencimento}</td>
                             <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
                               <div className="flex gap-1.5 justify-end">
@@ -797,10 +805,14 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2 text-[11px] border-b border-slate-850 pb-2">
+                      <div className="grid grid-cols-3 gap-2 text-[10px] border-b border-slate-850 pb-2">
                         <div>
                           <span className="text-slate-500 block">Plano:</span>
                           <span className="text-violet-400 font-bold">{selectedClient.plano}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block">Cliente Desde:</span>
+                          <span className="text-white font-mono">{selectedClient.clienteDesde || '-'}</span>
                         </div>
                         <div>
                           <span className="text-slate-500 block">Vencimento:</span>
@@ -1233,14 +1245,26 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                       ))}
                     </select>
                   </div>
-                  <div className="flex items-end">
-                    <button
-                      type="submit"
-                      className="w-full bg-violet-600 hover:bg-violet-500 text-white font-semibold py-2.5 px-4 rounded-lg text-xs transition-all shadow-lg shadow-violet-900/20"
-                    >
-                      Ativar Cliente e Gerar ID Único
-                    </button>
+                  <div>
+                    <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Cliente Desde (Data de Início) *</label>
+                    <input
+                      type="text"
+                      required
+                      value={regClienteDesde}
+                      onChange={e => setRegClienteDesde(e.target.value)}
+                      placeholder="DD/MM/AAAA"
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white font-mono"
+                    />
                   </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="submit"
+                    className="w-full md:w-auto bg-violet-600 hover:bg-violet-500 text-white font-semibold py-2.5 px-6 rounded-lg text-xs transition-all shadow-lg shadow-violet-900/20"
+                  >
+                    Ativar Cliente e Gerar ID Único
+                  </button>
                 </div>
               </div>
             </form>
@@ -2264,7 +2288,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
                       <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Plano Contratual *</label>
                       <select
@@ -2287,6 +2311,16 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                         <option value="Ativo">Ativo (Acesso Liberado)</option>
                         <option value="Bloqueado">Bloqueado (Acesso Bloqueado)</option>
                       </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Cliente Desde *</label>
+                      <input
+                        type="text"
+                        required
+                        value={upClienteDesde}
+                        onChange={e => setUpClienteDesde(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white font-mono"
+                      />
                     </div>
                     <div>
                       <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Vencimento da Mensalidade *</label>

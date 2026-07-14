@@ -504,7 +504,7 @@ export const dbRepo = {
       plano: params.plano || 'Start',
       valorPlano: PLANOS_PADRAO[params.plano as keyof typeof PLANOS_PADRAO]?.valor || 499,
       status: 'Ativo',
-      clienteDesde: new Date().toLocaleDateString('pt-BR'),
+      clienteDesde: params.clienteDesde || new Date().toLocaleDateString('pt-BR'),
       vencimento: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR'),
       respNome: params.respNome,
       respCpf: params.respCpf,
