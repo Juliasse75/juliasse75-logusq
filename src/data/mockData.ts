@@ -536,15 +536,61 @@ export const dbRepo = {
     return novoCli;
   },
 
-  editarCliente: (email: string, params: Partial<Cliente>) => {
+  editarCliente: (oldEmail: string, params: Partial<Cliente>, novaSenha?: string) => {
     const list = dbRepo.getClientes();
     const updated = list.map(c => {
-      if (c.email === email) {
+      if (c.email === oldEmail) {
         return { ...c, ...params };
       }
       return c;
     });
     dbRepo.saveClientes(updated);
+
+    // Update user credentials as well
+    const usuarios = dbRepo.getUsuarios();
+    const userUpdated = usuarios.map(u => {
+      if (u.email === oldEmail) {
+        const uCopy = { ...u };
+        if (params.email) uCopy.email = params.email;
+        if (novaSenha) uCopy.senha_hash = novaSenha;
+        if (params.respNome) uCopy.nome = params.respNome;
+        if (params.empresa) uCopy.empresa = params.empresa;
+        return uCopy;
+      }
+      return u;
+    });
+    dbRepo.saveUsuarios(userUpdated);
+
+    // Also update vehicles & drivers if the email changed
+    if (params.email && params.email !== oldEmail) {
+      const veiculos = dbRepo.getVeiculos();
+      const veiculosUpdated = veiculos.map(v => {
+        if ((v as any).clienteEmail === oldEmail) {
+          return { ...v, clienteEmail: params.email };
+        }
+        return v;
+      });
+      dbRepo.saveVeiculos(veiculosUpdated);
+
+      const condutores = dbRepo.getCondutoresRaw();
+      const condutoresUpdated = condutores.map(c => {
+        if ((c as any).clienteEmail === oldEmail) {
+          return { ...c, clienteEmail: params.email };
+        }
+        return c;
+      });
+      dbRepo.saveCondutores(condutoresUpdated);
+    }
+  },
+
+  deletarCliente: (email: string) => {
+    const list = dbRepo.getClientes();
+    const filtered = list.filter(c => c.email !== email);
+    dbRepo.saveClientes(filtered);
+
+    const usuarios = dbRepo.getUsuarios();
+    const userFiltered = usuarios.filter(u => u.email !== email);
+    dbRepo.saveUsuarios(userFiltered);
   },
 
   cadastrarVeiculo: (email: string, params: Partial<Veiculo>) => {
@@ -647,6 +693,40 @@ export const dbRepo = {
     const colaboradores = dbRepo.getColaboradores();
     const filtered = colaboradores.filter(c => c.idColaborador !== id);
     dbRepo.saveColaboradores(filtered);
+  },
+
+  editarColaborador: (idColaborador: string, params: Partial<Colaborador>, novaSenha?: string) => {
+    const list = dbRepo.getColaboradores();
+    const updated = list.map(c => {
+      if (c.idColaborador === idColaborador) {
+        return { ...c, ...params };
+      }
+      return c;
+    });
+    dbRepo.saveColaboradores(updated);
+
+    const updatedCol = updated.find(c => c.idColaborador === idColaborador);
+    if (updatedCol) {
+      const usuarios = dbRepo.getUsuarios();
+      const userUpdated = usuarios.map(u => {
+        if (u.email === updatedCol.email) {
+          const uCopy = { ...u };
+          if (params.email) uCopy.email = params.email;
+          if (novaSenha) uCopy.senha_hash = novaSenha;
+          if (params.nome) uCopy.nome = params.nome;
+          if (params.nivelAcesso) uCopy.nivelAcesso = params.nivelAcesso;
+          return uCopy;
+        }
+        return u;
+      });
+      dbRepo.saveUsuarios(userUpdated);
+    }
+  },
+
+  getSenhaUsuario: (email: string): string => {
+    const list = dbRepo.getUsuarios();
+    const user = list.find(u => u.email === email);
+    return user ? user.senha_hash : '';
   },
 
   salvarPlano: (nome: string, descricao: string, valor: number, maxVeiculos: number) => {

@@ -55,23 +55,42 @@ export default function LoginCadastro({ onLoginSuccess }: LoginCadastroProps) {
   const [cadastroError, setCadastroError] = useState('');
 
   const handleCEPChange = async (val: string, target: 'empresa' | 'responsavel') => {
-    const limpo = val.replace(/\D/g, '');
+    const limpo = val.replace(/\D/g, '').slice(0, 8);
     if (target === 'empresa') {
       setCep(limpo);
       if (limpo.length === 8) {
-        // Simple mock geocode/CEP lookup for BH/MG area
-        setCidade('Belo Horizonte');
-        setEstado('MG');
-        setBairro('Savassi');
-        setEndereco('Avenida do Contorno');
+        try {
+          const res = await fetch(`https://viacep.com.br/ws/${limpo}/json/`);
+          if (res.ok) {
+            const data = await res.json();
+            if (!data.erro) {
+              setEndereco(data.logradouro || '');
+              setBairro(data.bairro || '');
+              setCidade(data.localidade || '');
+              setEstado(data.uf || 'MG');
+            }
+          }
+        } catch (e) {
+          console.error('Erro ao buscar o CEP:', e);
+        }
       }
     } else {
       setRespCep(limpo);
       if (limpo.length === 8) {
-        setRespCidade('Belo Horizonte');
-        setRespEstado('MG');
-        setRespBairro('Funcionários');
-        setRespEnd('Rua Sergipe');
+        try {
+          const res = await fetch(`https://viacep.com.br/ws/${limpo}/json/`);
+          if (res.ok) {
+            const data = await res.json();
+            if (!data.erro) {
+              setRespEnd(data.logradouro || '');
+              setRespBairro(data.bairro || '');
+              setRespCidade(data.localidade || '');
+              setRespEstado(data.uf || 'MG');
+            }
+          }
+        } catch (e) {
+          console.error('Erro ao buscar o CEP:', e);
+        }
       }
     }
   };

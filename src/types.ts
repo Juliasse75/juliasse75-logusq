@@ -39,6 +39,12 @@ export interface Cliente {
   respEmail?: string;
   respWhatsapp?: string;
   respTelefone?: string;
+  respCep?: string;
+  respEndereco?: string;
+  respNumero?: string;
+  respBairro?: string;
+  respCidade?: string;
+  respEstado?: string;
   pagamentoConfirmado: boolean;
   dataUltimoPagamento?: string;
 }
@@ -61,8 +67,9 @@ export interface Colaborador {
   bairro?: string;
   cidade?: string;
   estado?: string;
-  nivelAcesso: 'Sem Acesso' | 'Visualizar' | 'Total';
+  nivelAcesso: 'Sem Acesso' | 'Visualizar' | 'Total' | 'TOTAL' | 'RH' | 'Financeiro';
   acessoSistema: boolean;
+  regime?: 'CLT' | 'PJ';
 }
 
 export interface Plano {
