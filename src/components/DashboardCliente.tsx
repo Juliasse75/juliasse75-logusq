@@ -3,11 +3,12 @@ import { dbRepo } from '../data/mockData';
 import { Veiculo, Condutor, Entrega, PlanosSaaS, TipoVeiculo } from '../types';
 import { 
   Truck, Users, MapPin, Calculator, Plus, Upload, Download, Play, 
-  Map, CheckCircle, Trash2, Calendar, FileText, Clipboard, Settings, ShieldAlert
+  Map, CheckCircle, Trash2, Calendar, FileText, Clipboard, Settings, ShieldAlert, Sparkles
 } from 'lucide-react';
 import SimulatedMap from './SimulatedMap';
 import { clusterAndOptimize, DEFAULT_BASE } from '../utils/routingEngine';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import ImportadorUniversal from './ImportadorUniversal';
 
 interface DashboardClienteProps {
   userEmail: string;
@@ -113,6 +114,15 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
         console.error('Erro ao buscar CEP:', err);
       }
     }
+  };
+
+  // --- UNIVERSAL IMPORT MODAL ---
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importModalType, setImportModalType] = useState<'veiculos' | 'condutores' | 'entregas'>('veiculos');
+
+  const handleOpenImportModal = (type: 'veiculos' | 'condutores' | 'entregas') => {
+    setImportModalType(type);
+    setIsImportModalOpen(true);
   };
 
   // --- COST CALCULATOR ---
@@ -608,12 +618,18 @@ Assinatura do Expedidor: _______________________________`;
                 <h1 className="text-xl font-extrabold text-white">Roteirização e Distribuição de Carga</h1>
                 <p className="text-xs text-slate-400">Adicione pontos de entrega, agrupe em veículos via K-Means e otimize caminhos com TSP.</p>
               </div>
-              <div className="flex gap-2.5">
+              <div className="flex flex-wrap gap-2.5">
                 <button
                   onClick={handleImportEntregasBulk}
                   className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-700/50 transition-colors"
                 >
                   Importar Demo BH
+                </button>
+                <button
+                  onClick={() => handleOpenImportModal('entregas')}
+                  className="bg-slate-900 hover:bg-slate-800 text-slate-300 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-800 flex items-center gap-2 transition-colors"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-violet-400" /> Importar Romaneio (IA / PDF / XLS)
                 </button>
                 <button
                   onClick={handleOptimize}
@@ -826,16 +842,12 @@ Assinatura do Expedidor: _______________________________`;
                 >
                   <Download className="w-3.5 h-3.5 text-violet-400" /> Baixar Planilha Modelo
                 </button>
-                <label className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-violet-900/20 flex items-center gap-2 cursor-pointer transition-all">
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Importar em Massa (CSV)</span>
-                  <input
-                    type="file"
-                    accept=".csv"
-                    className="hidden"
-                    onChange={handleImportVeiculosCsv}
-                  />
-                </label>
+                <button
+                  onClick={() => handleOpenImportModal('veiculos')}
+                  className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-violet-900/20 flex items-center gap-2 transition-all"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-violet-200" /> Importar Frota Inteligente (IA / PDF / XLS)
+                </button>
               </div>
             </div>
 
@@ -1134,16 +1146,12 @@ Assinatura do Expedidor: _______________________________`;
                 >
                   <Download className="w-3.5 h-3.5 text-violet-400" /> Baixar Planilha Modelo
                 </button>
-                <label className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-violet-900/20 flex items-center gap-2 cursor-pointer transition-all">
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Importar em Massa (CSV)</span>
-                  <input
-                    type="file"
-                    accept=".csv"
-                    className="hidden"
-                    onChange={handleImportMotoristasCsv}
-                  />
-                </label>
+                <button
+                  onClick={() => handleOpenImportModal('condutores')}
+                  className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-violet-900/20 flex items-center gap-2 transition-all"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-violet-200" /> Importar Motoristas Inteligente (IA / PDF / XLS)
+                </button>
               </div>
             </div>
 
@@ -1505,6 +1513,15 @@ Assinatura do Expedidor: _______________________________`;
         )}
 
       </main>
+
+      <ImportadorUniversal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        type={importModalType}
+        userEmail={userEmail}
+        onImportComplete={triggerRefresh}
+        dbRepo={dbRepo}
+      />
     </div>
   );
 }
