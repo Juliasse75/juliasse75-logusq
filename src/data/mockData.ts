@@ -1,4 +1,4 @@
-import { Usuario, Cliente, Colaborador, Plano, Veiculo, Condutor, MensagemSuporte, Entrega, PLANOS_PADRAO } from '../types';
+import { Usuario, Cliente, Colaborador, Plano, Veiculo, Condutor, MensagemSuporte, Entrega, PLANOS_PADRAO, AuditLog } from '../types';
 
 // Seed Plans
 export const PLANOS: Plano[] = [
@@ -17,6 +17,7 @@ const KEYS = {
   CONDUTORES: 'logusq_condutores',
   MENSAGENS: 'logusq_mensagens',
   ENTREGAS: 'logusq_entregas',
+  AUDITORIA: 'logusq_auditoria',
 };
 
 // Seed Users
@@ -36,6 +37,14 @@ const SEED_USUARIOS = [
     empresa: 'LogiVelo Express S.A.',
     nivelAcesso: 'TOTAL',
     criadoEm: '14/07/2025',
+    senha_hash: '123456',
+  },
+  {
+    email: 'carlosjose@logusq.com.br',
+    nome: 'Carlos José',
+    perfil: 'COLABORADOR' as const,
+    nivelAcesso: 'TOTAL',
+    criadoEm: '10/07/2026',
     senha_hash: '123456',
   }
 ];
@@ -167,6 +176,93 @@ const SEED_COLABORADORES: Colaborador[] = [
     status: 'Ativo',
     nivelAcesso: 'Visualizar',
     acessoSistema: true,
+  },
+  {
+    idColaborador: 'LOGUS-RH-2503',
+    nome: 'Carlos José',
+    cargo: 'Gerente LogusQ',
+    telefone: '(11) 99888-7777',
+    whatsapp: '(11) 99888-7777',
+    email: 'carlosjose@logusq.com.br',
+    dataAdmissao: '10/07/2026',
+    status: 'Ativo',
+    nivelAcesso: 'Total',
+    acessoSistema: true,
+    regime: 'CLT',
+  }
+];
+
+// Seed Audit Logs
+const SEED_AUDITORIA: AuditLog[] = [
+  {
+    id: 'AUD-001',
+    dataHora: '14/07/2026 10:15:30',
+    operadorEmail: 'carlosjose@logusq.com.br',
+    operadorNome: 'Carlos José',
+    operadorCargo: 'Gerente LogusQ',
+    acao: 'Exclusão de Cliente',
+    descricao: 'Excluiu o cliente "Farmácia Alfa S.A." (CNPJ: 12.876.543/0001-99) do banco de dados.',
+    modulo: 'Clientes',
+    status: 'Sucesso',
+    detalhes: '{"idCliente": "LOGUS-CLI-90123", "empresa": "Farmácia Alfa S.A."}'
+  },
+  {
+    id: 'AUD-002',
+    dataHora: '14/07/2026 10:17:12',
+    operadorEmail: 'carlosjose@logusq.com.br',
+    operadorNome: 'Carlos José',
+    operadorCargo: 'Gerente LogusQ',
+    acao: 'Exclusão de Cliente',
+    descricao: 'Excluiu o cliente "Supermercado do Bairro LTDA" (CNPJ: 45.987.123/0001-44) do banco de dados.',
+    modulo: 'Clientes',
+    status: 'Sucesso',
+    detalhes: '{"idCliente": "LOGUS-CLI-90124", "empresa": "Supermercado do Bairro LTDA"}'
+  },
+  {
+    id: 'AUD-003',
+    dataHora: '14/07/2026 10:19:45',
+    operadorEmail: 'carlosjose@logusq.com.br',
+    operadorNome: 'Carlos José',
+    operadorCargo: 'Gerente LogusQ',
+    acao: 'Exclusão de Cliente',
+    descricao: 'Excluiu o cliente "Padaria Central de BH" (CNPJ: 33.111.222/0001-33) do banco de dados.',
+    modulo: 'Clientes',
+    status: 'Sucesso',
+    detalhes: '{"idCliente": "LOGUS-CLI-90125", "empresa": "Padaria Central de BH"}'
+  },
+  {
+    id: 'AUD-004',
+    dataHora: '15/07/2026 08:30:00',
+    operadorEmail: 'anaclara@logusq.com.br',
+    operadorNome: 'Ana Clara Neves',
+    operadorCargo: 'Gerente de Customer Success',
+    acao: 'Cadastro de Colaborador',
+    descricao: 'Cadastrou o novo colaborador interno "Pedro Henrique Martins" (E-mail: pedro@logusq.com.br).',
+    modulo: 'RH',
+    status: 'Sucesso',
+    detalhes: '{"nome": "Pedro Henrique Martins", "cargo": "Analista Júnior"}'
+  },
+  {
+    id: 'AUD-005',
+    dataHora: '15/07/2026 09:45:10',
+    operadorEmail: 'carlosh@logusq.com.br',
+    operadorNome: 'Carlos Henrique Souza',
+    operadorCargo: 'Analista de Infraestrutura e Roteamento',
+    acao: 'Visualização de Frota',
+    descricao: 'Visualizou e exportou dados de frota de veículos cadastrados da Quantum Logística Integrada.',
+    modulo: 'Geral',
+    status: 'Sucesso'
+  },
+  {
+    id: 'AUD-006',
+    dataHora: '15/07/2026 11:20:00',
+    operadorEmail: 'ceo@logusq.com.br',
+    operadorNome: 'Cosme Juliasse',
+    operadorCargo: 'CEO Master',
+    acao: 'Alteração de Plano',
+    descricao: 'Alterou as tarifas e limites do Plano Pro de R$ 999 para R$ 1099 mensais.',
+    modulo: 'Financeiro',
+    status: 'Sucesso'
   }
 ];
 
@@ -344,6 +440,9 @@ export const initializeDatabase = () => {
   if (!localStorage.getItem(KEYS.MENSAGENS)) {
     localStorage.setItem(KEYS.MENSAGENS, JSON.stringify(SEED_MENSAGENS));
   }
+  if (!localStorage.getItem(KEYS.AUDITORIA)) {
+    localStorage.setItem(KEYS.AUDITORIA, JSON.stringify(SEED_AUDITORIA));
+  }
 };
 
 // Generic Repository Helper
@@ -514,6 +613,12 @@ export const dbRepo = {
       respEmail: params.respEmail,
       respWhatsapp: params.respWhatsapp,
       respTelefone: params.respTelefone,
+      respCep: params.respCep,
+      respEndereco: params.respEndereco,
+      respNumero: params.respNumero,
+      respBairro: params.respBairro,
+      respCidade: params.respCidade,
+      respEstado: params.respEstado,
       pagamentoConfirmado: true,
     };
 
@@ -583,14 +688,30 @@ export const dbRepo = {
     }
   },
 
-  deletarCliente: (email: string) => {
+  deletarCliente: (email: string, operatorEmail?: string, operatorName?: string) => {
     const list = dbRepo.getClientes();
+    const clientToDelete = list.find(c => c.email === email);
+    const companyName = clientToDelete ? clientToDelete.empresa : email;
+    const cnpj = clientToDelete ? clientToDelete.cnpj : 'N/D';
+
     const filtered = list.filter(c => c.email !== email);
     dbRepo.saveClientes(filtered);
 
     const usuarios = dbRepo.getUsuarios();
     const userFiltered = usuarios.filter(u => u.email !== email);
     dbRepo.saveUsuarios(userFiltered);
+
+    if (operatorEmail) {
+      dbRepo.registrarLog(
+        operatorEmail,
+        operatorName || 'Operador',
+        'Exclusão de Cliente',
+        `Excluiu o cliente "${companyName}" (CNPJ: ${cnpj}) do banco de dados de clientes.`,
+        'Clientes',
+        'Sucesso',
+        JSON.stringify({ email, empresa: companyName })
+      );
+    }
   },
 
   cadastrarVeiculo: (email: string, params: Partial<Veiculo>) => {
@@ -767,5 +888,48 @@ export const dbRepo = {
       map[p.nome] = p;
     });
     return map;
+  },
+
+  getLogs: (): AuditLog[] => {
+    initializeDatabase();
+    return JSON.parse(localStorage.getItem(KEYS.AUDITORIA) || '[]');
+  },
+
+  saveLogs: (logs: AuditLog[]) => {
+    localStorage.setItem(KEYS.AUDITORIA, JSON.stringify(logs));
+  },
+
+  registrarLog: (
+    operadorEmail: string,
+    operadorNome: string,
+    acao: string,
+    descricao: string,
+    modulo: 'Clientes' | 'RH' | 'Financeiro' | 'Geral',
+    status: 'Sucesso' | 'Erro' = 'Sucesso',
+    detalhes?: string
+  ) => {
+    const logs = dbRepo.getLogs();
+    const colaboradores = dbRepo.getColaboradores();
+    const colab = colaboradores.find(c => c.email === operadorEmail);
+    const cargo = colab ? colab.cargo : (operadorEmail === 'ceo@logusq.com.br' ? 'CEO Master' : 'Gestor Cliente');
+    
+    const novo: AuditLog = {
+      id: `AUD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      dataHora: new Date().toLocaleString('pt-BR'),
+      operadorEmail,
+      operadorNome,
+      operadorCargo: cargo,
+      acao,
+      descricao,
+      modulo,
+      status,
+      detalhes
+    };
+    logs.unshift(novo);
+    dbRepo.saveLogs(logs);
+  },
+
+  limparLogs: () => {
+    dbRepo.saveLogs([]);
   }
 };

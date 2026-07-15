@@ -69,7 +69,20 @@ export interface Colaborador {
   estado?: string;
   nivelAcesso: 'Sem Acesso' | 'Visualizar' | 'Total' | 'TOTAL' | 'RH' | 'Financeiro';
   acessoSistema: boolean;
-  regime?: 'CLT' | 'PJ';
+  regime?: 'CLT' | 'PJ' | 'Jovem Aprendiz' | 'Estágio' | 'Trainee' | 'Temporário';
+}
+
+export interface AuditLog {
+  id: string;
+  dataHora: string;
+  operadorEmail: string;
+  operadorNome: string;
+  operadorCargo?: string;
+  acao: string;
+  descricao: string;
+  modulo: 'Clientes' | 'RH' | 'Financeiro' | 'Geral';
+  status: 'Sucesso' | 'Erro';
+  detalhes?: string;
 }
 
 export interface Plano {

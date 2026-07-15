@@ -3,7 +3,8 @@ import { dbRepo } from '../data/mockData';
 import { Cliente, Colaborador, PlanosSaaS, PLANOS_PADRAO } from '../types';
 import { 
   Users, UserPlus, Layers, DollarSign, Award, Settings, 
-  Trash2, UserCheck, Edit3, Check, Search, Download, Plus, Play, Info, FileText
+  Trash2, UserCheck, Edit3, Check, Search, Download, Plus, Play, Info, FileText,
+  ShieldCheck, Filter, ShieldAlert, AlertTriangle, Eye, RefreshCw
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
@@ -31,6 +32,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
   const colaboradores = dbRepo.getTodosColaboradores();
   const planos = dbRepo.getPlanos();
   const masters = dbRepo.getTodosMasters();
+  const activeOperator = dbRepo.getUsuarios().find(u => u.email === userEmail) || colaboradores.find(c => c.email === userEmail) || { nome: 'Operador LogusQ', email: userEmail };
 
   // Selected Client for Management
   const [selectedClientEmail, setSelectedClientEmail] = useState<string>(
@@ -128,11 +130,17 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
   const [cNome, setCNome] = useState('');
   const [cCpf, setCCpf] = useState('');
   const [cTel, setCTel] = useState('');
-  const [cRegime, setCRegime] = useState<'CLT' | 'PJ'>('CLT');
+  const [cRegime, setCRegime] = useState<string>('CLT');
   const [cCargo, setCCargo] = useState('Analista de CS');
   const [cEmail, setCEmail] = useState('');
   const [cSenha, setCSenha] = useState('ColabLogusQ@123');
   const [cAccess, setCAccess] = useState<'TOTAL' | 'RH' | 'Financeiro'>('RH');
+  
+  // Auditoria States
+  const [searchTermAuditoria, setSearchTermAuditoria] = useState('');
+  const [filterOperator, setFilterOperator] = useState('');
+  const [filterModule, setFilterModule] = useState('');
+  const [selectedAuditLog, setSelectedAuditLog] = useState<any>(null);
   
   // Colaborador Address & Additional details
   const [cRg, setCRg] = useState('');
@@ -369,6 +377,15 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
         cidade: cCidade,
         estado: cEstado
       }, cSenha);
+      dbRepo.registrarLog(
+        userEmail,
+        activeOperator.nome,
+        'Atualização de Colaborador',
+        `Atualizou as informações cadastrais e permissões do colaborador "${cNome}" (${cEmail}).`,
+        'RH',
+        'Sucesso',
+        JSON.stringify({ idColaborador: editingColabId, nome: cNome, cargo: cCargo, nivelAcesso: cAccess })
+      );
       setEditingColabId(null);
       alert('Cadastro do colaborador atualizado com sucesso!');
     } else {
@@ -398,6 +415,15 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
           estado: cEstado
         });
       }
+      dbRepo.registrarLog(
+        userEmail,
+        activeOperator.nome,
+        'Cadastro de Colaborador',
+        `Cadastrou o novo colaborador interno "${cNome}" (${cEmail}) sob o regime ${cRegime}.`,
+        'RH',
+        'Sucesso',
+        JSON.stringify({ nome: cNome, cargo: cCargo, nivelAcesso: cAccess, regime: cRegime })
+      );
       alert('Colaborador cadastrado com sucesso!');
     }
 
@@ -427,6 +453,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
     setCCpf(col.cpf || '');
     setCRg(col.rg || '');
     setCTel(col.telefone || '');
+    setCRegime(col.regime || 'CLT');
     setCEmail(col.email);
     setCCargo(col.cargo);
     setCAccess(col.nivelAcesso as any);
@@ -460,8 +487,20 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
   };
 
   const handleDeleteColaborador = (id: string) => {
+    const colab = colaboradores.find(c => c.idColaborador === id);
+    const colabName = colab ? colab.nome : id;
+    const colabEmail = colab ? colab.email : '';
     if (confirm('Tem certeza de que deseja demitir/remover este colaborador?')) {
       dbRepo.deletarColaborador(id);
+      dbRepo.registrarLog(
+        userEmail,
+        activeOperator.nome,
+        'Exclusão de Colaborador',
+        `Removeu/demitiu o colaborador interno "${colabName}" (${colabEmail}) da base de recursos humanos.`,
+        'RH',
+        'Sucesso',
+        JSON.stringify({ idColaborador: id, nome: colabName, email: colabEmail })
+      );
       triggerRefresh();
     }
   };
@@ -509,6 +548,16 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
         plano: regPlano,
         clienteDesde: regClienteDesde
       });
+
+      dbRepo.registrarLog(
+        userEmail,
+        activeOperator.nome,
+        'Cadastro de Cliente',
+        `Ativou manualmente o cliente corporativo "${regEmpresa}" (CNPJ: ${regCnpj}) no Plano ${regPlano}.`,
+        'Clientes',
+        'Sucesso',
+        JSON.stringify({ empresa: regEmpresa, cnpj: regCnpj, email: regEmail, plano: regPlano })
+      );
 
       // Clear states
       setRegEmpresa('');
@@ -717,6 +766,17 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                 <Award className="w-4 h-4" /> Equipe Master
               </button>
             )}
+
+            {(!isColab || colabAccessLevel === 'TOTAL') && (
+              <button
+                onClick={() => setActiveTab('auditoria')}
+                className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-3 transition-colors ${
+                  activeTab === 'auditoria' ? 'bg-violet-600 text-white shadow-lg shadow-violet-900/20' : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
+                }`}
+              >
+                <ShieldCheck className="w-4 h-4" /> Auditoria de Ações
+              </button>
+            )}
           </nav>
         </div>
 
@@ -921,10 +981,10 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                       >
                         <Edit3 className="w-4 h-4" /> Editar Cadastro Completo
                       </button>
-                      <button
+                       <button
                         onClick={() => {
                           if (confirm(`Aviso Crítico: Deseja realmente excluir permanentemente o cliente ${selectedClient.empresa}?\nIsso removerá todos os dados, veículos, e usuários vinculados de forma irreversível!`)) {
-                            dbRepo.deletarCliente(selectedClient.email);
+                            dbRepo.deletarCliente(selectedClient.email, userEmail, activeOperator.nome);
                             triggerRefresh();
                             alert('Cliente excluído com sucesso.');
                           }
@@ -1457,11 +1517,15 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                       <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Regime *</label>
                       <select
                         value={cRegime}
-                        onChange={e => setCRegime(e.target.value as any)}
+                        onChange={e => setCRegime(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-lg px-2 py-1.5 text-xs text-white"
                       >
                         <option value="CLT">CLT</option>
                         <option value="PJ">PJ</option>
+                        <option value="Jovem Aprendiz">Jovem Aprendiz</option>
+                        <option value="Estágio">Estágio</option>
+                        <option value="Trainee">Trainee</option>
+                        <option value="Temporário">Temporário</option>
                       </select>
                     </div>
                     <div>
@@ -2020,6 +2084,312 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 7: AUDITORIA DE AÇÕES */}
+        {activeTab === 'auditoria' && (
+          <div className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <h1 className="text-xl font-extrabold text-white flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-violet-400" /> Painel de Auditoria e Segurança
+                </h1>
+                <p className="text-xs text-slate-400 font-medium">Histórico de ações críticas efetuadas pelos administradores e colaboradores da LogusQ.</p>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    if (confirm('Aviso Crítico: Deseja realmente esvaziar todo o registro de auditoria?\nEsta ação é irreversível e apagará o histórico atual.')) {
+                      dbRepo.limparLogs();
+                      dbRepo.registrarLog(
+                        userEmail,
+                        activeOperator.nome,
+                        'Limpeza de Auditoria',
+                        'Esvaziou todos os registros do histórico de auditoria do sistema.',
+                        'Geral',
+                        'Sucesso'
+                      );
+                      setSelectedAuditLog(null);
+                      triggerRefresh();
+                      alert('Histórico de auditoria limpo com sucesso!');
+                    }
+                  }}
+                  className="bg-red-950/40 hover:bg-red-900/40 text-red-400 border border-red-900/50 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-2"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Limpar Histórico
+                </button>
+                <button
+                  onClick={() => {
+                    setSearchTermAuditoria('');
+                    setFilterOperator('');
+                    setFilterModule('');
+                    setSelectedAuditLog(null);
+                    triggerRefresh();
+                  }}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/80 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-2"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Resetar Filtros
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Stats Grid */}
+            {(() => {
+              const allLogs = dbRepo.getLogs();
+              const totalActions = allLogs.length;
+              const uniqueOperators = new Set(allLogs.map(l => l.operadorEmail)).size;
+              const criticalDeletions = allLogs.filter(l => l.acao.includes('Exclusão') || l.acao.includes('Excluir')).length;
+              const clientChanges = allLogs.filter(l => l.modulo === 'Clientes').length;
+              
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-slate-900 border border-slate-800/80 rounded-xl p-4">
+                    <span className="block text-[10px] font-mono text-slate-500 uppercase">Ações Registradas</span>
+                    <span className="text-xl font-extrabold text-white font-mono">{totalActions}</span>
+                  </div>
+                  <div className="bg-slate-900 border border-slate-800/80 rounded-xl p-4">
+                    <span className="block text-[10px] font-mono text-slate-500 uppercase">Operadores Ativos</span>
+                    <span className="text-xl font-extrabold text-white font-mono">{uniqueOperators}</span>
+                  </div>
+                  <div className="bg-slate-900 border border-slate-800/80 rounded-xl p-4">
+                    <span className="block text-[10px] font-mono text-slate-500 uppercase font-bold text-red-400">Exclusões Críticas</span>
+                    <span className="text-xl font-extrabold text-red-400 font-mono">{criticalDeletions}</span>
+                  </div>
+                  <div className="bg-slate-900 border border-slate-800/80 rounded-xl p-4">
+                    <span className="block text-[10px] font-mono text-slate-500 uppercase">Ações Módulo Clientes</span>
+                    <span className="text-xl font-extrabold text-violet-400 font-mono">{clientChanges}</span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Main Filters Toolbar */}
+            <div className="bg-slate-900 border border-slate-800/80 p-4 rounded-xl space-y-3">
+              <div className="text-[10px] font-mono text-slate-500 uppercase flex items-center gap-1.5 font-bold">
+                <Filter className="w-3.5 h-3.5 text-violet-400" /> Filtrar Registros
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* Search Term */}
+                <div className="relative">
+                  <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por ação, operador ou palavra-chave..."
+                    value={searchTermAuditoria}
+                    onChange={e => setSearchTermAuditoria(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-violet-500"
+                  />
+                </div>
+
+                {/* Operator Filter */}
+                <div>
+                  <select
+                    value={filterOperator}
+                    onChange={e => setFilterOperator(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500"
+                  >
+                    <option value="">Todos os Operadores</option>
+                    {Array.from(new Set(dbRepo.getLogs().map(l => l.operadorEmail))).map(email => {
+                      const name = dbRepo.getLogs().find(l => l.operadorEmail === email)?.operadorNome || email;
+                      return (
+                        <option key={email} value={email}>
+                          {name} ({email})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                {/* Module Filter */}
+                <div>
+                  <select
+                    value={filterModule}
+                    onChange={e => setFilterModule(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500"
+                  >
+                    <option value="">Todos os Módulos</option>
+                    <option value="Clientes">Clientes</option>
+                    <option value="RH">Recursos Humanos (RH)</option>
+                    <option value="Financeiro">Financeiro</option>
+                    <option value="Geral">Geral</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Split List & View Layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Left Column: Timeline List */}
+              <div className="lg:col-span-7 space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                {(() => {
+                  const rawLogs = dbRepo.getLogs();
+                  const filteredLogs = rawLogs.filter(log => {
+                    const matchSearch = 
+                      log.acao.toLowerCase().includes(searchTermAuditoria.toLowerCase()) ||
+                      log.descricao.toLowerCase().includes(searchTermAuditoria.toLowerCase()) ||
+                      log.operadorNome.toLowerCase().includes(searchTermAuditoria.toLowerCase()) ||
+                      log.operadorEmail.toLowerCase().includes(searchTermAuditoria.toLowerCase());
+                    const matchOperator = !filterOperator || log.operadorEmail === filterOperator;
+                    const matchModule = !filterModule || log.modulo === filterModule;
+                    return matchSearch && matchOperator && matchModule;
+                  });
+
+                  if (filteredLogs.length === 0) {
+                    return (
+                      <div className="bg-slate-900/30 border border-slate-800/80 border-dashed rounded-xl p-8 text-center space-y-2">
+                        <ShieldAlert className="w-8 h-8 text-slate-600 mx-auto" />
+                        <p className="text-xs text-slate-500">Nenhum registro de auditoria atende aos filtros atuais.</p>
+                      </div>
+                    );
+                  }
+
+                  return filteredLogs.map(log => {
+                    const isSelected = selectedAuditLog?.id === log.id;
+                    const isCritical = log.acao.includes('Exclusão') || log.acao.includes('Limpeza');
+                    
+                    return (
+                      <div
+                        key={log.id}
+                        onClick={() => setSelectedAuditLog(log)}
+                        className={`border rounded-xl p-4 cursor-pointer transition-all text-left space-y-2.5 relative overflow-hidden ${
+                          isSelected 
+                            ? 'bg-violet-950/20 border-violet-500/80 ring-1 ring-violet-500/50' 
+                            : 'bg-slate-900 border-slate-800/80 hover:border-slate-700'
+                        }`}
+                      >
+                        {isCritical && (
+                          <div className="absolute top-0 right-0 w-1 bg-red-500 h-full" />
+                        )}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="space-y-0.5">
+                            <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wide font-semibold">
+                              {log.modulo} • {log.dataHora}
+                            </span>
+                            <h3 className="text-xs font-bold text-white flex items-center gap-1.5 mt-0.5">
+                              {log.acao}
+                              {isCritical && (
+                                <span className="bg-red-500/10 text-red-400 text-[8px] font-mono px-1.5 py-0.5 rounded font-bold uppercase">
+                                  Crítico
+                                </span>
+                              )}
+                            </h3>
+                          </div>
+                          
+                          <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded font-bold uppercase ${
+                            log.status === 'Sucesso' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                          }`}>
+                            {log.status}
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                          {log.descricao}
+                        </p>
+
+                        <div className="flex items-center justify-between border-t border-slate-800/60 pt-2 text-[10px] text-slate-400">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <div className="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center font-bold text-[9px] text-violet-400 border border-slate-700/60 font-mono">
+                              {log.operadorNome[0]}
+                            </div>
+                            <span className="font-medium text-slate-200 truncate">{log.operadorNome}</span>
+                            <span className="text-slate-500 text-[9px] truncate">({log.operadorEmail})</span>
+                          </div>
+                          <span className="text-slate-500 font-mono text-[9px] uppercase shrink-0">
+                            {log.operadorCargo || 'Operador'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+
+              {/* Right Column: Inspector Details View */}
+              <div className="lg:col-span-5">
+                {selectedAuditLog ? (
+                  <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 text-left space-y-4 shadow-xl">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                      <div>
+                        <span className="text-[10px] font-mono text-slate-500 uppercase">Inspecionar Ação</span>
+                        <h2 className="text-xs font-extrabold text-white uppercase tracking-wider mt-0.5">Detalhes da Auditoria</h2>
+                      </div>
+                      <span className="text-[10px] text-slate-500 font-mono bg-slate-950 px-2 py-0.5 rounded border border-slate-800/80">
+                        {selectedAuditLog.id}
+                      </span>
+                    </div>
+
+                    <div className="space-y-3.5">
+                      {/* Log details grid */}
+                      <div className="space-y-2">
+                        <span className="text-[10px] font-mono text-slate-500 uppercase block font-bold">Informações de Contexto:</span>
+                        <div className="bg-slate-950 rounded-lg p-3.5 border border-slate-800/50 space-y-2.5 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Operador:</span>
+                            <span className="text-slate-200 font-semibold">{selectedAuditLog.operadorNome}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">E-mail:</span>
+                            <span className="text-slate-200 font-mono">{selectedAuditLog.operadorEmail}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Cargo:</span>
+                            <span className="text-slate-400 font-mono uppercase text-[10px]">{selectedAuditLog.operadorCargo || 'N/D'}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Data & Hora:</span>
+                            <span className="text-slate-200 font-mono">{selectedAuditLog.dataHora}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Módulo Afetado:</span>
+                            <span className="text-violet-400 font-bold">{selectedAuditLog.modulo}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Operação Executada:</span>
+                            <span className="text-white font-medium">{selectedAuditLog.acao}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Description */}
+                      <div className="space-y-1.5">
+                        <span className="text-[10px] font-mono text-slate-500 uppercase block font-bold">Relatório Descritivo:</span>
+                        <div className="bg-slate-950/40 border border-slate-800 p-3 rounded-lg text-xs text-slate-300 leading-relaxed">
+                          {selectedAuditLog.descricao}
+                        </div>
+                      </div>
+
+                      {/* Raw Details / JSON payload payload */}
+                      <div className="space-y-1.5">
+                        <span className="text-[10px] font-mono text-slate-500 uppercase block font-bold">Dados Técnicos Estruturados (JSON):</span>
+                        {selectedAuditLog.detalhes ? (
+                          <div className="bg-slate-950 border border-slate-800 rounded-lg p-3.5 font-mono text-[10px] text-violet-300 overflow-x-auto max-h-[160px]">
+                            <pre className="whitespace-pre-wrap">
+                              {JSON.stringify(JSON.parse(selectedAuditLog.detalhes), null, 2)}
+                            </pre>
+                          </div>
+                        ) : (
+                          <div className="bg-slate-950 border border-slate-800 rounded-lg p-3.5 text-center font-mono text-[10px] text-slate-600">
+                            Nenhum payload adicional anexado a este registro.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-slate-900/20 border border-slate-800/80 border-dashed rounded-xl p-8 text-center space-y-3 max-w-sm mx-auto h-[320px] flex flex-col items-center justify-center">
+                    <ShieldCheck className="w-10 h-10 text-slate-700 animate-pulse" />
+                    <div>
+                      <p className="text-xs text-slate-300 font-bold">Inspetor de Histórico</p>
+                      <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                        Selecione qualquer registro de ação na linha do tempo para verificar dados de payload, metadados, cargos e escopos técnicos.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

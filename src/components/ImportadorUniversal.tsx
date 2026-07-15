@@ -241,6 +241,11 @@ export default function ImportadorUniversal({
       if (activeInputMode === 'file') {
         if (!file) throw new Error('Nenhum arquivo selecionado.');
         
+        // Interceptar arquivos PDF no parser offline para evitar erro de leitura binária
+        if (file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf') {
+          throw new Error('O processador offline não pode decodificar arquivos binários PDF diretamente. Para importar dados deste PDF de forma simples, você pode:\n\n1. Ativar a IA inteligente adicionando a chave de API GEMINI_API_KEY nas Configurações da plataforma, ou;\n2. Abrir o arquivo PDF em seu leitor, copiar todo o seu conteúdo textual (Ctrl+A -> Ctrl+C) e colá-lo na aba "Colar Texto" aqui no importador para analisarmos offline instantaneamente.');
+        }
+        
         const reader = new FileReader();
         reader.onload = (event) => {
           const content = event.target?.result as string;
@@ -623,7 +628,7 @@ export default function ImportadorUniversal({
                       type="file" 
                       ref={fileInputRef} 
                       className="hidden" 
-                      accept=".pdf,.txt,.csv,.tsv"
+                      accept=".pdf,.txt,.csv,.tsv,.xml"
                       onChange={handleFileChange}
                     />
                     <div className="mx-auto w-12 h-12 bg-slate-950/60 rounded-xl flex items-center justify-center border border-slate-800 text-violet-400 shadow-inner">
