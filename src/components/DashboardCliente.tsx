@@ -34,6 +34,9 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   const [selectedVeiculoEdit, setSelectedVeiculoEdit] = useState<string>(frota[0]?.idVeiculo || '');
   const veicSel = frota.find(v => v.idVeiculo === selectedVeiculoEdit);
 
+  const [selectedCondutorEdit, setSelectedCondutorEdit] = useState<string>('');
+  const condSel = condutores.find(c => c.email === selectedCondutorEdit);
+
   // --- VEHICLE CREATE ---
   const [vId, setVId] = useState('');
   const [vPlaca, setVPlaca] = useState('');
@@ -62,6 +65,33 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       setEvObs(veicSel.observacao || '');
     }
   }, [selectedVeiculoEdit, refreshKey]);
+
+  // --- DRIVER EDIT ---
+  const [edDNome, setEdDNome] = useState('');
+  const [edDCpf, setEdDCpf] = useState('');
+  const [edDRg, setEdDRg] = useState('');
+  const [edDNascimento, setEdDNascimento] = useState('');
+  const [edDTel, setEdDTel] = useState('');
+  const [edDCnh, setEdDCnh] = useState('');
+  const [edDCat, setEdDCat] = useState('');
+  const [edDVencCnh, setEdDVencCnh] = useState('');
+  const [edDSenha, setEdDSenha] = useState('');
+  const [edDStatus, setEdDStatus] = useState<'Ativo' | 'Afastado' | 'Férias' | 'Licença' | 'Desligado' | 'Inativo'>('Ativo');
+
+  React.useEffect(() => {
+    if (condSel) {
+      setEdDNome(condSel.nome);
+      setEdDCpf(condSel.cpf);
+      setEdDRg(condSel.rg || '');
+      setEdDNascimento(condSel.nascimento || '');
+      setEdDTel(condSel.telefone);
+      setEdDCnh(condSel.cnh);
+      setEdDCat(condSel.categoriaCnh);
+      setEdDVencCnh(condSel.vencCnh);
+      setEdDSenha(condSel.senha || '');
+      setEdDStatus(condSel.status || 'Ativo');
+    }
+  }, [selectedCondutorEdit, refreshKey]);
 
   // --- DRIVER CREATE ---
   const [dNome, setDNome] = useState('');
@@ -215,6 +245,25 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     setDCnh('');
     triggerRefresh();
     alert('Motorista cadastrado com sucesso!');
+  };
+
+  const handleUpdateCondutor = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCondutorEdit) return;
+    dbRepo.editarCondutor(userEmail, selectedCondutorEdit, {
+      nome: edDNome,
+      cpf: edDCpf,
+      rg: edDRg,
+      nascimento: edDNascimento,
+      telefone: edDTel,
+      cnh: edDCnh,
+      categoriaCnh: edDCat,
+      vencCnh: edDVencCnh,
+      senha: edDSenha,
+      status: edDStatus
+    });
+    triggerRefresh();
+    alert('Cadastro do motorista atualizado com sucesso!');
   };
 
   const handleBindDriver = (e: React.FormEvent) => {
@@ -1057,7 +1106,8 @@ Assinatura do Expedidor: _______________________________`;
                     <table className="w-full text-xs text-left text-slate-400">
                       <thead className="text-[10px] uppercase font-mono bg-slate-950/50 text-slate-500 border-b border-slate-800">
                         <tr>
-                          <th className="px-4 py-3">Nº Frota / Placa</th>
+                          <th className="px-4 py-3">Nº Frota</th>
+                          <th className="px-4 py-3">Placa</th>
                           <th className="px-4 py-3">Especificações</th>
                           <th className="px-4 py-3">Tipo / Capacidade</th>
                           <th className="px-4 py-3 text-center">Status</th>
@@ -1068,7 +1118,7 @@ Assinatura do Expedidor: _______________________________`;
                       <tbody className="divide-y divide-slate-800">
                         {frota.length === 0 ? (
                           <tr>
-                            <td colSpan={6} className="px-4 py-8 text-center text-slate-500 font-mono text-xs">
+                            <td colSpan={7} className="px-4 py-8 text-center text-slate-500 font-mono text-xs">
                               Nenhum veículo cadastrado na frota. Baixe o modelo e importe acima!
                             </td>
                           </tr>
@@ -1077,9 +1127,11 @@ Assinatura do Expedidor: _______________________________`;
                             const driverName = condutores.find(c => c.veiculo === v.idVeiculo)?.nome || 'Sem motorista alocado';
                             return (
                               <tr key={v.idVeiculo} className="hover:bg-slate-800/10">
+                                <td className="px-4 py-3 font-bold text-white text-xs">
+                                  {v.idVeiculo}
+                                </td>
                                 <td className="px-4 py-3">
-                                  <div className="font-bold text-white text-xs">{v.idVeiculo}</div>
-                                  <div className="text-[10px] font-mono text-violet-400 bg-violet-400/5 px-1.5 py-0.5 rounded w-fit mt-0.5">{v.placa}</div>
+                                  <div className="text-[10px] font-mono text-violet-400 bg-violet-400/5 px-1.5 py-0.5 rounded w-fit">{v.placa}</div>
                                 </td>
                                 <td className="px-4 py-3">
                                   <div className="font-semibold text-slate-300">{v.fabricante} {v.modelo}</div>
@@ -1301,6 +1353,110 @@ Assinatura do Expedidor: _______________________________`;
                   </form>
                 </div>
 
+                {/* Edit driver form */}
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl">
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Editar Motorista Existente</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Selecione o Motorista</label>
+                      <select
+                        value={selectedCondutorEdit}
+                        onChange={e => setSelectedCondutorEdit(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
+                      >
+                        <option value="">-- Escolha um Motorista --</option>
+                        {condutores.map(c => (
+                          <option key={c.email} value={c.email}>{c.nome} ({c.email})</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {condSel && (
+                      <form onSubmit={handleUpdateCondutor} className="space-y-3 pt-2 border-t border-slate-800/60">
+                        <div>
+                          <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Nome Completo</label>
+                          <input
+                            type="text" required value={edDNome} onChange={e => setEdDNome(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-white"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">CPF</label>
+                            <input
+                              type="text" required value={edDCpf} onChange={e => setEdDCpf(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Senha Portal</label>
+                            <input
+                              type="password" placeholder="Senha de acesso" value={edDSenha} onChange={e => setEdDSenha(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Telefone</label>
+                            <input
+                              type="text" required value={edDTel} onChange={e => setEdDTel(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Status do Motorista</label>
+                            <select
+                              value={edDStatus} onChange={e => setEdDStatus(e.target.value as any)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                            >
+                              <option value="Ativo">Ativo</option>
+                              <option value="Afastado">Afastado</option>
+                              <option value="Férias">Férias</option>
+                              <option value="Licença">Licença</option>
+                              <option value="Desligado">Desligado</option>
+                              <option value="Inativo">Inativo</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="col-span-2">
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Vencimento CNH</label>
+                            <input
+                              type="text" required value={edDVencCnh} onChange={e => setEdDVencCnh(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Cat.</label>
+                            <select
+                              value={edDCat} onChange={e => setEdDCat(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-white"
+                            >
+                              <option value="A">A</option>
+                              <option value="B">B</option>
+                              <option value="C">C</option>
+                              <option value="D">D</option>
+                              <option value="E">E</option>
+                              <option value="AB">AB</option>
+                              <option value="AC">AC</option>
+                              <option value="AD">AD</option>
+                              <option value="AE">AE</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <button type="submit" className="w-full bg-slate-800 hover:bg-slate-750 text-slate-200 text-[11px] font-bold py-1.5 rounded transition-colors mt-2">
+                          Confirmar Atualizações
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                </div>
+
               </div>
 
               {/* Right Column: List of drivers (8 cols) */}
@@ -1309,7 +1465,7 @@ Assinatura do Expedidor: _______________________________`;
                 <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl">
                   <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
                     <h3 className="text-xs font-bold text-white uppercase tracking-wider">Base de Motoristas Habilitados ({condutores.length})</h3>
-                    <span className="text-[10px] text-emerald-400 bg-emerald-400/5 px-2 py-0.5 rounded-full font-mono font-bold uppercase animate-pulse">● todos ativos</span>
+                    <span className="text-[10px] text-emerald-400 bg-emerald-400/5 px-2 py-0.5 rounded-full font-mono font-bold uppercase animate-pulse">● operacional</span>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1330,13 +1486,24 @@ Assinatura do Expedidor: _______________________________`;
                           }
                         };
                         const expired = isExpired();
+                        const currentStatus = c.status || 'Ativo';
 
                         return (
                           <div key={c.email} className="bg-slate-950 border border-slate-850 p-4 rounded-xl flex flex-col justify-between hover:border-slate-800 transition-colors">
                             <div>
                               <div className="flex justify-between items-start">
                                 <div>
-                                  <h4 className="font-bold text-white text-sm">{c.nome}</h4>
+                                  <h4 className="font-bold text-white text-sm flex items-center flex-wrap gap-1.5">
+                                    {c.nome}
+                                    <span className={`text-[8px] font-bold uppercase tracking-wider font-mono px-1.5 py-0.5 rounded ${
+                                      currentStatus === 'Ativo' ? 'bg-emerald-500/10 text-emerald-400' :
+                                      currentStatus === 'Férias' ? 'bg-blue-500/10 text-blue-400' :
+                                      currentStatus === 'Licença' ? 'bg-amber-500/10 text-amber-400' :
+                                      currentStatus === 'Afastado' ? 'bg-purple-500/10 text-purple-400' : 'bg-red-500/10 text-red-400'
+                                    }`}>
+                                      {currentStatus}
+                                    </span>
+                                  </h4>
                                   <div className="text-[10px] text-slate-500 font-mono mt-0.5">CPF: {c.cpf} {c.rg ? `• RG: ${c.rg}` : ''}</div>
                                 </div>
                                 <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
@@ -1350,10 +1517,13 @@ Assinatura do Expedidor: _______________________________`;
                                 <div>Telefone: <span className="text-slate-200 font-sans">{c.telefone}</span></div>
                                 <div>Nascimento: <span className="text-slate-200">{c.nascimento || '-'}</span></div>
                                 <div className="col-span-2 truncate">E-mail: <span className="text-slate-200 font-sans">{c.email}</span></div>
-                                <div className="col-span-2">
+                                <div>
                                   Vencimento CNH: <span className={expired ? 'text-red-400 font-bold' : 'text-slate-200'}>
                                     {c.vencCnh} {expired && '(Vencida!)'}
                                   </span>
+                                </div>
+                                <div>
+                                  Senha Portal: <span className="text-slate-300">{c.senha ? '••••••••' : 'Não cadastrada'}</span>
                                 </div>
                               </div>
                             </div>

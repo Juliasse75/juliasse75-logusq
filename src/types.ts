@@ -128,6 +128,8 @@ export interface Condutor {
   telefone: string;
   email: string;
   veiculo: string; // ID of the vehicle assigned
+  senha?: string;
+  status?: 'Ativo' | 'Afastado' | 'Férias' | 'Licença' | 'Desligado' | 'Inativo';
 }
 
 export interface Entrega {

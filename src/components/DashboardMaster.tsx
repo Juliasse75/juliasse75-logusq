@@ -2094,7 +2094,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
         )}
 
         {/* TAB 7: AUDITORIA DE AÇÕES */}
-        {activeTab === 'auditoria' && (
+        {activeTab === 'auditoria' && isTotalAccess && (
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>

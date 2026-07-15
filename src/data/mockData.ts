@@ -759,11 +759,24 @@ export const dbRepo = {
       vencCnh: params.vencCnh || '',
       telefone: params.telefone || '',
       email: params.email || '',
-      veiculo: params.veiculo || '-'
+      veiculo: params.veiculo || '-',
+      senha: params.senha || '',
+      status: params.status || 'Ativo'
     };
     (novo as any).clienteEmail = email;
     list.push(novo);
     dbRepo.saveCondutores(list);
+  },
+
+  editarCondutor: (email: string, condutorEmail: string, params: Partial<Condutor>) => {
+    const list = dbRepo.getCondutoresRaw();
+    const updated = list.map(c => {
+      if (c.email === condutorEmail && ((c as any).clienteEmail === email || (!(c as any).clienteEmail && email === 'demo@logusq.com.br'))) {
+        return { ...c, ...params };
+      }
+      return c;
+    });
+    dbRepo.saveCondutores(updated);
   },
 
   vincularVeiculoCondutor: (email: string, driverEmail: string, idVeiculo: string) => {
