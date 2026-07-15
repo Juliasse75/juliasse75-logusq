@@ -15,13 +15,17 @@ interface DashboardMasterProps {
 }
 
 export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel }: DashboardMasterProps) {
+  const isColab = !!colabAccessLevel;
+  const normalizedAccess = colabAccessLevel?.toUpperCase() || '';
+  const isTotalAccess = !isColab || normalizedAccess === 'TOTAL' || normalizedAccess === 'ACESSO TOTAL';
+
   const [activeTab, setActiveTab] = useState(() => {
-    if (colabAccessLevel === 'RH') return 'rh';
-    if (colabAccessLevel === 'Financeiro') return 'financeiro';
+    if (isColab) {
+      if (normalizedAccess === 'RH') return 'rh';
+      if (normalizedAccess === 'FINANCEIRO') return 'financeiro';
+    }
     return 'clientes_base';
   });
-
-  const isColab = !!colabAccessLevel;
 
   // Global State Refresh Helper
   const [refreshKey, setRefreshKey] = useState(0);
@@ -702,7 +706,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
 
           {/* Menu Items */}
           <nav className="p-4 space-y-1">
-            {(!isColab || colabAccessLevel === 'TOTAL') && (
+            {isTotalAccess && (
               <>
                 <button
                   onClick={() => setActiveTab('clientes_base')}
@@ -723,7 +727,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
               </>
             )}
 
-            {(!isColab || colabAccessLevel === 'TOTAL' || colabAccessLevel === 'RH') && (
+            {(isTotalAccess || normalizedAccess === 'RH') && (
               <button
                 onClick={() => setActiveTab('rh')}
                 className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-3 transition-colors ${
@@ -734,7 +738,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
               </button>
             )}
 
-            {(!isColab || colabAccessLevel === 'TOTAL') && (
+            {isTotalAccess && (
               <button
                 onClick={() => setActiveTab('planos')}
                 className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-3 transition-colors ${
@@ -745,7 +749,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
               </button>
             )}
 
-            {(!isColab || colabAccessLevel === 'TOTAL' || colabAccessLevel === 'Financeiro') && (
+            {(isTotalAccess || normalizedAccess === 'FINANCEIRO') && (
               <button
                 onClick={() => setActiveTab('financeiro')}
                 className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-3 transition-colors ${
@@ -767,7 +771,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
               </button>
             )}
 
-            {(!isColab || colabAccessLevel === 'TOTAL') && (
+            {isTotalAccess && (
               <button
                 onClick={() => setActiveTab('auditoria')}
                 className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-3 transition-colors ${

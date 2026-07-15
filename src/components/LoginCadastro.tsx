@@ -432,19 +432,19 @@ REPRESENTANTE DA CONTRATANTE`;
                       </div>
                     </div>
 
-                    {/* Step 2: Empresa Details */}
-                    <div>
-                      <div className="flex items-center gap-2 mb-3 text-slate-200 font-bold text-sm">
-                        <span className="bg-violet-500/10 text-violet-400 w-6 h-6 rounded-full inline-flex items-center justify-center text-xs">2</span>
-                        <span>Dados Cadastrais da Empresa (Sede)</span>
+                    {/* Step 2: Dados da Empresa */}
+                    <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-5 md:p-6 space-y-4">
+                      <div className="flex items-center gap-2.5 text-slate-200 font-bold text-sm border-b border-slate-800 pb-3">
+                        <span className="bg-violet-500/10 text-violet-400 w-6 h-6 rounded-full inline-flex items-center justify-center text-xs font-mono font-bold">2</span>
+                        <span>Dados da Empresa</span>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Razão Social / Nome Fantasia *</label>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Razão Social / Nome da Empresa *</label>
                           <input
                             type="text"
                             required
-                            placeholder="Transportadora Savassi LTDA"
+                            placeholder="Farmácia Alfa Varejo e Distribuição Ltda"
                             value={nomeEmpresa}
                             onChange={e => setNomeEmpresa(e.target.value)}
                             className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
@@ -455,7 +455,7 @@ REPRESENTANTE DA CONTRATANTE`;
                           <input
                             type="text"
                             required
-                            placeholder="12.345.678/0001-99"
+                            placeholder="45.678.901/0001-23"
                             value={cnpj}
                             onChange={e => setCnpj(e.target.value)}
                             className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
@@ -465,16 +465,17 @@ REPRESENTANTE DA CONTRATANTE`;
                           <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Telefone Fixo</label>
                           <input
                             type="text"
-                            placeholder="(31) 3211-1234"
+                            placeholder="(31) 3222-1010"
                             value={telFixo}
                             onChange={e => setTelFixo(e.target.value)}
                             className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">WhatsApp</label>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">WhatsApp com DDD *</label>
                           <input
                             type="text"
+                            required
                             placeholder="(31) 98765-4321"
                             value={whatsapp}
                             onChange={e => setWhatsapp(e.target.value)}
@@ -482,94 +483,137 @@ REPRESENTANTE DA CONTRATANTE`;
                           />
                         </div>
                         <div className="md:col-span-2">
-                          <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-                            <div className="col-span-1">
-                              <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">CEP</label>
-                              <input
-                                type="text"
-                                placeholder="30110017"
-                                value={cep}
-                                onChange={e => handleCEPChange(e.target.value, 'empresa')}
-                                className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
-                              />
-                            </div>
-                            <div className="col-span-2 md:col-span-3">
-                              <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Endereço</label>
-                              <input
-                                type="text"
-                                placeholder="Rua / Avenida"
-                                value={endereco}
-                                onChange={e => setEndereco(e.target.value)}
-                                className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Número</label>
-                              <input
-                                type="text"
-                                placeholder="100"
-                                value={numero}
-                                onChange={e => setNumero(e.target.value)}
-                                className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">UF</label>
-                              <select
-                                value={estado}
-                                onChange={e => setEstado(e.target.value)}
-                                className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
-                              >
-                                {ESTADOS_BR.map(u => <option key={u} value={u}>{u}</option>)}
-                              </select>
-                            </div>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Tipo *</label>
+                          <select
+                            value={tipoUnidade}
+                            onChange={e => setTipoUnidade(e.target.value as any)}
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
+                          >
+                            <option value="Matriz">Matriz</option>
+                            <option value="Filial">Filial</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Step 3: Endereço da Sede */}
+                    <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-5 md:p-6 space-y-4">
+                      <div className="flex items-center gap-2.5 text-slate-200 font-bold text-sm border-b border-slate-800 pb-3">
+                        <span className="bg-violet-500/10 text-violet-400 w-6 h-6 rounded-full inline-flex items-center justify-center text-xs font-mono font-bold">3</span>
+                        <span>Endereço da Sede</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">CEP Sede *</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="30180-001"
+                            value={cep}
+                            onChange={e => handleCEPChange(e.target.value, 'empresa')}
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Endereço Sede (Rua/Av) *</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="Avenida Amazonas"
+                            value={endereco}
+                            onChange={e => setEndereco(e.target.value)}
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Número Sede *</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="1500"
+                            value={numero}
+                            onChange={e => setNumero(e.target.value)}
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Complemento Sede</label>
+                          <input
+                            type="text"
+                            placeholder="Apto 402, Bloco B"
+                            value={complemento}
+                            onChange={e => setComplemento(e.target.value)}
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Bairro Sede *</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="Centro"
+                            value={bairro}
+                            onChange={e => setBairro(e.target.value)}
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Cidade Sede *</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Belo Horizonte"
+                              value={cidade}
+                              onChange={e => setCidade(e.target.value)}
+                              className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Estado Sede *</label>
+                            <select
+                              value={estado}
+                              onChange={e => setEstado(e.target.value)}
+                              className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
+                            >
+                              {ESTADOS_BR.map(u => <option key={u} value={u}>{u}</option>)}
+                            </select>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Step 3: Responsável */}
-                    <div>
-                      <div className="flex items-center gap-2 mb-3 text-slate-200 font-bold text-sm">
-                        <span className="bg-violet-500/10 text-violet-400 w-6 h-6 rounded-full inline-flex items-center justify-center text-xs">3</span>
-                        <span>Representante do Contrato / Gestor da Conta</span>
+                    {/* Step 4: Responsável pelo Contrato */}
+                    <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-5 md:p-6 space-y-4">
+                      <div className="flex items-center gap-2.5 text-slate-200 font-bold text-sm border-b border-slate-800 pb-3">
+                        <span className="bg-violet-500/10 text-violet-400 w-6 h-6 rounded-full inline-flex items-center justify-center text-xs font-mono font-bold">4</span>
+                        <span>Responsável pelo Contrato</span>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="md:col-span-2">
-                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Nome Completo *</label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Nome completo do responsável *</label>
                           <input
                             type="text"
                             required
-                            placeholder="Rodrigo Silva"
+                            placeholder="Carlos Eduardo Mendes"
                             value={respNome}
                             onChange={e => setRespNome(e.target.value)}
                             className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Cargo *</label>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Cargo / posição *</label>
                           <input
                             type="text"
                             required
-                            placeholder="Gerente de Operações"
+                            placeholder="Gerente de Operações Logísticas"
                             value={respCargo}
                             onChange={e => setRespCargo(e.target.value)}
                             className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">E-mail Corporativo (Seu login) *</label>
-                          <input
-                            type="email"
-                            required
-                            placeholder="rodrigo@translog.com.br"
-                            value={respEmail}
-                            onChange={e => setRespEmail(e.target.value)}
-                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">CPF *</label>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">CPF do responsável *</label>
                           <input
                             type="text"
                             required
@@ -580,18 +624,217 @@ REPRESENTANTE DA CONTRATANTE`;
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Provisional Password</label>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">RG do responsável *</label>
                           <input
                             type="text"
-                            value={senhaProvisoria}
-                            onChange={e => setSenhaProvisoria(e.target.value)}
-                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-slate-300 font-mono"
+                            required
+                            placeholder="MG-12.345.678"
+                            value={respRg}
+                            onChange={e => setRespRg(e.target.value)}
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Nascimento (DD/MM/AAAA) *</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="15/08/1985"
+                            value={respNasc}
+                            onChange={e => setRespNasc(e.target.value)}
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">E-mail do responsável *</label>
+                          <input
+                            type="email"
+                            required
+                            placeholder="carlos.mendes@farmaciaalfa.com.br"
+                            value={respEmail}
+                            onChange={e => setRespEmail(e.target.value)}
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">WhatsApp do responsável *</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="(31) 98765-4321"
+                            value={respZap}
+                            onChange={e => setRespZap(e.target.value)}
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Telefone fixo do responsável</label>
+                          <input
+                            type="text"
+                            placeholder="(31) 3222-1011"
+                            value={respTel}
+                            onChange={e => setRespTel(e.target.value)}
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
                           />
                         </div>
                       </div>
                     </div>
 
-                    {/* Step 4: Live Contract Draft Visualization */}
+                    {/* Step 5: Endereço do Responsável */}
+                    <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-5 md:p-6 space-y-4">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                        <div className="flex items-center gap-2.5 text-slate-200 font-bold text-sm">
+                          <span className="bg-violet-500/10 text-violet-400 w-6 h-6 rounded-full inline-flex items-center justify-center text-xs font-mono font-bold">5</span>
+                          <span>Endereço do Responsável</span>
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] text-slate-300 bg-slate-950/60 border border-slate-800 hover:border-slate-700 rounded-lg px-2.5 py-1.5 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={mesmoEndereco}
+                            onChange={e => {
+                              const checked = e.target.checked;
+                              setMesmoEndereco(checked);
+                              if (checked) {
+                                setRespCep(cep);
+                                setRespEnd(endereco);
+                                setRespNum(numero);
+                                setRespComp(complemento);
+                                setRespBairro(bairro);
+                                setRespCidade(cidade);
+                                setRespEstado(estado);
+                              }
+                            }}
+                            className="rounded border-slate-800 text-violet-600 focus:ring-violet-500/30 bg-slate-950"
+                          />
+                          <span>Mesmo endereço da Sede</span>
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">CEP do Responsável *</label>
+                          <input
+                            type="text"
+                            required
+                            disabled={mesmoEndereco}
+                            placeholder="30140-071"
+                            value={mesmoEndereco ? cep : respCep}
+                            onChange={e => handleCEPChange(e.target.value, 'responsavel')}
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Endereço responsável (Rua/Av) *</label>
+                          <input
+                            type="text"
+                            required
+                            disabled={mesmoEndereco}
+                            placeholder="Rua Aimorés"
+                            value={mesmoEndereco ? endereco : respEnd}
+                            onChange={e => setRespEnd(e.target.value)}
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Número Responsável *</label>
+                          <input
+                            type="text"
+                            required
+                            disabled={mesmoEndereco}
+                            placeholder="250"
+                            value={mesmoEndereco ? numero : respNum}
+                            onChange={e => setRespNum(e.target.value)}
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Complemento Responsável</label>
+                          <input
+                            type="text"
+                            disabled={mesmoEndereco}
+                            placeholder="Apto 101"
+                            value={mesmoEndereco ? complemento : respComp}
+                            onChange={e => setRespComp(e.target.value)}
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Bairro Responsável *</label>
+                          <input
+                            type="text"
+                            required
+                            disabled={mesmoEndereco}
+                            placeholder="Funcionários"
+                            value={mesmoEndereco ? bairro : respBairro}
+                            onChange={e => setRespBairro(e.target.value)}
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Cidade Responsável *</label>
+                            <input
+                              type="text"
+                              required
+                              disabled={mesmoEndereco}
+                              placeholder="Belo Horizonte"
+                              value={mesmoEndereco ? cidade : respCidade}
+                              onChange={e => setRespCidade(e.target.value)}
+                              className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Estado do responsável *</label>
+                            <select
+                              disabled={mesmoEndereco}
+                              value={mesmoEndereco ? estado : respEstado}
+                              onChange={e => setRespEstado(e.target.value)}
+                              className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              {ESTADOS_BR.map(u => <option key={u} value={u}>{u}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Step 6: Acesso ao Sistema */}
+                    <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-5 md:p-6 space-y-4">
+                      <div className="flex items-center gap-2.5 text-slate-200 font-bold text-sm border-b border-slate-800 pb-3">
+                        <span className="bg-violet-500/10 text-violet-400 w-6 h-6 rounded-full inline-flex items-center justify-center text-xs font-mono font-bold">6</span>
+                        <span>Acesso ao Sistema</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">E-mail de login</label>
+                          <input
+                            type="text"
+                            readOnly
+                            placeholder="carlos.mendes@farmaciaalfa.com.br"
+                            value={respEmail || 'Preencha o e-mail do responsável acima'}
+                            className="w-full bg-slate-950/50 border border-slate-800/50 rounded-lg px-3 py-2 text-xs text-slate-400 select-all cursor-not-allowed font-mono"
+                          />
+                          <p className="text-[9px] text-slate-500 mt-1 font-sans">
+                            Seu login de acesso será o e-mail cadastrado no passo do responsável.
+                          </p>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Crie uma Senha *</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="AlfaLogQ@2026"
+                            value={senhaProvisoria}
+                            onChange={e => setSenhaProvisoria(e.target.value)}
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white font-mono"
+                          />
+                          <p className="text-[9px] text-slate-500 mt-1 font-sans">
+                            Senha forte para ativação e proteção da sua conta.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Step 7: Live Contract Draft Visualization */}
                     <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-5">
                       <div className="flex items-center gap-2 mb-3 text-slate-200 font-bold text-sm">
                         <FileText className="w-4 h-4 text-violet-400" />
