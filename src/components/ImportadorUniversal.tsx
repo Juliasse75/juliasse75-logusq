@@ -306,57 +306,111 @@ export default function ImportadorUniversal({
       // Attempt to map headers automatically based on keywords
       const initialMappings: Record<string, string> = {};
       
-      // Keywords mapping list
-      const keywordsMap: Record<string, string[]> = {
-        idVeiculo: ['id', 'frota', 'numero', 'veiculo', 'veic', 'interno', 'codigo'],
-        placa: ['placa', 'plate'],
-        modelo: ['modelo', 'model'],
-        fabricante: ['fabricante', 'marca', 'brand', 'fab'],
-        tipo: ['tipo', 'categoria', 'modal'],
-        capacidadeKg: ['capacidade', 'peso', 'carga', 'kg', 'cap'],
-        anoFabricacao: ['fabricacao', 'ano_fab', 'fabr'],
-        anoModelo: ['ano_mod', 'modelo_ano'],
+      // Clean Keywords mapping list with Portuguese and English variants to prevent substring collisions
+      const cleanKeywordsMap: Record<string, string[]> = {
+        // VEICULOS (FROTA)
+        idVeiculo: [
+          'id', 'idinterno', 'interno', 'codigo', 'codigoveiculo', 'idveiculo', 
+          'veiculoid', 'frota', 'numfrota', 'nofrota', 'nfrota', 'numerofrota', 'nufrota',
+          'identificador'
+        ],
+        placa: ['placa', 'plate', 'placaveiculo'],
+        modelo: ['modelo', 'model', 'modeloveiculo'],
+        fabricante: ['fabricante', 'marca', 'brand', 'fabr', 'maker'],
+        tipo: [
+          'tipo', 'tipoveiculo', 'tipomodal', 'categoria', 'modal', 'especie', 
+          'grupoveiculo', 'tipodeveiculo'
+        ],
+        capacidadeKg: [
+          'capacidade', 'capacidadekg', 'capacidadeemkg', 'pesomaximo', 'cargamaxima', 
+          'pesomax', 'cargamax', 'capkg', 'capacidadeutil', 'cap', 'kg'
+        ],
+        anoFabricacao: [
+          'anofabricacao', 'anofab', 'anofabr', 'ano_fab', 'fabricacao', 'fabricado', 
+          'anofabricado', 'anodefabricacao'
+        ],
+        anoModelo: ['anomodelo', 'anomod', 'ano_mod', 'modeloano', 'anodomodelo'],
         cor: ['cor', 'color'],
-        renavam: ['renavam'],
-        chassi: ['chassi'],
-        
-        nome: ['nome', 'motorista', 'condutor', 'driver', 'fullname'],
-        cpf: ['cpf'],
-        rg: ['rg'],
-        telefone: ['telefone', 'celular', 'tel', 'phone', 'contato'],
-        email: ['email', 'e-mail', 'login', 'mail'],
-        nascimento: ['nascimento', 'nasc'],
-        cnh: ['cnh', 'registro'],
-        categoriaCnh: ['categoria', 'cat'],
-        vencCnh: ['vencimento', 'validade', 'venc'],
-        
-        chave: ['chave', 'id', 'nfe', 'codigo', 'nº', 'romaneio'],
-        cliente: ['cliente', 'destinatario', 'destino', 'nome'],
-        endereco: ['endereco', 'local', 'rua', 'address', 'entrega'],
-        enderecoColeta: ['coleta', 'origem', 'coletar'],
-        pontoReferencia: ['referencia', 'ponto_referencia', 'ponto de referencia', 'ref'],
-        whatsapp: ['whatsapp', 'zap', 'whats', 'wpp'],
-        pesoMercadoriaKg: ['peso', 'kg', 'peso_carga', 'mercadoria'],
-        tipoOperacao: ['operacao', 'tipo'],
-        notaFiscal: ['nota_fiscal', 'nota', 'nf', 'nfe_num', 'numero_nf']
+        renavam: ['renavam', 'numrenavam', 'numerorenavam'],
+        chassi: ['chassi', 'numchassi', 'numerochassi'],
+
+        // CONDUTORES
+        nome: ['nome', 'nomecompleto', 'motorista', 'condutor', 'driver', 'fullname', 'nomecondutor'],
+        cpf: ['cpf', 'cpfmotorista', 'cpfcondutor'],
+        rg: ['rg', 'rgmotorista', 'rgcondutor'],
+        telefone: ['telefone', 'celular', 'tel', 'phone', 'contato', 'fone', 'telmotorista'],
+        email: ['email', 'e-mail', 'login', 'mail', 'usuario'],
+        nascimento: ['nascimento', 'nasc', 'datanascimento', 'datanasc', 'nascimentomotorista'],
+        cnh: ['cnh', 'registrocnh', 'numcnh', 'numerocnh', 'carteira', 'carteirahabilitacao'],
+        categoriaCnh: ['categoriacnh', 'categoria', 'catcnh', 'cat', 'categoriacarteira'],
+        vencCnh: ['vencimento', 'vencimentocnh', 'validadecnh', 'venc', 'validade', 'vencimentocarteira'],
+        veiculo: ['veiculo', 'veiculovinculado', 'codigoveiculo', 'idveiculo', 'placaveiculo'],
+
+        // ENTREGAS
+        chave: [
+          'chave', 'chaveunica', 'id', 'nfe', 'codigo', 'num', 'romaneio', 'chavenfe', 
+          'identificador', 'id_entrega', 'identificadorentrega', 'identificador_entrega'
+        ],
+        cliente: ['cliente', 'destinatario', 'destino', 'nome', 'empresa', 'razaosocial', 'nomecliente'],
+        endereco: [
+          'endereco', 'local', 'rua', 'address', 'entrega', 'enderecodeentrega', 
+          'localentrega', 'destinofinal', 'ruaentrega', 'logradouro'
+        ],
+        enderecoColeta: ['coleta', 'origem', 'coletar', 'enderecodecoleta', 'localcoleta'],
+        pontoReferencia: ['referencia', 'pontoreferencia', 'pontodereferencia', 'ref'],
+        whatsapp: ['whatsapp', 'zap', 'whats', 'wpp', 'celular'],
+        pesoMercadoriaKg: [
+          'peso', 'kg', 'pesocarga', 'mercadoria', 'pesomercadoria', 'pesokg', 
+          'peso_carga', 'pesoliquido'
+        ],
+        tipoOperacao: ['operacao', 'tipo', 'tipooperacao', 'operacaotipo'],
+        notaFiscal: [
+          'notafiscal', 'nota', 'nf', 'nfenum', 'numeronf', 'nfe_num', 'numerodanotafiscal', 
+          'numero_nf', 'num_nf', 'nfnum'
+        ]
       };
 
       headers.forEach((h, colIdx) => {
-        const lowerH = h.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        // Search if any target fields match these keywords
-        let matchedField = '';
-        for (const [fieldKey, keywords] of Object.entries(keywordsMap)) {
+        const cleanH = h.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+        const cleanWithSpaces = h.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+        const words = cleanWithSpaces.split(' ');
+
+        let bestField = '';
+        let bestScore = 0;
+
+        for (const [fieldKey, keywords] of Object.entries(cleanKeywordsMap)) {
           // Only map if field is relevant to active type config
           const isRelevant = config.targetFields.some(tf => tf.key === fieldKey);
           if (!isRelevant) continue;
 
-          if (keywords.some(kw => lowerH.includes(kw))) {
-            matchedField = fieldKey;
-            break;
+          // Check for exact full match (highest priority: score 100)
+          if (keywords.includes(cleanH)) {
+            bestField = fieldKey;
+            bestScore = 100;
+            break; // Exact full match breaks immediately
+          }
+
+          // Check if any keyword matches exactly as a separate word in the header (score 80)
+          const hasExactWord = keywords.some(kw => words.includes(kw));
+          if (hasExactWord && bestScore < 80) {
+            bestField = fieldKey;
+            bestScore = 80;
+          }
+
+          // Substring fallback check (score 40)
+          const hasSubstringWord = keywords.some(kw => {
+            // Avoid dangerous short keywords for substring matching
+            if (kw === 'id' || kw === 'kg' || kw === 'nf' || kw === 'cnh' || kw === 'rg' || kw === 'cpf') return false;
+            return words.some(w => w.includes(kw) || kw.includes(w));
+          });
+          if (hasSubstringWord && bestScore < 40) {
+            bestField = fieldKey;
+            bestScore = 40;
           }
         }
-        if (matchedField) {
-          initialMappings[colIdx.toString()] = matchedField;
+
+        if (bestField && bestScore > 0) {
+          initialMappings[colIdx.toString()] = bestField;
         }
       });
 
