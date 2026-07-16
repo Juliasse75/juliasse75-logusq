@@ -46,6 +46,15 @@ const SEED_USUARIOS = [
     nivelAcesso: 'TOTAL',
     criadoEm: '10/07/2026',
     senha_hash: '123456',
+  },
+  {
+    email: 'motorista@logusq.com.br',
+    nome: 'Carlos Alberto (Motorista)',
+    perfil: 'MOTORISTA' as const,
+    empresa: 'LogiVelo Express S.A.',
+    nivelAcesso: 'PARCIAL',
+    criadoEm: '15/07/2026',
+    senha_hash: '123456',
   }
 ];
 
@@ -387,16 +396,29 @@ const SEED_CONDUTORES: Condutor[] = [
   },
   {
     id: 'D-204',
-    nome: 'Bruno Santos Silveira',
+    nome: 'Carlos Alberto (Motorista)',
     cpf: '444.555.666-77',
     rg: '16.789.012-3',
-    nascimento: '15/02/1997',
+    nascimento: '15/10/1986',
     cnh: '66778899001',
+    categoriaCnh: 'A',
+    vencCnh: '20/05/2030',
+    telefone: '(31) 98888-8888',
+    email: 'motorista@logusq.com.br',
+    veiculo: 'HON-CARGO',
+  },
+  {
+    id: 'D-205',
+    nome: 'Bruno Santos Silveira',
+    cpf: '444.555.666-88',
+    rg: '16.789.012-4',
+    nascimento: '15/02/1997',
+    cnh: '66778899002',
     categoriaCnh: 'A',
     vencCnh: '30/06/2032',
     telefone: '(11) 98888-9999',
     email: 'bruno.s@outlook.com',
-    veiculo: 'HON-CARGO',
+    veiculo: '',
   }
 ];
 
@@ -559,11 +581,18 @@ export const dbRepo = {
       chave: params.chave || '',
       cliente: params.cliente || '',
       endereco: params.endereco || '',
+      enderecoColeta: params.enderecoColeta || '',
+      pontoReferencia: params.pontoReferencia || '',
+      telefone: params.telefone || '',
+      whatsapp: params.whatsapp || '',
+      notaFiscal: params.notaFiscal || '',
+      fotoComprovante: params.fotoComprovante || '',
+      dataEntregue: params.dataEntregue || '',
       latitude: -19.93 + (Math.random() - 0.5) * 0.05, // simulated geo coordinates near BH
       longitude: -43.93 + (Math.random() - 0.5) * 0.05,
       pesoMercadoriaKg: params.pesoMercadoriaKg || 10,
       tipoOperacao: params.tipoOperacao || 'Entrega',
-      status: 'Pendente',
+      status: params.status || 'Pendente',
       observacao: params.observacao
     };
     list.push(nova);
@@ -574,6 +603,59 @@ export const dbRepo = {
     const list = dbRepo.getEntregas(email);
     const filtered = list.filter(e => e.chave !== chave);
     localStorage.setItem(`${KEYS.ENTREGAS}_${email}`, JSON.stringify(filtered));
+  },
+
+  getRotasAtivas: (email: string): Record<string, any> => {
+    const data = localStorage.getItem(`logusq_rotas_ativas_${email}`);
+    return data ? JSON.parse(data) : {};
+  },
+
+  saveRotasAtivas: (email: string, rotas: Record<string, any>) => {
+    localStorage.setItem(`logusq_rotas_ativas_${email}`, JSON.stringify(rotas));
+  },
+
+  atualizarEntregaStatus: (clientEmail: string, entregaId: string, status: 'Pendente' | 'Entregue' | 'Cancelado', fotoComprovante?: string, observacao?: string, motoristaNome?: string) => {
+    const list = dbRepo.getEntregas(clientEmail);
+    const updated = list.map(ent => {
+      if (ent.id === entregaId || ent.chave === entregaId) {
+        return {
+          ...ent,
+          status,
+          fotoComprovante: fotoComprovante !== undefined ? fotoComprovante : ent.fotoComprovante,
+          observacao: observacao !== undefined ? observacao : ent.observacao,
+          motoristaNome: motoristaNome !== undefined ? motoristaNome : ent.motoristaNome,
+          dataEntregue: status === 'Entregue' ? new Date().toLocaleString('pt-BR') : ent.dataEntregue
+        };
+      }
+      return ent;
+    });
+    localStorage.setItem(`${KEYS.ENTREGAS}_${clientEmail}`, JSON.stringify(updated));
+
+    // Also update this delivery in active routes so the manager dashboard updates in real-time
+    const rotas = dbRepo.getRotasAtivas(clientEmail);
+    let rotasChanged = false;
+    Object.keys(rotas).forEach(rId => {
+      const route = rotas[rId];
+      if (route.path) {
+        route.path = route.path.map((ent: any) => {
+          if (ent.id === entregaId || ent.chave === entregaId) {
+            rotasChanged = true;
+            return {
+              ...ent,
+              status,
+              fotoComprovante: fotoComprovante !== undefined ? fotoComprovante : ent.fotoComprovante,
+              observacao: observacao !== undefined ? observacao : ent.observacao,
+              motoristaNome: motoristaNome !== undefined ? motoristaNome : ent.motoristaNome,
+              dataEntregue: status === 'Entregue' ? new Date().toLocaleString('pt-BR') : ent.dataEntregue
+            };
+          }
+          return ent;
+        });
+      }
+    });
+    if (rotasChanged) {
+      dbRepo.saveRotasAtivas(clientEmail, rotas);
+    }
   },
 
   cadastrarClienteAuto: (params: any): Cliente => {

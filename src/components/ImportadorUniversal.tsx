@@ -81,13 +81,18 @@ export default function ImportadorUniversal({
     entregas: {
       title: 'Importar Romaneio de Entregas / Coletas',
       subtitle: 'Carregue notas fiscais, romaneios PDF, listas de clientes do ERP em TXT/CSV ou cole endereços.',
-      helpText: 'Cada linha representa uma parada. Deve conter Chave/ID, Nome do Cliente, Endereço completo com cidade/UF e o peso da mercadoria.',
+      helpText: 'Cada linha representa uma parada. Deve conter Chave/ID, Nome do Cliente, Endereço completo, Peso da carga e Nota Fiscal.',
       targetFields: [
         { key: 'chave', label: 'ID Entrega / Chave NFe', required: true },
         { key: 'cliente', label: 'Cliente / Destinatário', required: true },
-        { key: 'endereco', label: 'Endereço Completo', required: true },
+        { key: 'endereco', label: 'Endereço de Entrega', required: true },
+        { key: 'enderecoColeta', label: 'Endereço de Coleta (se houver)', required: false },
+        { key: 'pontoReferencia', label: 'Ponto de Referência', required: false },
+        { key: 'telefone', label: 'Telefone de Contato', required: false },
+        { key: 'whatsapp', label: 'WhatsApp', required: false },
         { key: 'pesoMercadoriaKg', label: 'Peso Carga (KG)', required: true },
-        { key: 'tipoOperacao', label: 'Operação', required: true, help: 'Entrega ou Coleta' }
+        { key: 'tipoOperacao', label: 'Operação', required: true, help: 'Entrega ou Coleta' },
+        { key: 'notaFiscal', label: 'Número da Nota Fiscal', required: false }
       ]
     }
   };
@@ -318,7 +323,7 @@ export default function ImportadorUniversal({
         nome: ['nome', 'motorista', 'condutor', 'driver', 'fullname'],
         cpf: ['cpf'],
         rg: ['rg'],
-        telefone: ['telefone', 'celular', 'tel', 'phone'],
+        telefone: ['telefone', 'celular', 'tel', 'phone', 'contato'],
         email: ['email', 'e-mail', 'login', 'mail'],
         nascimento: ['nascimento', 'nasc'],
         cnh: ['cnh', 'registro'],
@@ -327,9 +332,13 @@ export default function ImportadorUniversal({
         
         chave: ['chave', 'id', 'nfe', 'codigo', 'nº', 'romaneio'],
         cliente: ['cliente', 'destinatario', 'destino', 'nome'],
-        endereco: ['endereco', 'local', 'rua', 'address'],
+        endereco: ['endereco', 'local', 'rua', 'address', 'entrega'],
+        enderecoColeta: ['coleta', 'origem', 'coletar'],
+        pontoReferencia: ['referencia', 'ponto_referencia', 'ponto de referencia', 'ref'],
+        whatsapp: ['whatsapp', 'zap', 'whats', 'wpp'],
         pesoMercadoriaKg: ['peso', 'kg', 'peso_carga', 'mercadoria'],
-        tipoOperacao: ['operacao', 'tipo']
+        tipoOperacao: ['operacao', 'tipo'],
+        notaFiscal: ['nota_fiscal', 'nota', 'nf', 'nfe_num', 'numero_nf']
       };
 
       headers.forEach((h, colIdx) => {
@@ -495,8 +504,13 @@ export default function ImportadorUniversal({
             chave: item.chave || `ENT-${Math.floor(Math.random() * 1000000)}`,
             cliente: item.cliente || 'Cliente Importado',
             endereco: item.endereco || 'Endereço Indefinido',
+            enderecoColeta: item.enderecoColeta || '',
+            pontoReferencia: item.pontoReferencia || '',
+            telefone: item.telefone || '',
+            whatsapp: item.whatsapp || '',
             pesoMercadoriaKg: parseInt(item.pesoMercadoriaKg) || 15,
-            tipoOperacao: item.tipoOperacao === 'Coleta' ? 'Coleta' : 'Entrega'
+            tipoOperacao: item.tipoOperacao === 'Coleta' ? 'Coleta' : 'Entrega',
+            notaFiscal: item.notaFiscal || ''
           });
           successCount++;
         }

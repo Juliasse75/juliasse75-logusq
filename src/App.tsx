@@ -3,6 +3,7 @@ import { dbRepo } from './data/mockData';
 import LoginCadastro from './components/LoginCadastro';
 import DashboardMaster from './components/DashboardMaster';
 import DashboardCliente from './components/DashboardCliente';
+import DashboardMotorista from './components/DashboardMotorista';
 
 export default function App() {
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(() => {
@@ -57,6 +58,15 @@ export default function App() {
   if (user.perfil === 'CLIENTE') {
     return (
       <DashboardCliente 
+        userEmail={user.email} 
+        onLogout={handleLogout} 
+      />
+    );
+  }
+
+  if (user.perfil === 'MOTORISTA') {
+    return (
+      <DashboardMotorista 
         userEmail={user.email} 
         onLogout={handleLogout} 
       />

@@ -3,7 +3,8 @@ import { dbRepo } from '../data/mockData';
 import { Veiculo, Condutor, Entrega, PlanosSaaS, TipoVeiculo } from '../types';
 import { 
   Truck, Users, MapPin, Calculator, Plus, Upload, Download, Play, 
-  Map, CheckCircle, Trash2, Calendar, FileText, Clipboard, Settings, ShieldAlert, Sparkles
+  Map, CheckCircle, Trash2, Calendar, FileText, Clipboard, Settings, ShieldAlert, Sparkles,
+  Info, RotateCcw
 } from 'lucide-react';
 import SimulatedMap from './SimulatedMap';
 import { clusterAndOptimize, DEFAULT_BASE } from '../utils/routingEngine';
@@ -16,7 +17,7 @@ interface DashboardClienteProps {
 }
 
 export default function DashboardCliente({ userEmail, onLogout }: DashboardClienteProps) {
-  const [activeTab, setActiveTab] = useState<'roteiro' | 'frota' | 'condutores' | 'custos'>('roteiro');
+  const [activeTab, setActiveTab] = useState<'roteiro' | 'frota' | 'condutores' | 'custos' | 'comprovantes'>('roteiro');
   const [refreshKey, setRefreshKey] = useState(0);
   const triggerRefresh = () => setRefreshKey(prev => prev + 1);
 
@@ -24,11 +25,18 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   const clientData = dbRepo.getCliente(userEmail);
   const frota = dbRepo.getFrota(userEmail);
   const condutores = dbRepo.getCondutores(userEmail);
-  const entregasPendentes = dbRepo.getEntregas(userEmail);
+  const todasEntregas = dbRepo.getEntregas(userEmail);
+  const entregasPendentes = todasEntregas.filter(e => e.status === 'Pendente');
 
   // Active Routes State (persist in memory or local storage, or generated after optimize)
-  const [activeRoutes, setActiveRoutes] = useState<Record<string, { driver: string; vehicle: string; path: Entrega[]; km: number; duration: number }>>({});
+  const [activeRoutes, setActiveRoutes] = useState<Record<string, { driver: string; driverEmail?: string; vehicle: string; path: Entrega[]; km: number; duration: number }>>(() => {
+    return dbRepo.getRotasAtivas(userEmail);
+  });
   const [mapRoutes, setMapRoutes] = useState<Record<number, Entrega[]>>({});
+
+  React.useEffect(() => {
+    setActiveRoutes(dbRepo.getRotasAtivas(userEmail));
+  }, [refreshKey, userEmail]);
 
   // Form selections
   const [selectedVeiculoEdit, setSelectedVeiculoEdit] = useState<string>(frota[0]?.idVeiculo || '');
@@ -36,6 +44,13 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
 
   const [selectedCondutorEdit, setSelectedCondutorEdit] = useState<string>('');
   const condSel = condutores.find(c => c.email === selectedCondutorEdit);
+
+  // --- COMPROVANTES TAB FILTERS ---
+  const [searchCompClient, setSearchCompClient] = useState('');
+  const [searchCompNF, setSearchCompNF] = useState('');
+  const [filterCompDriver, setFilterCompDriver] = useState('');
+  const [filterCompStatus, setFilterCompStatus] = useState('');
+  const [zoomPhoto, setZoomPhoto] = useState<string | null>(null);
 
   // --- VEHICLE CREATE ---
   const [vId, setVId] = useState('');
@@ -114,6 +129,11 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   const [delCliente, setDelCliente] = useState('');
   const [delCep, setDelCep] = useState('');
   const [delEnd, setDelEnd] = useState('');
+  const [delEndColeta, setDelEndColeta] = useState('');
+  const [delRef, setDelRef] = useState('');
+  const [delTel, setDelTel] = useState('');
+  const [delZap, setDelZap] = useState('');
+  const [delNotaFiscal, setDelNotaFiscal] = useState('');
   const [delPeso, setDelPeso] = useState(15);
   const [delTipo, setDelTipo] = useState<'Entrega' | 'Coleta'>('Entrega');
 
@@ -301,6 +321,19 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     URL.revokeObjectURL(url);
   };
 
+  const downloadModeloEntregasCsv = () => {
+    const csvContent = "\uFEFFChave ID,Nome do Cliente,Endereço de Entrega,Endereço de Coleta,Ponto de Referencia,Telefone de Contato,WhatsApp,Peso da Carga,Numero da Nota Fiscal,Operacao\n" +
+      "ENT-101,Supermercado Central,Rua da Bahia 1022 - Centro - Belo Horizonte MG,,Próximo ao Teatro Municipal,(31) 98888-8888,(31) 98888-8888,150,NF-10029,Entrega\n" +
+      "COL-102,Galpão Logístico,,Avenida JK 400 - Contagem MG,Ao lado do posto de gasolina,(31) 97777-7777,(31) 97777-7777,350,NF-10030,Coleta";
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'modelo_romaneio_entregas.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleImportVeiculosCsv = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -427,18 +460,31 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
 
   const handleAddEntrega = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!delChave || !delEnd) return;
+    if (!delChave || !delEnd) {
+      alert('Chave / ID e Endereço de Entrega são obrigatórios!');
+      return;
+    }
     dbRepo.cadastrarEntrega(userEmail, {
       chave: delChave,
       cliente: delCliente || 'Cliente Final',
       endereco: delEnd,
+      enderecoColeta: delEndColeta,
+      pontoReferencia: delRef,
+      telefone: delTel,
+      whatsapp: delZap,
       pesoMercadoriaKg: delPeso,
-      tipoOperacao: delTipo
+      tipoOperacao: delTipo,
+      notaFiscal: delNotaFiscal
     });
     setDelChave('');
     setDelCliente('');
     setDelCep('');
     setDelEnd('');
+    setDelEndColeta('');
+    setDelRef('');
+    setDelTel('');
+    setDelZap('');
+    setDelNotaFiscal('');
     triggerRefresh();
     alert('Ponto de entrega adicionado!');
   };
@@ -481,13 +527,15 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     const clusters = clusterAndOptimize(entregasPendentes, selectedVehs.length);
 
     // Map clusters to vehicles
-    const routesObj: Record<string, { driver: string; vehicle: string; path: Entrega[]; km: number; duration: number }> = {};
+    const routesObj: Record<string, { driver: string; driverEmail?: string; vehicle: string; path: Entrega[]; km: number; duration: number }> = {};
     const mapRoutesObj: Record<number, Entrega[]> = {};
 
     Object.entries(clusters).forEach(([clusterId, points], idx) => {
       const v = selectedVehs[idx % selectedVehs.length];
       // Find driver for this vehicle
-      const driver = condutores.find(c => c.veiculo === v.idVeiculo)?.nome || 'Motorista Eventual';
+      const cond = condutores.find(c => c.veiculo === v.idVeiculo);
+      const driver = cond?.nome || 'Motorista Eventual';
+      const driverEmail = cond?.email || '';
       
       // Calculate distances: simple simulated scale (each node average 2.5km)
       const distance = points.length * 3.2 + 4.0; 
@@ -495,6 +543,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
 
       routesObj[`ROTA-${idx + 1}`] = {
         driver,
+        driverEmail,
         vehicle: `${v.modelo} (${v.placa})`,
         path: points,
         km: parseFloat(distance.toFixed(1)),
@@ -506,6 +555,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
 
     setActiveRoutes(routesObj);
     setMapRoutes(mapRoutesObj);
+    dbRepo.saveRotasAtivas(userEmail, routesObj);
     alert(`Otimização concluída! ${Object.keys(routesObj).length} rotas geradas de forma científica.`);
   };
 
@@ -568,12 +618,13 @@ Assinatura do Expedidor: _______________________________`;
     
     // Mark entregas inside route as completed in localStorage
     r.path.forEach(p => {
-      dbRepo.deletarEntrega(userEmail, p.chave);
+      dbRepo.atualizarEntregaStatus(userEmail, p.chave, 'Entregue');
     });
 
     const updated = { ...activeRoutes };
     delete updated[routeId];
     setActiveRoutes(updated);
+    dbRepo.saveRotasAtivas(userEmail, updated);
     
     // also remove from map
     const newMapRoutes = { ...mapRoutes };
@@ -638,6 +689,14 @@ Assinatura do Expedidor: _______________________________`;
             >
               <Calculator className="w-4 h-4" /> Simulador de Custos
             </button>
+            <button
+              onClick={() => setActiveTab('comprovantes')}
+              className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-3 transition-colors ${
+                activeTab === 'comprovantes' ? 'bg-violet-600 text-white shadow-lg shadow-violet-900/20' : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
+              }`}
+            >
+              <FileText className="w-4 h-4" /> Comprovantes / Assinaturas
+            </button>
           </nav>
         </div>
 
@@ -675,6 +734,12 @@ Assinatura do Expedidor: _______________________________`;
                   Importar Demo BH
                 </button>
                 <button
+                  onClick={downloadModeloEntregasCsv}
+                  className="bg-slate-900 hover:bg-slate-800 text-slate-300 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-800 flex items-center gap-2 transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5 text-violet-400" /> Baixar Planilha Modelo
+                </button>
+                <button
                   onClick={() => handleOpenImportModal('entregas')}
                   className="bg-slate-900 hover:bg-slate-800 text-slate-300 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-800 flex items-center gap-2 transition-colors"
                 >
@@ -697,7 +762,7 @@ Assinatura do Expedidor: _______________________________`;
                 
                 {/* Manual input */}
                 <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl">
-                  <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Novo Ponto de Entrega</h3>
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Novo Ponto de Entrega / Coleta</h3>
                   <form onSubmit={handleAddEntrega} className="space-y-2.5">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
@@ -733,6 +798,7 @@ Assinatura do Expedidor: _______________________________`;
                         className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
                       />
                     </div>
+
                     <div className="grid grid-cols-3 gap-2">
                       <div className="col-span-1">
                         <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">CEP</label>
@@ -745,7 +811,7 @@ Assinatura do Expedidor: _______________________________`;
                         />
                       </div>
                       <div className="col-span-2">
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Endereço Completo</label>
+                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Endereço de Entrega *</label>
                         <input
                           type="text"
                           required
@@ -756,20 +822,79 @@ Assinatura do Expedidor: _______________________________`;
                         />
                       </div>
                     </div>
+
+                    <div>
+                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Endereço de Coleta (se houver)</label>
+                      <input
+                        type="text"
+                        placeholder="EX: Galpão Central, Via Expressa, 400 - Contagem"
+                        value={delEndColeta}
+                        onChange={e => setDelEndColeta(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Ponto de Referência</label>
+                        <input
+                          type="text"
+                          placeholder="EX: Próximo ao Banco Itaú"
+                          value={delRef}
+                          onChange={e => setDelRef(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Nº Nota Fiscal (NF)</label>
+                        <input
+                          type="text"
+                          placeholder="EX: NF-40892"
+                          value={delNotaFiscal}
+                          onChange={e => setDelNotaFiscal(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Telefone Contato</label>
+                        <input
+                          type="text"
+                          placeholder="(31) 98888-8888"
+                          value={delTel}
+                          onChange={e => setDelTel(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">WhatsApp</label>
+                        <input
+                          type="text"
+                          placeholder="(31) 98888-8888"
+                          value={delZap}
+                          onChange={e => setDelZap(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
+                        />
+                      </div>
+                    </div>
+
                     <div>
                       <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Peso Carga (KG)</label>
                       <input
                         type="number"
                         value={delPeso}
-                        onChange={e => setDelPeso(parseInt(e.target.value))}
+                        onChange={e => setDelPeso(parseInt(e.target.value) || 0)}
                         className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
                       />
                     </div>
+
                     <button
                       type="submit"
-                      className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-1.5 rounded text-xs font-semibold transition-colors mt-2"
+                      className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white py-2 rounded-lg text-xs font-bold transition-all mt-3"
                     >
-                      Adicionar Ponto
+                      Adicionar Ponto de Entrega
                     </button>
                   </form>
                 </div>
@@ -796,18 +921,38 @@ Assinatura do Expedidor: _______________________________`;
                       <div className="text-[11px] text-slate-500 text-center py-4">Nenhum ponto de entrega cadastrado. Importe a demo acima!</div>
                     ) : (
                       entregasPendentes.map(ent => (
-                        <div key={ent.chave} className="bg-slate-950 border border-slate-800/80 p-2.5 rounded-lg text-xs flex justify-between items-start">
-                          <div className="space-y-0.5 pr-2">
-                            <div className="font-bold text-slate-200">{ent.cliente}</div>
-                            <div className="text-[10px] text-slate-500 line-clamp-1">{ent.endereco}</div>
-                            <div className="text-[9px] font-mono text-violet-400 font-semibold">{ent.chave} • {ent.pesoMercadoriaKg} kg</div>
+                        <div key={ent.chave} className="bg-slate-950 border border-slate-800/80 p-3 rounded-lg text-xs space-y-1.5">
+                          <div className="flex justify-between items-start">
+                            <div className="space-y-0.5 pr-2">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-slate-200">{ent.cliente}</span>
+                                <span className={`text-[8px] px-1 py-0.2 rounded font-mono font-bold ${
+                                  ent.tipoOperacao === 'Coleta' ? 'bg-orange-500/20 text-orange-400' : 'bg-emerald-500/20 text-emerald-400'
+                                }`}>
+                                  {ent.tipoOperacao === 'Coleta' ? 'COLETA' : 'ENTREGA'}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-400"><span className="text-slate-600 font-medium">Entr:</span> {ent.endereco}</div>
+                              {ent.enderecoColeta && (
+                                <div className="text-[10px] text-slate-400"><span className="text-slate-600 font-medium">Coleta:</span> {ent.enderecoColeta}</div>
+                              )}
+                            </div>
+                            <button 
+                              onClick={() => { dbRepo.deletarEntrega(userEmail, ent.chave); triggerRefresh(); }}
+                              className="text-slate-600 hover:text-red-400 p-0.5"
+                            >
+                              ✕
+                            </button>
                           </div>
-                          <button 
-                            onClick={() => { dbRepo.deletarEntrega(userEmail, ent.chave); triggerRefresh(); }}
-                            className="text-slate-600 hover:text-red-400"
-                          >
-                            ✕
-                          </button>
+
+                          <div className="text-[10px] grid grid-cols-2 gap-x-2 gap-y-1 pt-1.5 border-t border-slate-900 text-slate-500 font-mono">
+                            <div>ID: <span className="text-violet-400">{ent.chave}</span></div>
+                            <div>Peso: <span className="text-slate-300">{ent.pesoMercadoriaKg} kg</span></div>
+                            {ent.notaFiscal && <div className="col-span-2">NF: <span className="text-slate-300">{ent.notaFiscal}</span></div>}
+                            {ent.pontoReferencia && <div className="col-span-2">Ref: <span className="text-slate-400 italic">"{ent.pontoReferencia}"</span></div>}
+                            {ent.telefone && <div>Tel: <span className="text-slate-300">{ent.telefone}</span></div>}
+                            {ent.whatsapp && <div>Whats: <span className="text-slate-300">{ent.whatsapp}</span></div>}
+                          </div>
                         </div>
                       ))
                     )}
@@ -1682,7 +1827,265 @@ Assinatura do Expedidor: _______________________________`;
           </div>
         )}
 
+        {/* Comprovantes / Assinaturas Tab */}
+        {activeTab === 'comprovantes' && (
+          <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+            
+            {/* Header */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800 pb-5">
+              <div>
+                <span className="text-[10px] font-mono font-bold text-violet-400 bg-violet-500/10 px-2.5 py-1 rounded-full uppercase">
+                  Módulo de Conformidade & Auditoria
+                </span>
+                <h1 className="text-xl font-extrabold text-white mt-2">Comprovantes & Assinaturas Digitais</h1>
+                <p className="text-xs text-slate-400 mt-1">
+                  Acompanhe em tempo real as assinaturas digitais e comprovações fotográficas de entregas/coletas.
+                </p>
+              </div>
+
+              {/* Data retention informational tag */}
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-start gap-2 max-w-xs">
+                <Info className="w-4 h-4 text-violet-400 mt-0.5 flex-shrink-0" />
+                <p className="text-[10px] text-slate-400 leading-normal">
+                  <span className="text-slate-300 font-bold block">Política de Retenção Ativa:</span>
+                  Imagens retidas por **12 meses (1 ano)** para salvaguarda judicial e LGPD.
+                </p>
+              </div>
+            </div>
+
+            {/* Filter controls */}
+            <div className="bg-slate-900 border border-slate-800/80 p-4 rounded-xl space-y-4">
+              <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Filtros de Pesquisa Rápidos</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                
+                {/* Search by client */}
+                <div>
+                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Cliente</label>
+                  <input
+                    type="text"
+                    placeholder="Nome do cliente..."
+                    value={searchCompClient}
+                    onChange={e => setSearchCompClient(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-violet-500"
+                  />
+                </div>
+
+                {/* Search by NF */}
+                <div>
+                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Nota Fiscal (NF)</label>
+                  <input
+                    type="text"
+                    placeholder="Número da NF..."
+                    value={searchCompNF}
+                    onChange={e => setSearchCompNF(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-violet-500"
+                  />
+                </div>
+
+                {/* Filter by driver */}
+                <div>
+                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Motorista</label>
+                  <select
+                    value={filterCompDriver}
+                    onChange={e => setFilterCompDriver(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-violet-500"
+                  >
+                    <option value="">-- Todos --</option>
+                    {condutores.map(c => (
+                      <option key={c.id} value={c.nome}>{c.nome}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Filter by status */}
+                <div>
+                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Status Final</label>
+                  <select
+                    value={filterCompStatus}
+                    onChange={e => setFilterCompStatus(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-violet-500"
+                  >
+                    <option value="">-- Todos --</option>
+                    <option value="Entregue">Entregues (Sucesso)</option>
+                    <option value="Cancelado">Recusados/Falhas</option>
+                  </select>
+                </div>
+
+              </div>
+
+              {/* Clean Filters Button */}
+              {(searchCompClient || searchCompNF || filterCompDriver || filterCompStatus) && (
+                <div className="flex justify-end pt-1">
+                  <button
+                    onClick={() => {
+                      setSearchCompClient('');
+                      setSearchCompNF('');
+                      setFilterCompDriver('');
+                      setFilterCompStatus('');
+                    }}
+                    className="text-[10px] text-violet-400 hover:text-violet-300 font-mono flex items-center gap-1"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" /> Limpar filtros aplicados
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* List container */}
+            <div className="space-y-4">
+              
+              {/* Filtered list computation */}
+              {(() => {
+                const compFiltered = todasEntregas.filter(e => {
+                  const hasProof = e.status === 'Entregue' || e.status === 'Cancelado' || !!e.fotoComprovante;
+                  if (!hasProof) return false;
+
+                  if (searchCompClient && !e.cliente.toLowerCase().includes(searchCompClient.toLowerCase())) return false;
+                  if (searchCompNF && (!e.notaFiscal || !e.notaFiscal.toLowerCase().includes(searchCompNF.toLowerCase()))) return false;
+                  if (filterCompDriver && (!e.motoristaNome || !e.motoristaNome.toLowerCase().includes(filterCompDriver.toLowerCase()))) return false;
+                  if (filterCompStatus && e.status !== filterCompStatus) return false;
+
+                  return true;
+                });
+
+                if (compFiltered.length === 0) {
+                  return (
+                    <div className="bg-slate-900/40 border border-slate-800 border-dashed rounded-xl p-12 text-center text-slate-500 space-y-2 py-16">
+                      <FileText className="w-8 h-8 text-slate-600 mx-auto mb-1" />
+                      <div className="text-xs font-bold text-slate-400">Nenhum comprovante encontrado</div>
+                      <p className="text-[10px] text-slate-600 max-w-sm mx-auto">
+                        Acesse o Painel do Motorista (`motorista@logusq.com.br` / `123456`) e registre assinaturas para vê-las listadas e auditadas em tempo real neste painel.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {compFiltered.map(item => (
+                      <div key={item.id} className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl p-4 flex flex-col justify-between space-y-4 transition-all shadow-lg">
+                        
+                        {/* Header card info */}
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <span className="text-[8px] font-mono bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-bold uppercase">
+                                {item.chave}
+                              </span>
+                              <h4 className="font-extrabold text-white text-xs mt-1.5">{item.cliente}</h4>
+                            </div>
+                            <span className={`text-[8px] font-mono px-2 py-0.5 rounded-full font-bold uppercase ${
+                              item.status === 'Entregue' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                            }`}>
+                              {item.status === 'Entregue' ? 'Entregue' : 'Recusada'}
+                            </span>
+                          </div>
+
+                          <div className="text-[11px] font-mono space-y-1 text-slate-400 bg-slate-950/40 p-2 rounded border border-slate-800/40">
+                            <div><span className="text-slate-500">Nota Fiscal:</span> <span className="text-slate-300 font-bold">{item.notaFiscal || 'N/A'}</span></div>
+                            {item.endereco && <div className="truncate"><span className="text-slate-500">Local:</span> <span className="text-slate-300">{item.endereco}</span></div>}
+                            {item.dataEntregue && <div><span className="text-slate-500">Baixa em:</span> <span className="text-slate-300">{item.dataEntregue}</span></div>}
+                            <div><span className="text-slate-500">Motorista:</span> <span className="text-emerald-400 font-bold">{item.motoristaNome || 'Atribuído em Rota'}</span></div>
+                          </div>
+                        </div>
+
+                        {/* Thumbnail of proof */}
+                        <div className="relative group overflow-hidden border border-slate-800 rounded-lg bg-slate-950 h-32 flex items-center justify-center">
+                          {item.fotoComprovante ? (
+                            <>
+                              <img 
+                                src={item.fotoComprovante} 
+                                alt={`Comprovante ${item.chave}`} 
+                                className="h-full w-full object-contain group-hover:scale-105 transition-transform duration-300"
+                              />
+                              <button 
+                                onClick={() => setZoomPhoto(item.fotoComprovante || null)}
+                                className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs font-bold text-white transition-opacity"
+                              >
+                                Ampliar Comprovante
+                              </button>
+                            </>
+                          ) : (
+                            <div className="text-center text-[10px] text-slate-600 p-4 space-y-1">
+                              <ShieldAlert className="w-5 h-5 text-slate-700 mx-auto" />
+                              <div>Sem registro de imagem</div>
+                              <div>Baixado por gestor manualmente</div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Action buttons */}
+                        {item.fotoComprovante && (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                const link = document.createElement('a');
+                                link.href = item.fotoComprovante || '';
+                                link.download = `Comprovante_${item.chave}_NF${item.notaFiscal || 'N/A'}.png`;
+                                link.click();
+                              }}
+                              className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/50 py-1.5 rounded-lg text-[10px] font-mono font-bold transition-all flex items-center justify-center gap-1"
+                            >
+                              <Download className="w-3 h-3 text-violet-400" /> Baixar Imagem
+                            </button>
+                          </div>
+                        )}
+
+                        {item.observacao && (
+                          <div className="text-[10px] bg-indigo-950/20 text-indigo-300 border border-indigo-900/40 rounded p-1.5 font-mono">
+                            <span className="font-bold text-[9px] text-indigo-400 uppercase block mb-0.5">Nota de Entrega</span>
+                            "{item.observacao}"
+                          </div>
+                        )}
+
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+            </div>
+
+          </div>
+        )}
+
       </main>
+
+      {/* Zoom Photo Modal */}
+      {zoomPhoto && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-6 space-y-4 shadow-2xl relative">
+            <button 
+              onClick={() => setZoomPhoto(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white font-black text-lg p-1"
+            >
+              ✕
+            </button>
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ampliação de Comprovante de Assinatura</h3>
+            <div className="border border-slate-800 rounded-xl overflow-hidden bg-white">
+              <img 
+                src={zoomPhoto} 
+                alt="Zoomed signature proof" 
+                className="max-h-[70vh] mx-auto object-contain"
+              />
+            </div>
+            <div className="flex justify-between items-center text-[11px] text-slate-400 font-mono">
+              <span>Auditoria LogusQ • GPS & Criptografia Ativa</span>
+              <button
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = zoomPhoto;
+                  link.download = `Comprovante_Auditoria.png`;
+                  link.click();
+                }}
+                className="bg-violet-600 hover:bg-violet-500 text-white font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
+              >
+                <Download className="w-3 h-3" /> Baixar Registro
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ImportadorUniversal
         isOpen={isImportModalOpen}

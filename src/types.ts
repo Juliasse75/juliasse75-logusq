@@ -1,4 +1,4 @@
-export type PerfilUsuario = 'MASTER' | 'CLIENT' | 'CLIENTE' | 'COLABORADOR';
+export type PerfilUsuario = 'MASTER' | 'CLIENT' | 'CLIENTE' | 'COLABORADOR' | 'MOTORISTA';
 
 export interface Usuario {
   email: string;
@@ -137,12 +137,20 @@ export interface Entrega {
   chave: string;
   cliente: string;
   endereco: string;
+  enderecoColeta?: string;
+  pontoReferencia?: string;
+  telefone?: string;
+  whatsapp?: string;
+  notaFiscal?: string;
+  fotoComprovante?: string;
+  dataEntregue?: string;
   latitude: number;
   longitude: number;
   pesoMercadoriaKg: number;
   tipoOperacao: 'Entrega' | 'Coleta';
   status: 'Pendente' | 'Entregue' | 'Cancelado';
   observacao?: string;
+  motoristaNome?: string;
 }
 
 export interface RotaAtiva {
