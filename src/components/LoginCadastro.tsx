@@ -1,14 +1,41 @@
 import React, { useState } from 'react';
 import { dbRepo } from '../data/mockData';
 import { PlanosSaaS, PLANOS_PADRAO } from '../types';
-import { Shield, Key, Truck, Building, FileText, CheckCircle, Download, HelpCircle, Smartphone, ArrowLeft, AlertCircle, User, Check, Lock, Info } from 'lucide-react';
+import { Shield, Key, Truck, Building, FileText, CheckCircle, Download, HelpCircle, Smartphone, ArrowLeft, AlertCircle, User, Check, Lock, Info, Zap, Send, MessageSquare, Globe, Briefcase, DollarSign, Users, Mail, Phone, Settings, ShieldCheck, Heart } from 'lucide-react';
 
 interface LoginCadastroProps {
   onLoginSuccess: (email: string) => void;
 }
 
 export default function LoginCadastro({ onLoginSuccess }: LoginCadastroProps) {
+  const [viewMode, setViewMode] = useState<'landing' | 'auth'>('landing');
   const [activeTab, setActiveTab] = useState<'login' | 'cadastro' | 'motorista'>('login');
+
+  // Interactive Multichannel Fale Conosco Support Center States
+  const [supportTab, setSupportTab] = useState<'ti' | 'financeiro' | 'adm' | 'ceo'>('ti');
+  const [supportSuccess, setSupportSuccess] = useState('');
+  
+  // 1. TI Support States
+  const [tiEmail, setTiEmail] = useState('');
+  const [tiErrorType, setTiErrorType] = useState('Bugs e Instabilidade');
+  const [tiDesc, setTiDesc] = useState('');
+  const [tiUrgency, setTiUrgency] = useState('Média');
+
+  // 2. Financeiro States
+  const [finEmail, setFinEmail] = useState('');
+  const [finCnpj, setFinCnpj] = useState('');
+  const [finDesc, setFinDesc] = useState('Solicitação de segunda via de boleto/fatura');
+
+  // 3. Administrativo/Comercial States
+  const [admNome, setAdmNome] = useState('');
+  const [admEmpresa, setAdmEmpresa] = useState('');
+  const [admTel, setAdmTel] = useState('');
+  const [admDesc, setAdmDesc] = useState('');
+
+  // 4. Ouvidoria / CEO States
+  const [ceoNome, setCeoNome] = useState('');
+  const [ceoContact, setCeoContact] = useState('');
+  const [ceoMessage, setCeoMessage] = useState('');
 
   // Driver Portal Mobile States
   const [motCpf, setMotCpf] = useState('');
@@ -233,14 +260,669 @@ REPRESENTANTE DA CONTRATANTE`;
 
   const ESTADOS_BR = ["AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO"];
 
+  if (viewMode === 'landing') {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-violet-500/30 relative overflow-x-hidden flex flex-col">
+        {/* Animated Background Lights */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1200px] h-[500px] bg-gradient-to-b from-violet-900/15 to-transparent blur-[140px] pointer-events-none z-0" />
+        <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-violet-600/5 rounded-full blur-[130px] pointer-events-none z-0" />
+        <div className="absolute bottom-1/3 right-1/4 w-[500px] h-[500px] bg-emerald-600/5 rounded-full blur-[150px] pointer-events-none z-0" />
+
+        {/* Global Navbar */}
+        <header className="border-b border-slate-900 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50 px-6 py-4">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="bg-gradient-to-br from-violet-600 to-indigo-600 p-2 rounded-xl shadow-lg border border-violet-500/20 flex items-center justify-center">
+                <Truck className="w-5 h-5 text-white animate-pulse" />
+              </div>
+              <span className="text-xl font-black tracking-tight text-white font-sans">
+                LOGUS<span className="text-violet-400 font-mono animate-pulse">Q</span>
+              </span>
+            </div>
+
+            <nav className="hidden md:flex items-center gap-8 text-xs font-semibold uppercase tracking-wider text-slate-400">
+              <a href="#inicio" className="hover:text-violet-400 transition-colors">Início</a>
+              <a href="#tecnologia" className="hover:text-violet-400 transition-colors">Tecnologia Quântica</a>
+              <a href="#sobre-nos" className="hover:text-violet-400 transition-colors">Sobre Nós</a>
+              <a href="#fale-conosco" className="hover:text-violet-400 transition-colors">Fale Conosco</a>
+            </nav>
+
+            <button
+              onClick={() => { setViewMode('auth'); setActiveTab('login'); }}
+              className="bg-violet-600 hover:bg-violet-500 text-white font-bold px-5 py-2 rounded-xl text-xs uppercase tracking-wider shadow-lg shadow-violet-900/30 transition-all flex items-center gap-1.5 border border-violet-500/20 cursor-pointer"
+            >
+              <Key className="w-3.5 h-3.5" /> Acessar Sistema
+            </button>
+          </div>
+        </header>
+
+        {/* Hero Section */}
+        <section id="inicio" className="relative pt-16 pb-12 px-6 max-w-7xl mx-auto w-full z-10 flex-1">
+          <div className="text-center max-w-3xl mx-auto space-y-6">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-400 font-mono text-[10px] font-bold uppercase tracking-widest">
+              <Zap className="w-3 h-3 text-violet-400 animate-pulse" /> Tecnologia Logística de Última Geração
+            </span>
+            <h1 className="text-4xl md:text-6xl font-black tracking-tight text-white leading-tight">
+              Logística Inteligente na Velocidade do <span className="bg-gradient-to-r from-violet-400 via-fuchsia-400 to-indigo-400 bg-clip-text text-transparent">Qubito</span>
+            </h1>
+            <p className="text-sm md:text-base text-slate-400 leading-relaxed max-w-2xl mx-auto">
+              Otimização de frotas SaaS, inteligência matemática aplicada à roteirização e gestão de RH. 
+              Converta horas de planejamento sequencial em frações de segundos com a eficiência quântica do ecossistema <strong className="text-violet-300 font-semibold">LogusQ</strong>.
+            </p>
+
+            <div className="flex flex-wrap items-center justify-center gap-4 pt-4">
+              <button
+                onClick={() => { setViewMode('auth'); setActiveTab('cadastro'); }}
+                className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold px-7 py-3.5 rounded-xl text-xs uppercase tracking-wider shadow-xl shadow-violet-900/20 transition-all flex items-center gap-2 border border-violet-400/20 cursor-pointer animate-bounce"
+              >
+                <Building className="w-4 h-4" /> Experimentar Grátis (Auto-Cadastro)
+              </button>
+              <button
+                onClick={() => { setViewMode('auth'); setActiveTab('login'); }}
+                className="bg-slate-900/60 hover:bg-slate-900 text-slate-300 hover:text-white font-bold px-7 py-3.5 rounded-xl text-xs uppercase tracking-wider border border-slate-800 transition-all cursor-pointer"
+              >
+                Painel do Gestor
+              </button>
+            </div>
+          </div>
+
+          {/* Interactive Navigation Grid - The 4 Portals */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mt-16 max-w-6xl mx-auto">
+            {/* Card 1: Gestão Master */}
+            <div 
+              onClick={() => { setViewMode('auth'); setActiveTab('login'); }}
+              className="bg-slate-900/40 hover:bg-slate-900/80 border border-slate-850 hover:border-violet-500/40 rounded-2xl p-5 cursor-pointer transition-all hover:scale-[1.02] flex flex-col justify-between space-y-4 group shadow-xl shadow-slate-950/40"
+            >
+              <div className="space-y-3">
+                <div className="bg-violet-500/10 text-violet-400 p-3 rounded-xl w-fit group-hover:bg-violet-600 group-hover:text-white transition-colors border border-violet-500/10">
+                  <Shield className="w-5 h-5" />
+                </div>
+                <h3 className="text-sm font-extrabold text-white group-hover:text-violet-300 transition-colors uppercase tracking-wider">Gestão Master</h3>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Controle interno de nossa diretoria para aprovações de novos clientes, análise de faturamento, RH administrativo e monitoramento de auditoria geral.
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-violet-400 group-hover:translate-x-1 transition-transform">
+                <span>ACESSAR PLATAFORMA</span> <ArrowLeft className="w-3 h-3 rotate-180" />
+              </div>
+            </div>
+
+            {/* Card 2: Portal do Gestor Cliente */}
+            <div 
+              onClick={() => { setViewMode('auth'); setActiveTab('login'); }}
+              className="bg-slate-900/40 hover:bg-slate-900/80 border border-slate-850 hover:border-violet-500/40 rounded-2xl p-5 cursor-pointer transition-all hover:scale-[1.02] flex flex-col justify-between space-y-4 group shadow-xl shadow-slate-950/40"
+            >
+              <div className="space-y-3">
+                <div className="bg-violet-500/10 text-violet-400 p-3 rounded-xl w-fit group-hover:bg-violet-600 group-hover:text-white transition-colors border border-violet-500/10">
+                  <Building className="w-5 h-5" />
+                </div>
+                <h3 className="text-sm font-extrabold text-white group-hover:text-violet-300 transition-colors uppercase tracking-wider">Portal do Gestor</h3>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Gerenciamento da empresa cliente (SaaS). Importador universal, despacho inteligente de pedidos, roteirização científica, finanças e acompanhamento de rotas.
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-violet-400 group-hover:translate-x-1 transition-transform">
+                <span>CONECTAR PAINEL</span> <ArrowLeft className="w-3 h-3 rotate-180" />
+              </div>
+            </div>
+
+            {/* Card 3: Portal do Condutor (Motorista) */}
+            <div 
+              onClick={() => { setViewMode('auth'); setActiveTab('motorista'); }}
+              className="bg-slate-900/40 hover:bg-slate-900/80 border border-slate-850 hover:border-violet-500/40 rounded-2xl p-5 cursor-pointer transition-all hover:scale-[1.02] flex flex-col justify-between space-y-4 group shadow-xl shadow-slate-950/40"
+            >
+              <div className="space-y-3">
+                <div className="bg-violet-500/10 text-violet-400 p-3 rounded-xl w-fit group-hover:bg-violet-600 group-hover:text-white transition-colors border border-violet-500/10">
+                  <Smartphone className="w-5 h-5" />
+                </div>
+                <h3 className="text-sm font-extrabold text-white group-hover:text-violet-300 transition-colors uppercase tracking-wider">Portal do Motorista</h3>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Acesso otimizado para o condutor realizar suas rotas, atualizar status das entregas, anexar comprovantes em tempo real e reportar sinistros.
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-violet-400 group-hover:translate-x-1 transition-transform">
+                <span>ACESSAR VIA MOBILE</span> <ArrowLeft className="w-3 h-3 rotate-180" />
+              </div>
+            </div>
+
+            {/* Card 4: Fale Conosco / Suporte */}
+            <a 
+              href="#fale-conosco"
+              className="bg-slate-900/40 hover:bg-slate-900/80 border border-slate-850 hover:border-violet-500/40 rounded-2xl p-5 cursor-pointer transition-all hover:scale-[1.02] flex flex-col justify-between space-y-4 group shadow-xl shadow-slate-950/40"
+            >
+              <div className="space-y-3">
+                <div className="bg-violet-500/10 text-violet-400 p-3 rounded-xl w-fit group-hover:bg-violet-600 group-hover:text-white transition-colors border border-violet-500/10">
+                  <MessageSquare className="w-5 h-5" />
+                </div>
+                <h3 className="text-sm font-extrabold text-white group-hover:text-violet-300 transition-colors uppercase tracking-wider">Fale Conosco</h3>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Central multicanal de atendimento interativo. Abertura imediata de chamados técnicos, contato administrativo, faturamento ou ouvidoria com o CEO.
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-violet-400 group-hover:translate-x-1 transition-transform">
+                <span>ABRIR SUPORTE</span> <ArrowLeft className="w-3 h-3 rotate-180" />
+              </div>
+            </a>
+          </div>
+        </section>
+
+        {/* Section: Tecnologia Quantica */}
+        <section id="tecnologia" className="border-t border-slate-900 bg-slate-950/40 py-16 px-6 relative z-10">
+          <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+            <div className="space-y-5">
+              <span className="text-[10px] font-mono font-bold tracking-widest text-violet-400 uppercase bg-violet-500/10 border border-violet-500/20 px-2.5 py-1 rounded-full w-fit">
+                ESSÊNCIA DO NOME LOGUSQ
+              </span>
+              <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">
+                A Revolução da Roteirização Científica de DNA Quântico
+              </h2>
+              <p className="text-xs md:text-sm text-slate-400 leading-relaxed">
+                Roteirizadores tradicionais calculam soluções sequencialmente. À medida que novos motoristas, restrições de horários e rotas são adicionados, o processador entra em colapso, resultando em minutos de espera e caminhos ineficientes.
+              </p>
+              <p className="text-xs md:text-sm text-slate-400 leading-relaxed">
+                O <strong className="text-white font-semibold">"Q" de quântico em LogusQ</strong> representa nossa arquitetura de injeção paralela. Nosso motor matemático analisa múltiplos estados operacionais simultaneamente (como a superposição quântica), convergindo na rota ideal consolidada para toda a frota em menos de 3 segundos, independentemente de janelas de entrega ou tipos de carga.
+              </p>
+
+              <div className="grid grid-cols-2 gap-4 pt-2 font-mono">
+                <div className="bg-slate-900/60 p-3.5 rounded-xl border border-slate-850">
+                  <div className="text-violet-400 text-lg font-black">&lt; 3s</div>
+                  <div className="text-[9px] text-slate-400 uppercase mt-0.5">Tempo Médio de Roteiro</div>
+                </div>
+                <div className="bg-slate-900/60 p-3.5 rounded-xl border border-slate-850">
+                  <div className="text-emerald-400 text-lg font-black">- 25%</div>
+                  <div className="text-[9px] text-slate-400 uppercase mt-0.5">Redução Média de KM rodados</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-slate-900 to-slate-950 p-6 rounded-2xl border border-slate-800 space-y-4">
+              <h3 className="text-xs font-bold font-mono uppercase text-slate-300 border-b border-slate-800 pb-2">Simulação de Processamento Multidimensional</h3>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                    <span>Otimização Sequencial Tradicional (Fretamento Clássico)</span>
+                    <span className="text-red-400 font-bold">128 segundos (Lento)</span>
+                  </div>
+                  <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-850">
+                    <div className="bg-red-500 h-full w-[45%]" />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                    <span>Otimização Científica Paralela LogusQ</span>
+                    <span className="text-emerald-400 font-bold">2.4 segundos (Instantâneo)</span>
+                  </div>
+                  <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-850">
+                    <div className="bg-gradient-to-r from-violet-600 to-indigo-500 h-full w-[100%] animate-pulse" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-850/50 text-[10px] text-slate-400 font-mono space-y-1">
+                <div className="text-violet-400 font-bold flex items-center gap-1.5"><Zap className="w-3 h-3 text-violet-400" /> STATUS: QUANTUM SOLVER ACTIVE</div>
+                <p>Parallel Threads: 512 Multi-agent States Evaluated</p>
+                <p>Convergence rate: 99.87% Mathematical Optimality</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Section: Nossa Missão */}
+        <section id="sobre-nos" className="border-t border-slate-900 py-16 px-6 relative z-10">
+          <div className="max-w-4xl mx-auto text-center space-y-6">
+            <span className="text-[10px] font-mono font-bold tracking-widest text-violet-400 uppercase bg-violet-500/10 border border-violet-500/20 px-2.5 py-1 rounded-full w-fit mx-auto">
+              NOSSA MISSÃO E VALORES
+            </span>
+            <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">
+              Excelência, Segurança e Humanismo nos Transportes
+            </h2>
+            <p className="text-xs md:text-sm text-slate-400 leading-relaxed">
+              Trabalhamos sob a crença de que a tecnologia de ponta deve servir para simplificar a vida humana. 
+              Nossa missão é conectar indústrias, gestores de frotas e motoristas de forma transparente, humana e com desperdício zero.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6">
+              <div className="bg-slate-900/30 border border-slate-850/80 rounded-2xl p-5 space-y-3">
+                <div className="text-violet-400 bg-violet-500/10 p-2.5 rounded-xl w-fit mx-auto">
+                  <ShieldCheck className="w-5 h-5 text-violet-400" />
+                </div>
+                <h4 className="text-xs font-extrabold text-white uppercase tracking-wider">Segurança Absoluta</h4>
+                <p className="text-[11px] text-slate-400">
+                  Criptografia fim-a-fim em dados de rotas, monitoramento de cansaço e alertas de sinistros em tempo real.
+                </p>
+              </div>
+
+              <div className="bg-slate-900/30 border border-slate-850/80 rounded-2xl p-5 space-y-3">
+                <div className="text-violet-400 bg-violet-500/10 p-2.5 rounded-xl w-fit mx-auto">
+                  <Heart className="w-5 h-5 text-violet-400" />
+                </div>
+                <h4 className="text-xs font-extrabold text-white uppercase tracking-wider">Conforto ao Condutor</h4>
+                <p className="text-[11px] text-slate-400">
+                  Respeito estrito às cargas de trabalho, trajetos mais seguros e ferramentas mobile intuitivas de alta performance.
+                </p>
+              </div>
+
+              <div className="bg-slate-900/30 border border-slate-850/80 rounded-2xl p-5 space-y-3">
+                <div className="text-violet-400 bg-violet-500/10 p-2.5 rounded-xl w-fit mx-auto">
+                  <Globe className="w-5 h-5 text-violet-400" />
+                </div>
+                <h4 className="text-xs font-extrabold text-white uppercase tracking-wider">Sustentabilidade</h4>
+                <p className="text-[11px] text-slate-400">
+                  Roteiros perfeitos que reduzem em média 25% das emissões de CO₂ e evitam deslocamentos inúteis.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Section: Fale Conosco (Interactive Support Desk) */}
+        <section id="fale-conosco" className="border-t border-slate-900 bg-slate-950/60 py-16 px-6 relative z-10">
+          <div className="max-w-5xl mx-auto space-y-8">
+            <div className="text-center space-y-3">
+              <span className="text-[10px] font-mono font-bold tracking-widest text-violet-400 uppercase bg-violet-500/10 border border-violet-500/20 px-2.5 py-1 rounded-full w-fit mx-auto">
+                ATENDIMENTO INTERATIVO MULTICANAL
+              </span>
+              <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">
+                Fale Conosco — Canal Direto de Suporte
+              </h2>
+              <p className="text-xs text-slate-400 max-w-xl mx-auto">
+                Selecione o canal adequado para seu atendimento. Suas solicitações são enviadas diretamente para os nossos departamentos integrados.
+              </p>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800/80 rounded-2xl overflow-hidden shadow-2xl grid grid-cols-1 md:grid-cols-3">
+              {/* Left Column: Department Selection */}
+              <div className="border-r border-slate-800/80 bg-slate-950/40 p-4 space-y-1.5">
+                <button
+                  onClick={() => { setSupportTab('ti'); setSupportSuccess(''); }}
+                  className={`w-full text-left p-3 rounded-xl transition-all flex items-center gap-3 font-semibold text-xs border ${
+                    supportTab === 'ti' 
+                      ? 'bg-violet-600 border-violet-500 text-white shadow-lg shadow-violet-900/20' 
+                      : 'border-transparent text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                  }`}
+                >
+                  <Settings className="w-4 h-4" />
+                  <div>
+                    <div>Suporte de TI</div>
+                    <div className={`text-[9px] font-mono font-light ${supportTab === 'ti' ? 'text-violet-200' : 'text-slate-500'}`}>Abertura de Chamados</div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => { setSupportTab('financeiro'); setSupportSuccess(''); }}
+                  className={`w-full text-left p-3 rounded-xl transition-all flex items-center gap-3 font-semibold text-xs border ${
+                    supportTab === 'financeiro' 
+                      ? 'bg-violet-600 border-violet-500 text-white shadow-lg shadow-violet-900/20' 
+                      : 'border-transparent text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                  }`}
+                >
+                  <DollarSign className="w-4 h-4" />
+                  <div>
+                    <div>Dept. Financeiro</div>
+                    <div className={`text-[9px] font-mono font-light ${supportTab === 'financeiro' ? 'text-violet-200' : 'text-slate-500'}`}>Faturamento e Boletos</div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => { setSupportTab('adm'); setSupportSuccess(''); }}
+                  className={`w-full text-left p-3 rounded-xl transition-all flex items-center gap-3 font-semibold text-xs border ${
+                    supportTab === 'adm' 
+                      ? 'bg-violet-600 border-violet-500 text-white shadow-lg shadow-violet-900/20' 
+                      : 'border-transparent text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                  }`}
+                >
+                  <Briefcase className="w-4 h-4" />
+                  <div>
+                    <div>Administrativo / Contratos</div>
+                    <div className={`text-[9px] font-mono font-light ${supportTab === 'adm' ? 'text-violet-200' : 'text-slate-500'}`}>Comercial e Parcerias</div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => { setSupportTab('ceo'); setSupportSuccess(''); }}
+                  className={`w-full text-left p-3 rounded-xl transition-all flex items-center gap-3 font-semibold text-xs border ${
+                    supportTab === 'ceo' 
+                      ? 'bg-violet-600 border-violet-500 text-white shadow-lg shadow-violet-900/20' 
+                      : 'border-transparent text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                  }`}
+                >
+                  <User className="w-4 h-4" />
+                  <div>
+                    <div>Canal Direto com o CEO</div>
+                    <div className={`text-[9px] font-mono font-light ${supportTab === 'ceo' ? 'text-violet-200' : 'text-slate-500'}`}>Ouvidoria / Sugestões</div>
+                  </div>
+                </button>
+              </div>
+
+              {/* Right Column: Form Container */}
+              <div className="col-span-2 p-6 md:p-8 bg-slate-900">
+                {supportSuccess ? (
+                  <div className="flex flex-col items-center text-center justify-center h-full space-y-4 py-8 animate-fade-in">
+                    <div className="bg-emerald-500/10 p-3.5 rounded-full text-emerald-400 border border-emerald-500/20">
+                      <CheckCircle className="w-10 h-10" />
+                    </div>
+                    <h4 className="text-base font-bold text-white">Solicitação Enviada com Sucesso!</h4>
+                    <p className="text-xs text-slate-400 leading-relaxed max-w-sm">
+                      {supportSuccess}
+                    </p>
+                    <button
+                      onClick={() => setSupportSuccess('')}
+                      className="bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold px-4 py-2 rounded-xl transition-colors mt-2"
+                    >
+                      Enviar Outra Solicitação
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    {/* TI Form */}
+                    {supportTab === 'ti' && (
+                      <form onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!tiEmail || !tiDesc) return;
+                        dbRepo.enviarMensagem("Usuário TI", tiEmail, `[CHAMADO TI - URGÊNCIA ${tiUrgency.toUpperCase()}] Tipo: ${tiErrorType}. Descrição: ${tiDesc}`);
+                        setSupportSuccess(`Protocolo LOGUSQ-TI-${Math.floor(100000 + Math.random() * 900000)} gerado. Nosso time de TI entrará em contato em até 4 horas.`);
+                        setTiEmail(''); setTiDesc('');
+                      }} className="space-y-4">
+                        <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                          <h4 className="text-xs font-bold font-mono text-violet-400 uppercase tracking-wider">Abertura de Chamado Técnico TI</h4>
+                          <span className="text-[10px] text-slate-500 font-mono">SLA: 4h</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Seu E-mail</label>
+                            <input
+                              type="email"
+                              required
+                              placeholder="nome@empresa.com"
+                              value={tiEmail}
+                              onChange={e => setTiEmail(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Tipo de Erro</label>
+                            <select
+                              value={tiErrorType}
+                              onChange={e => setTiErrorType(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none"
+                            >
+                              <option>Bugs e Instabilidade</option>
+                              <option>Dúvidas de Roteirização</option>
+                              <option>Problemas no App do Motorista</option>
+                              <option>Erro de Integração/API</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Grau de Urgência</label>
+                          <div className="grid grid-cols-3 gap-3">
+                            {['Baixa', 'Média', 'Alta'].map(level => (
+                              <button
+                                key={level}
+                                type="button"
+                                onClick={() => setTiUrgency(level)}
+                                className={`py-1.5 rounded-lg text-xs font-semibold font-mono border transition-all ${
+                                  tiUrgency === level 
+                                    ? 'bg-violet-600/20 border-violet-500 text-violet-300' 
+                                    : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-300'
+                                }`}
+                              >
+                                {level}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Descrição do Problema</label>
+                          <textarea
+                            required
+                            rows={3}
+                            placeholder="Descreva com detalhes o que está acontecendo..."
+                            value={tiDesc}
+                            onChange={e => setTiDesc(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none"
+                          />
+                        </div>
+
+                        <button
+                          type="submit"
+                          className="w-full bg-violet-600 hover:bg-violet-500 text-white font-bold py-2.5 rounded-xl text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-2 shadow-lg shadow-violet-900/10 cursor-pointer"
+                        >
+                          <Send className="w-3.5 h-3.5" /> Abrir Chamado TI
+                        </button>
+                      </form>
+                    )}
+
+                    {/* Financeiro Form */}
+                    {supportTab === 'financeiro' && (
+                      <form onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!finEmail || !finCnpj) return;
+                        dbRepo.enviarMensagem("Cliente Financeiro", finEmail, `[FINANCEIRO] CNPJ: ${finCnpj}. Solicitação: ${finDesc}`);
+                        setSupportSuccess(`Sua solicitação financeira foi recebida. Um e-mail com a resposta ou anexo foi encaminhado para ${finEmail}.`);
+                        setFinEmail(''); setFinCnpj('');
+                      }} className="space-y-4">
+                        <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                          <h4 className="text-xs font-bold font-mono text-violet-400 uppercase tracking-wider">Atendimento Financeiro e Faturamento</h4>
+                          <span className="text-[10px] text-slate-500 font-mono">SLA: 12h</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">E-mail Cadastrado</label>
+                            <input
+                              type="email"
+                              required
+                              placeholder="financeiro@empresa.com"
+                              value={finEmail}
+                              onChange={e => setFinEmail(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">CNPJ da Empresa</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="00.000.000/0001-00"
+                              value={finCnpj}
+                              onChange={e => setFinCnpj(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Tipo de Solicitação</label>
+                          <select
+                            value={finDesc}
+                            onChange={e => setFinDesc(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none"
+                          >
+                            <option>Solicitação de segunda via de boleto/fatura</option>
+                            <option>Alteração de dados de cobrança ou Razão Social</option>
+                            <option>Dúvidas sobre o plano contratado</option>
+                            <option>Cancelamento ou reajuste de licença SaaS</option>
+                          </select>
+                        </div>
+
+                        <button
+                          type="submit"
+                          className="w-full bg-violet-600 hover:bg-violet-500 text-white font-bold py-2.5 rounded-xl text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-2 shadow-lg shadow-violet-900/10 cursor-pointer"
+                        >
+                          <Send className="w-3.5 h-3.5" /> Enviar Solicitação Financeira
+                        </button>
+                      </form>
+                    )}
+
+                    {/* Administrativo Form */}
+                    {supportTab === 'adm' && (
+                      <form onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!admNome || !admEmpresa || !admDesc) return;
+                        dbRepo.enviarMensagem(admNome, "comercial@logusq.com.br", `[ADM / COMERCIAL] Nome: ${admNome}. Empresa: ${admEmpresa}. Telefone: ${admTel}. Mensagem: ${admDesc}`);
+                        setSupportSuccess(`Obrigado pelo seu contato, ${admNome}! Nosso departamento comercial foi acionado e ligará para você no telefone ${admTel} em breve.`);
+                        setAdmNome(''); setAdmEmpresa(''); setAdmTel(''); setAdmDesc('');
+                      }} className="space-y-4">
+                        <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                          <h4 className="text-xs font-bold font-mono text-violet-400 uppercase tracking-wider">Administrativo e Comercial</h4>
+                          <span className="text-[10px] text-slate-500 font-mono">SLA: 24h</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div>
+                            <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Seu Nome</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Nome Sobrenome"
+                              value={admNome}
+                              onChange={e => setAdmNome(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Sua Empresa</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Razão Social"
+                              value={admEmpresa}
+                              onChange={e => setAdmEmpresa(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Telefone / WhatsApp</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="(31) 99999-9999"
+                              value={admTel}
+                              onChange={e => setAdmTel(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Proposta ou Solicitação Comercial</label>
+                          <textarea
+                            required
+                            rows={3}
+                            placeholder="Descreva sua solicitação comercial, upgrade de plano corporativo ou parcerias..."
+                            value={admDesc}
+                            onChange={e => setAdmDesc(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none"
+                          />
+                        </div>
+
+                        <button
+                          type="submit"
+                          className="w-full bg-violet-600 hover:bg-violet-500 text-white font-bold py-2.5 rounded-xl text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-2 shadow-lg shadow-violet-900/10 cursor-pointer"
+                        >
+                          <Send className="w-3.5 h-3.5" /> Enviar Mensagem Comercial
+                        </button>
+                      </form>
+                    )}
+
+                    {/* CEO Form */}
+                    {supportTab === 'ceo' && (
+                      <form onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!ceoNome || !ceoMessage) return;
+                        dbRepo.enviarMensagem(ceoNome, "ceo@logusq.com.br", `[CANAL DIRETO CEO / OUVIDORIA] Contato Retorno: ${ceoContact}. Mensagem: ${ceoMessage}`);
+                        setSupportSuccess(`Sua mensagem privada foi criptografada e enviada diretamente à diretoria e ouvidoria da LogusQ. Agradecemos imensamente o seu feedback.`);
+                        setCeoNome(''); setCeoContact(''); setCeoMessage('');
+                      }} className="space-y-4">
+                        <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                          <h4 className="text-xs font-bold font-mono text-violet-400 uppercase tracking-wider">Canal Direto Ouvidoria — Fale com o CEO</h4>
+                          <span className="text-[10px] text-slate-500 font-mono">Privacidade Garantida</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Seu Nome (Opcional se anônimo)</label>
+                            <input
+                              type="text"
+                              placeholder="Nome Completo"
+                              value={ceoNome}
+                              onChange={e => setCeoNome(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Seu E-mail ou Telefone para Retorno</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Ex: (31) 98888-8888 ou ceo@suaempresa.com"
+                              value={ceoContact}
+                              onChange={e => setCeoContact(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Mensagem Direta para o CEO</label>
+                          <textarea
+                            required
+                            rows={3}
+                            placeholder="Deixe sugestões, críticas, elogios ou relatórios de ouvidoria com garantia de privacidade absoluta..."
+                            value={ceoMessage}
+                            onChange={e => setCeoMessage(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none"
+                          />
+                        </div>
+
+                        <button
+                          type="submit"
+                          className="w-full bg-violet-600 hover:bg-violet-500 text-white font-bold py-2.5 rounded-xl text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-2 shadow-lg shadow-violet-900/10 cursor-pointer"
+                        >
+                          <Send className="w-3.5 h-3.5" /> Enviar Mensagem Privada
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Global Footer */}
+        <footer className="border-t border-slate-900 bg-slate-950 text-slate-500 text-xs py-10 px-6 text-center z-10 space-y-3">
+          <div className="flex justify-center items-center gap-2 text-slate-400 font-bold">
+            <Truck className="w-4 h-4 text-violet-400" /> LOGUS<span className="text-violet-400 font-mono">Q</span>
+          </div>
+          <p className="max-w-md mx-auto text-[11px] leading-relaxed">
+            Plataforma Corporativa de Logística Inteligente e Roteirização Científica com DNA Quântico. 
+            Desenvolvido em conformidade com as diretrizes de alta resiliência matemática e integridade humana.
+          </p>
+          <p className="font-mono text-[10px] text-slate-600">
+            &copy; {new Date().getFullYear()} LogusQ S.A. Todos os direitos reservados. CNPJ 45.123.456/0001-89
+          </p>
+        </footer>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-slate-100 font-sans selection:bg-violet-500/30">
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-slate-100 font-sans selection:bg-violet-500/30 relative">
       {/* Background radial effects */}
       <div className="absolute top-0 left-0 right-0 h-[500px] bg-gradient-to-b from-violet-950/25 to-transparent pointer-events-none z-0" />
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-violet-600/10 rounded-full blur-[120px] pointer-events-none z-0" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-[120px] pointer-events-none z-0" />
 
-      <div className="w-full max-w-4xl z-10">
+      <div className="w-full max-w-4xl z-10 relative">
+        {/* Voltar para Home button */}
+        <button
+          onClick={() => setViewMode('landing')}
+          className="absolute -top-14 left-0 flex items-center gap-2 text-slate-400 hover:text-white transition-all bg-slate-900/80 hover:bg-slate-900 border border-slate-800/80 px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer backdrop-blur"
+        >
+          <ArrowLeft className="w-4 h-4 text-violet-400" /> Voltar para a Home
+        </button>
+
         {/* Header Branding */}
         <div className="flex flex-col items-center mb-8 text-center">
           <div className="bg-gradient-to-br from-violet-600 to-indigo-600 p-3.5 rounded-2xl shadow-xl shadow-violet-900/20 mb-3 border border-violet-500/30">

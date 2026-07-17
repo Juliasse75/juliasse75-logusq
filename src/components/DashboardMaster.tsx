@@ -4,7 +4,7 @@ import { Cliente, Colaborador, PlanosSaaS, PLANOS_PADRAO } from '../types';
 import { 
   Users, UserPlus, Layers, DollarSign, Award, Settings, 
   Trash2, UserCheck, Edit3, Check, Search, Download, Plus, Play, Info, FileText,
-  ShieldCheck, Filter, ShieldAlert, AlertTriangle, Eye, RefreshCw
+  ShieldCheck, Filter, ShieldAlert, AlertTriangle, Eye, RefreshCw, Lock, Key
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
@@ -31,6 +31,11 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
   const [refreshKey, setRefreshKey] = useState(0);
   const triggerRefresh = () => setRefreshKey(prev => prev + 1);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showPasswordChangeModal, setShowPasswordChangeModal] = useState(false);
+  const [newPasswordValue, setNewPasswordValue] = useState('');
+  const [confirmPasswordValue, setConfirmPasswordValue] = useState('');
+  const [pwdChangeError, setPwdChangeError] = useState('');
+  const [pwdChangeSuccess, setPwdChangeSuccess] = useState('');
 
   // Lists
   const clientes = dbRepo.getTodosClientes();
@@ -790,6 +795,18 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
           <div className="text-[10px] text-slate-500 font-mono truncate">
             User: {userEmail}
           </div>
+          <button
+            onClick={() => {
+              setNewPasswordValue('');
+              setConfirmPasswordValue('');
+              setPwdChangeError('');
+              setPwdChangeSuccess('');
+              setShowPasswordChangeModal(true);
+            }}
+            className="w-full bg-violet-950/30 hover:bg-violet-900/40 border border-violet-900/30 text-violet-300 py-1.5 rounded-lg font-semibold transition-colors flex items-center justify-center gap-1.5 text-[11px]"
+          >
+            <Lock className="w-3.5 h-3.5 text-violet-400" /> Alterar Minha Senha
+          </button>
           {isTotalAccess && (
             <button
               onClick={() => setShowResetConfirm(true)}
@@ -806,6 +823,105 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
           </button>
         </div>
       </aside>
+
+      {/* Password Change Modal */}
+      {showPasswordChangeModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-slate-900 border border-violet-500/30 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl shadow-violet-950/30">
+            <div className="flex items-center gap-3 border-b border-slate-850 pb-3">
+              <div className="bg-violet-500/10 p-2.5 rounded-full text-violet-400">
+                <Lock className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Redefinir Minha Senha</h3>
+                <p className="text-[10px] text-slate-400">Altere a senha de acesso da sua conta master.</p>
+              </div>
+            </div>
+
+            {pwdChangeError && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs p-3 rounded-xl">
+                {pwdChangeError}
+              </div>
+            )}
+
+            {pwdChangeSuccess ? (
+              <div className="space-y-4 py-2">
+                <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs p-3 rounded-xl text-center font-semibold">
+                  {pwdChangeSuccess}
+                </div>
+                <button
+                  onClick={() => setShowPasswordChangeModal(false)}
+                  className="w-full bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold py-2.5 rounded-xl transition-colors"
+                >
+                  Fechar
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1.5">Nova Senha</label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Mínimo 6 caracteres"
+                    value={newPasswordValue}
+                    onChange={e => setNewPasswordValue(e.target.value)}
+                    className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 focus:ring-1 focus:ring-violet-500/20 rounded-xl px-4 py-2.5 text-xs transition-colors text-white focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1.5">Confirmar Nova Senha</label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Repita a nova senha"
+                    value={confirmPasswordValue}
+                    onChange={e => setConfirmPasswordValue(e.target.value)}
+                    className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 focus:ring-1 focus:ring-violet-500/20 rounded-xl px-4 py-2.5 text-xs transition-colors text-white focus:outline-none"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => setShowPasswordChangeModal(false)}
+                    className="flex-1 bg-slate-850 hover:bg-slate-800 text-slate-300 text-xs font-bold py-2.5 rounded-xl transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => {
+                      setPwdChangeError('');
+                      if (!newPasswordValue) {
+                        setPwdChangeError('Por favor, informe a nova senha.');
+                        return;
+                      }
+                      if (newPasswordValue.length < 6) {
+                        setPwdChangeError('A nova senha deve possuir pelo menos 6 caracteres.');
+                        return;
+                      }
+                      if (newPasswordValue !== confirmPasswordValue) {
+                        setPwdChangeError('As senhas digitadas não coincidem.');
+                        return;
+                      }
+                      
+                      const success = dbRepo.atualizarUsuarioSenha(userEmail, newPasswordValue);
+                      if (success) {
+                        setPwdChangeSuccess('Senha redefinida com sucesso! Use a nova senha no seu próximo login.');
+                      } else {
+                        setPwdChangeError('Erro ao atualizar a senha do usuário. Tente novamente.');
+                      }
+                    }}
+                    className="flex-1 bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <Check className="w-4 h-4" /> Salvar Senha
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Database Wipe Confirmation Modal */}
       {showResetConfirm && (

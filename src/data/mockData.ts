@@ -516,6 +516,20 @@ export const dbRepo = {
   saveMensagens: (msgs: MensagemSuporte[]) => {
     localStorage.setItem(KEYS.MENSAGENS, JSON.stringify(msgs));
   },
+  enviarMensagem: (nome: string, email: string, mensagem: string): MensagemSuporte => {
+    const list = dbRepo.getMensagens();
+    const nova: MensagemSuporte = {
+      id: `MSG-${Math.floor(1000 + Math.random() * 9000)}`,
+      nome,
+      email,
+      mensagem,
+      respondido: false,
+      dataEnvio: new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+    };
+    list.unshift(nova);
+    dbRepo.saveMensagens(list);
+    return nova;
+  },
 
   zerarBancoDados: () => {
     // 1. Clean up all keys starting with logusq_ or logusq_entregas_ from localStorage
@@ -774,6 +788,17 @@ export const dbRepo = {
     if (condutorIdx !== -1) {
       list[condutorIdx].senha = novaSenha;
       dbRepo.saveCondutores(list);
+      return true;
+    }
+    return false;
+  },
+
+  atualizarUsuarioSenha: (email: string, novaSenha: string): boolean => {
+    const list = dbRepo.getUsuarios();
+    const idx = list.findIndex(u => u.email === email);
+    if (idx !== -1) {
+      list[idx].senha_hash = novaSenha;
+      dbRepo.saveUsuarios(list);
       return true;
     }
     return false;
