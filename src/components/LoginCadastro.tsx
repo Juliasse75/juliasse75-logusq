@@ -339,40 +339,6 @@ REPRESENTANTE DA CONTRATANTE`;
                     <Key className="w-4 h-4" /> Entrar no Sistema
                   </button>
                 </form>
-
-                {/* Demo Accounts Panel */}
-                <div className="mt-8 border-t border-slate-800/60 pt-6">
-                  <div className="flex items-center gap-2 mb-3 text-slate-400 text-xs font-semibold">
-                    <Shield className="w-4 h-4 text-violet-400" />
-                    <span>Acesso Rápido de Demonstração (Demo)</span>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px] font-mono">
-                    <button 
-                      onClick={() => { setLoginEmail('ceo@logusq.com.br'); setLoginSenha('LogusQ@Master2026'); }}
-                      className="bg-slate-950/50 hover:bg-slate-950 border border-slate-800/80 rounded-lg p-2.5 text-left transition-colors"
-                    >
-                      <div className="text-violet-400 font-bold">1. CEO MASTER</div>
-                      <div className="text-slate-400 text-[10px]">ceo@logusq.com.br</div>
-                      <div className="text-slate-500 text-[9px] mt-0.5">Admin Geral</div>
-                    </button>
-                    <button 
-                      onClick={() => { setLoginEmail('rodrigo@translog.com.br'); setLoginSenha('DemoClient@123'); }}
-                      className="bg-slate-950/50 hover:bg-slate-950 border border-slate-800/80 rounded-lg p-2.5 text-left transition-colors"
-                    >
-                      <div className="text-blue-400 font-bold">2. GESTOR CLIENTE</div>
-                      <div className="text-slate-400 text-[10px]">rodrigo@translog.com.br</div>
-                      <div className="text-slate-500 text-[9px] mt-0.5">TransLog BH</div>
-                    </button>
-                    <button 
-                      onClick={() => { setLoginEmail('anaclara.cs@logusq.com.br'); setLoginSenha('LogusQ@Colab2026'); }}
-                      className="bg-slate-950/50 hover:bg-slate-950 border border-slate-800/80 rounded-lg p-2.5 text-left transition-colors"
-                    >
-                      <div className="text-emerald-400 font-bold">3. COLABORADOR</div>
-                      <div className="text-slate-400 text-[10px]">anaclara.cs@logusq.com.br</div>
-                      <div className="text-slate-500 text-[9px] mt-0.5">CS / RH Interno</div>
-                    </button>
-                  </div>
-                </div>
               </div>
             )}
 

@@ -517,6 +517,37 @@ export const dbRepo = {
     localStorage.setItem(KEYS.MENSAGENS, JSON.stringify(msgs));
   },
 
+  zerarBancoDados: () => {
+    // 1. Clean up all keys starting with logusq_ or logusq_entregas_ from localStorage
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('logusq_') || key.startsWith('logusq_entregas_'))) {
+        localStorage.removeItem(key);
+      }
+    }
+    
+    // 2. Insert only the core CEO Master user so we can still log in
+    const cleanUsuarios = [
+      {
+        email: 'ceo@logusq.com.br',
+        nome: 'Cosme Juliasse',
+        perfil: 'MASTER' as const,
+        nivelAcesso: 'TOTAL',
+        criadoEm: '17/07/2026',
+        senha_hash: '123456',
+      }
+    ];
+    localStorage.setItem(KEYS.USUARIOS, JSON.stringify(cleanUsuarios));
+    
+    // 3. Keep empty arrays for others so they are initialized clean
+    localStorage.setItem(KEYS.CLIENTES, JSON.stringify([]));
+    localStorage.setItem(KEYS.COLABORADORES, JSON.stringify([]));
+    localStorage.setItem(KEYS.VEICULOS, JSON.stringify([]));
+    localStorage.setItem(KEYS.CONDUTORES, JSON.stringify([]));
+    localStorage.setItem(KEYS.MENSAGENS, JSON.stringify([]));
+    localStorage.setItem(KEYS.AUDITORIA, JSON.stringify([]));
+  },
+
   // High-Level Helper API
   getUsuario: (email: string): Usuario | undefined => {
     const list = dbRepo.getUsuarios();

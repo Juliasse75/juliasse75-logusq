@@ -30,6 +30,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
   // Global State Refresh Helper
   const [refreshKey, setRefreshKey] = useState(0);
   const triggerRefresh = () => setRefreshKey(prev => prev + 1);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // Lists
   const clientes = dbRepo.getTodosClientes();
@@ -785,10 +786,18 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
         </div>
 
         {/* Footer info & Logout */}
-        <div className="p-4 border-t border-slate-800/60 bg-slate-950/20 text-xs">
-          <div className="text-[10px] text-slate-500 font-mono truncate mb-2">
+        <div className="p-4 border-t border-slate-800/60 bg-slate-950/20 text-xs space-y-2">
+          <div className="text-[10px] text-slate-500 font-mono truncate">
             User: {userEmail}
           </div>
+          {isTotalAccess && (
+            <button
+              onClick={() => setShowResetConfirm(true)}
+              className="w-full bg-red-950/30 hover:bg-red-900/40 border border-red-900/30 text-red-400 py-1.5 rounded-lg font-semibold transition-colors flex items-center justify-center gap-1.5 text-[11px]"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-red-400" /> Limpar Dados Demo
+            </button>
+          )}
           <button
             onClick={onLogout}
             className="w-full bg-slate-800 hover:bg-slate-700 hover:text-white text-slate-300 py-2 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2"
@@ -797,6 +806,51 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
           </button>
         </div>
       </aside>
+
+      {/* Database Wipe Confirmation Modal */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-slate-900 border border-red-500/30 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl shadow-red-950/30">
+            <div className="flex items-center gap-3 border-b border-slate-850 pb-3">
+              <div className="bg-red-500/10 p-2.5 rounded-full text-red-400">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Atenção: Zerar Sistema</h3>
+                <p className="text-[10px] text-slate-400">Esta ação é definitiva e irreversível.</p>
+              </div>
+            </div>
+
+            <div className="text-xs text-slate-300 space-y-2 leading-relaxed">
+              <p>
+                Você está prestes a <span className="text-red-400 font-bold">limpar todas as informações de demonstração</span> do sistema LogusQ.
+              </p>
+              <p className="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80 font-mono text-[10px] text-slate-400">
+                Isso apagará permanentemente todos os clientes SaaS, frotas, motoristas cadastrados, rotas otimizadas e auditorias. Apenas sua conta <span className="text-violet-400 font-semibold">ceo@logusq.com.br</span> será preservada para que você possa iniciar os testes do zero.
+              </p>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="flex-1 bg-slate-850 hover:bg-slate-800 text-slate-300 text-xs font-bold py-2.5 rounded-xl transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  dbRepo.zerarBancoDados();
+                  setShowResetConfirm(false);
+                  onLogout();
+                }}
+                className="flex-1 bg-red-600 hover:bg-red-500 text-white text-xs font-bold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-1.5 shadow-lg shadow-red-900/20"
+              >
+                <Trash2 className="w-4 h-4" /> Sim, Zerar Tudo!
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Pane */}
       <main className="flex-1 p-6 md:p-8 overflow-y-auto max-w-7xl mx-auto w-full">
