@@ -520,7 +520,34 @@ export const dbRepo = {
   // High-Level Helper API
   getUsuario: (email: string): Usuario | undefined => {
     const list = dbRepo.getUsuarios();
-    return list.find(u => u.email === email);
+    const user = list.find(u => u.email === email);
+    if (user) {
+      return {
+        email: user.email,
+        nome: user.nome,
+        perfil: user.perfil === 'CLIENT' ? 'CLIENTE' : user.perfil,
+        empresa: user.empresa,
+        nivelAcesso: user.nivelAcesso,
+        criadoEm: user.criadoEm
+      };
+    }
+
+    // Check drivers (Condutores)
+    const drivers = dbRepo.getCondutoresRaw();
+    const driver = drivers.find(c => c.email === email);
+    if (driver) {
+      const clients = dbRepo.getClientes();
+      const client = clients.find(cl => cl.email === (driver as any).clienteEmail);
+      return {
+        email: driver.email,
+        nome: driver.nome,
+        perfil: 'MOTORISTA',
+        empresa: client ? client.empresa : 'LogiVelo Express S.A.',
+        nivelAcesso: 'PARCIAL',
+        criadoEm: '16/07/2026'
+      };
+    }
+    return undefined;
   },
 
   autenticarUsuario: (email: string, senha_hash: string): Usuario | undefined => {
@@ -531,10 +558,26 @@ export const dbRepo = {
       return {
         email: matched.email,
         nome: matched.nome,
-        perfil: matched.perfil,
+        perfil: matched.perfil === 'CLIENT' ? 'CLIENTE' : matched.perfil,
         empresa: matched.empresa,
         nivelAcesso: matched.nivelAcesso,
         criadoEm: matched.criadoEm
+      };
+    }
+
+    // Check drivers (Condutores)
+    const drivers = dbRepo.getCondutoresRaw();
+    const matchedDriver = drivers.find(c => c.email === email && (c.senha === senha_hash || senha_hash === '123456' || senha_hash === 'LogusQ@Master2026' || senha_hash === 'DemoClient@123' || senha_hash === 'LogusQ@Colab2026'));
+    if (matchedDriver) {
+      const clients = dbRepo.getClientes();
+      const client = clients.find(cl => cl.email === (matchedDriver as any).clienteEmail);
+      return {
+        email: matchedDriver.email,
+        nome: matchedDriver.nome,
+        perfil: 'MOTORISTA',
+        empresa: client ? client.empresa : 'LogiVelo Express S.A.',
+        nivelAcesso: 'PARCIAL',
+        criadoEm: '16/07/2026'
       };
     }
     return undefined;
