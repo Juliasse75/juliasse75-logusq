@@ -147,8 +147,8 @@ export default function SimulatedMap({
 
     let tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'; // dark high-contrast (Default)
     if (mapStyle === 'osm') {
-      // Use standard OpenStreetMap tiles for the "Rua" style - very colorful with green parks, blue rivers, and yellow/red roads
-      tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'; 
+      // Use CartoDB Voyager as the "Rua" style - detailed colorful street map that uses a high-performance CDN to prevent loading blocks
+      tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'; 
     } else if (mapStyle === 'voyager') {
       // Use CartoDB Positron as the "Claro" style - clean, light-grey, high-contrast minimalist layout
       tileUrl = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'; 

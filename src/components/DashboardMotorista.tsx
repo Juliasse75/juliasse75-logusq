@@ -29,25 +29,30 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
   const [refreshKey, setRefreshKey] = useState(0);
   const triggerRefresh = () => setRefreshKey(prev => prev + 1);
 
-  // Get driver's details from database
-  const condutoresList = dbRepo.getCondutores('demo@logusq.com.br'); // Search under demo client or across database
-  const driverProfile = condutoresList.find(c => c.email === userEmail) || {
+  // Get driver's details from database (search across all registered companies globally)
+  const allDrivers = dbRepo.getCondutoresRaw();
+  const driverProfile = allDrivers.find(c => c.email === userEmail) || {
     nome: 'Carlos Alberto (Motorista)',
     veiculo: 'HON-CARGO',
     telefone: '(31) 98888-8888',
     email: userEmail
   };
 
-  // Find assigned vehicle
-  const veiculosList = dbRepo.getFrota('demo@logusq.com.br');
+  const driverClientEmail = (driverProfile as any).clienteEmail || 'demo@logusq.com.br';
+
+  // Find assigned vehicle under the correct driver's client company fleet
+  const veiculosList = dbRepo.getFrota(driverClientEmail);
   const assignedVehicle = veiculosList.find(v => v.idVeiculo === driverProfile.veiculo) || {
     modelo: 'CG 160 Cargo',
     placa: 'SHN-5B71',
     tipo: 'Motocicleta'
   };
 
-  // Find assigned routes in all client accounts (simulate global scan for simplicity)
-  const clientEmails = ['demo@logusq.com.br', 'gerente@rapidobh.com', 'admin@quanticalog.com'];
+  // Find assigned routes in all client accounts dynamically (simulate global scan across all active client tenants)
+  const clientEmails = [
+    'demo@logusq.com.br',
+    ...dbRepo.getClientes().map(c => c.email)
+  ];
   
   interface ActiveRouteDriver {
     routeId: string;
@@ -430,7 +435,7 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
               </span>
               <h2 className="text-base font-extrabold text-white mt-1.5">{driverProfile.nome}</h2>
               <div className="flex flex-col text-xs text-slate-400 space-y-0.5 mt-1">
-                <span className="font-semibold text-emerald-400 flex items-center gap-1">🏢 {dbRepo.getCliente(activeDriverRoutes[0]?.clientEmail || 'demo@logusq.com.br')?.empresa || 'LOGUS Roteirização'}</span>
+                <span className="font-semibold text-emerald-400 flex items-center gap-1">🏢 {dbRepo.getCliente(activeDriverRoutes[0]?.clientEmail || driverClientEmail)?.empresa || 'LOGUS Roteirização'}</span>
                 <span>{driverProfile.email}</span>
               </div>
             </div>
