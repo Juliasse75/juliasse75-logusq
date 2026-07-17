@@ -75,7 +75,8 @@ export default function ImportadorUniversal({
         { key: 'cnh', label: 'Registro CNH', required: true },
         { key: 'categoriaCnh', label: 'Cat. CNH', required: true },
         { key: 'vencCnh', label: 'Venc. CNH', required: true },
-        { key: 'veiculo', label: 'Código Veículo (Vínculo)', required: false }
+        { key: 'veiculo', label: 'Nº Frota / Código Veículo (Vínculo)', required: false },
+        { key: 'placaVeiculo', label: 'Placa do Veículo (Vínculo)', required: false }
       ]
     },
     entregas: {
@@ -344,7 +345,8 @@ export default function ImportadorUniversal({
         cnh: ['cnh', 'registrocnh', 'numcnh', 'numerocnh', 'carteira', 'carteirahabilitacao'],
         categoriaCnh: ['categoriacnh', 'categoria', 'catcnh', 'cat', 'categoriacarteira'],
         vencCnh: ['vencimento', 'vencimentocnh', 'validadecnh', 'venc', 'validade', 'vencimentocarteira'],
-        veiculo: ['veiculo', 'veiculovinculado', 'codigoveiculo', 'idveiculo', 'placaveiculo'],
+        veiculo: ['veiculo', 'veiculovinculado', 'codigoveiculo', 'idveiculo', 'numerofrota', 'numfrota', 'nofrota', 'nfrota', 'frota', 'frotavinculada'],
+        placaVeiculo: ['placaveiculo', 'placaveic', 'placavinculada', 'placa', 'plate'],
 
         // ENTREGAS
         chave: [
@@ -550,7 +552,8 @@ export default function ImportadorUniversal({
             cnh: item.cnh || '00000000000',
             categoriaCnh: item.categoriaCnh || 'B',
             vencCnh: item.vencCnh || '01/01/2030',
-            veiculo: item.veiculo || ''
+            veiculo: item.veiculo || '',
+            placaVeiculo: item.placaVeiculo || ''
           });
           successCount++;
         } else if (type === 'entregas') {

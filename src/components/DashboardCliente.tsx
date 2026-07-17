@@ -71,6 +71,16 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   const [evCap, setEvCap] = useState(650);
   const [evStatus, setEvStatus] = useState<'Disponivel' | 'Inativo' | 'Manutencao'>('Disponivel');
   const [evObs, setEvObs] = useState('');
+  const [evModelo, setEvModelo] = useState('');
+  const [evFabricante, setEvFabricante] = useState('');
+  const [evTipo, setEvTipo] = useState<TipoVeiculo>('Carro Leve');
+  const [evAnoFabricacao, setEvAnoFabricacao] = useState('');
+  const [evAnoModelo, setEvAnoModelo] = useState('');
+  const [evCor, setEvCor] = useState('');
+  const [evRenavam, setEvRenavam] = useState('');
+  const [evChassi, setEvChassi] = useState('');
+  const [evDataEntradaManutencao, setEvDataEntradaManutencao] = useState('');
+  const [evDataRetornoManutencao, setEvDataRetornoManutencao] = useState('');
 
   React.useEffect(() => {
     if (veicSel) {
@@ -78,6 +88,16 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       setEvCap(veicSel.capacidadeKg);
       setEvStatus(veicSel.status as any);
       setEvObs(veicSel.observacao || '');
+      setEvModelo(veicSel.modelo || '');
+      setEvFabricante(veicSel.fabricante || '');
+      setEvTipo((veicSel.tipo || 'Carro Leve') as TipoVeiculo);
+      setEvAnoFabricacao(veicSel.anoFabricacao || '');
+      setEvAnoModelo(veicSel.anoModelo || '');
+      setEvCor(veicSel.cor || '');
+      setEvRenavam(veicSel.renavam || '');
+      setEvChassi(veicSel.chassi || '');
+      setEvDataEntradaManutencao(veicSel.dataEntradaManutencao || '');
+      setEvDataRetornoManutencao(veicSel.dataRetornoManutencao || '');
     }
   }, [selectedVeiculoEdit, refreshKey]);
 
@@ -90,6 +110,9 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   const [edDCnh, setEdDCnh] = useState('');
   const [edDCat, setEdDCat] = useState('');
   const [edDVencCnh, setEdDVencCnh] = useState('');
+  const [edDEmail, setEdDEmail] = useState('');
+  const [edDVeiculo, setEdDVeiculo] = useState('-');
+  const [edDPlacaVeiculo, setEdDPlacaVeiculo] = useState('');
   const [edDSenha, setEdDSenha] = useState('');
   const [edDStatus, setEdDStatus] = useState<'Ativo' | 'Afastado' | 'Férias' | 'Licença' | 'Desligado' | 'Inativo'>('Ativo');
 
@@ -103,6 +126,9 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       setEdDCnh(condSel.cnh);
       setEdDCat(condSel.categoriaCnh);
       setEdDVencCnh(condSel.vencCnh);
+      setEdDEmail(condSel.email);
+      setEdDVeiculo(condSel.veiculo || '-');
+      setEdDPlacaVeiculo(condSel.placaVeiculo || '');
       setEdDSenha(condSel.senha || '');
       setEdDStatus(condSel.status || 'Ativo');
     }
@@ -236,7 +262,17 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       placa: evPlaca,
       capacidadeKg: evCap,
       status: evStatus,
-      observacao: evObs
+      observacao: evObs,
+      modelo: evModelo,
+      fabricante: evFabricante,
+      tipo: evTipo,
+      anoFabricacao: evAnoFabricacao,
+      anoModelo: evAnoModelo,
+      cor: evCor,
+      renavam: evRenavam,
+      chassi: evChassi,
+      dataEntradaManutencao: evDataEntradaManutencao,
+      dataRetornoManutencao: evDataRetornoManutencao
     });
     triggerRefresh();
     alert('Veículo atualizado!');
@@ -279,9 +315,13 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       cnh: edDCnh,
       categoriaCnh: edDCat,
       vencCnh: edDVencCnh,
+      email: edDEmail,
+      veiculo: edDVeiculo,
+      placaVeiculo: edDPlacaVeiculo,
       senha: edDSenha,
       status: edDStatus
     });
+    setSelectedCondutorEdit(edDEmail);
     triggerRefresh();
     alert('Cadastro do motorista atualizado com sucesso!');
   };
@@ -513,9 +553,12 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   };
 
   const handleOptimize = () => {
-    const selectedVehs = frota.filter(v => v.status === 'Disponivel');
+    const selectedVehs = frota.filter(v => {
+      const hasDriver = condutores.some(c => c.veiculo === v.idVeiculo && c.status === 'Ativo');
+      return v.status === 'Disponivel' && hasDriver;
+    });
     if (selectedVehs.length === 0) {
-      alert('Nenhum veículo disponível na frota para roteirização!');
+      alert('Nenhum veículo disponível com motorista ativo vinculado para roteirização! Por favor, vincule motoristas ativos aos veículos na aba "Gestão de Frota".');
       return;
     }
     if (entregasPendentes.length === 0) {
@@ -965,7 +1008,7 @@ Assinatura do Expedidor: _______________________________`;
               <div className="lg:col-span-8 space-y-6">
                 
                 {/* SVG MAP */}
-                <SimulatedMap entregas={entregasPendentes} rotas={mapRoutes} />
+                <SimulatedMap entregas={entregasPendentes} rotas={mapRoutes} activeRoutes={activeRoutes} />
 
                 {/* Active Routes list */}
                 {Object.keys(activeRoutes).length > 0 && (
@@ -1195,6 +1238,23 @@ Assinatura do Expedidor: _______________________________`;
                       <form onSubmit={handleUpdateVeiculo} className="space-y-2 pt-2 border-t border-slate-800/60">
                         <div className="grid grid-cols-2 gap-2">
                           <div>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Fabricante</label>
+                            <input
+                              type="text" value={evFabricante} onChange={e => setEvFabricante(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Modelo</label>
+                            <input
+                              type="text" value={evModelo} onChange={e => setEvModelo(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
                             <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Placa</label>
                             <input
                               type="text" value={evPlaca} onChange={e => setEvPlaca(e.target.value)}
@@ -1202,33 +1262,111 @@ Assinatura do Expedidor: _______________________________`;
                             />
                           </div>
                           <div>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Tipo Modal</label>
+                            <select
+                              value={evTipo} onChange={e => setEvTipo(e.target.value as any)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                            >
+                              <option value="Carro Leve">Carro Leve</option>
+                              <option value="Picape 4x4">Picape 4x4</option>
+                              <option value="Van">Van</option>
+                              <option value="Caminhão Pesado">Caminhão Pesado</option>
+                              <option value="Motocicleta">Motocicleta</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
                             <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Capacidade (KG)</label>
                             <input
-                              type="number" value={evCap} onChange={e => setEvCap(parseInt(e.target.value))}
+                              type="number" value={evCap} onChange={e => setEvCap(parseInt(e.target.value) || 0)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Cor</label>
+                            <input
+                              type="text" value={evCor} onChange={e => setEvCor(e.target.value)}
                               className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
                             />
                           </div>
                         </div>
-                        <div>
-                          <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Status Operacional</label>
-                          <select
-                            value={evStatus} onChange={e => setEvStatus(e.target.value as any)}
-                            className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
-                          >
-                            <option value="Disponivel">Disponível</option>
-                            <option value="Manutencao">Em Manutenção</option>
-                            <option value="Inativo">Inativo</option>
-                          </select>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Ano Fabricação</label>
+                            <input
+                              type="text" value={evAnoFabricacao} onChange={e => setEvAnoFabricacao(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Ano Modelo</label>
+                            <input
+                              type="text" value={evAnoModelo} onChange={e => setEvAnoModelo(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                            />
+                          </div>
                         </div>
-                        <div>
-                          <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Observações / Defeito</label>
-                          <textarea
-                            value={evObs} onChange={e => setEvObs(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white h-12 resize-none"
-                            placeholder="Descreva problemas mecânicos..."
-                          />
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">RENAVAM</label>
+                            <input
+                              type="text" value={evRenavam} onChange={e => setEvRenavam(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Chassi</label>
+                            <input
+                              type="text" value={evChassi} onChange={e => setEvChassi(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                            />
+                          </div>
                         </div>
-                        <button type="submit" className="w-full bg-slate-800 hover:bg-slate-750 text-slate-200 text-[11px] font-bold py-1.5 rounded transition-colors">
+
+                        <div className="pt-2 border-t border-slate-800/40">
+                          <label className="block text-[10px] font-bold text-violet-400 uppercase tracking-wide mb-1.5">Oficina & Manutenção</label>
+                          <div className="grid grid-cols-2 gap-2 mb-2">
+                            <div>
+                              <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Entrada Oficina</label>
+                              <input
+                                type="text" placeholder="DD/MM/AAAA" value={evDataEntradaManutencao} onChange={e => setEvDataEntradaManutencao(e.target.value)}
+                                className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Saída Oficina</label>
+                              <input
+                                type="text" placeholder="DD/MM/AAAA" value={evDataRetornoManutencao} onChange={e => setEvDataRetornoManutencao(e.target.value)}
+                                className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Status Operacional</label>
+                            <select
+                              value={evStatus} onChange={e => setEvStatus(e.target.value as any)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white mb-2"
+                            >
+                              <option value="Disponivel">Disponível / Ativo</option>
+                              <option value="Manutencao">Em Manutenção / Oficina</option>
+                              <option value="Inativo">Inativo</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Relatório do Defeito / Observações</label>
+                            <textarea
+                              value={evObs} onChange={e => setEvObs(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white h-12 resize-none"
+                              placeholder="Problemas mecânicos, histórico de consertos..."
+                            />
+                          </div>
+                        </div>
+
+                        <button type="submit" className="w-full bg-violet-600 hover:bg-violet-500 text-white text-[11px] font-bold py-2 rounded transition-colors mt-2">
                           Confirmar Atualizações
                         </button>
                       </form>
@@ -1538,7 +1676,7 @@ Assinatura do Expedidor: _______________________________`;
                             <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Senha Portal</label>
                             <input
                               type="password" placeholder="Senha de acesso" value={edDSenha} onChange={e => setEdDSenha(e.target.value)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-white"
                             />
                           </div>
                         </div>
@@ -1564,6 +1702,47 @@ Assinatura do Expedidor: _______________________________`;
                               <option value="Desligado">Desligado</option>
                               <option value="Inativo">Inativo</option>
                             </select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">E-mail / Login</label>
+                          <input
+                            type="email" required value={edDEmail} onChange={e => setEdDEmail(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-white"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Veículo Alocado (Nº Frota)</label>
+                            <select
+                              value={edDVeiculo} 
+                              onChange={e => {
+                                const vId = e.target.value;
+                                setEdDVeiculo(vId);
+                                const matchedVeh = frota.find(v => v.idVeiculo === vId);
+                                if (matchedVeh) {
+                                  setEdDPlacaVeiculo(matchedVeh.placa);
+                                } else if (vId === '-') {
+                                  setEdDPlacaVeiculo('');
+                                }
+                              }}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                            >
+                              <option value="-">Nenhum (Disponível)</option>
+                              {frota.map(v => (
+                                <option key={v.idVeiculo} value={v.idVeiculo}>{v.idVeiculo} - {v.modelo}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Placa do Veículo</label>
+                            <input
+                              type="text" value={edDPlacaVeiculo} onChange={e => setEdDPlacaVeiculo(e.target.value)}
+                              placeholder="Ex: ABC-1234"
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-white"
+                            />
                           </div>
                         </div>
 
@@ -1594,7 +1773,7 @@ Assinatura do Expedidor: _______________________________`;
                           </div>
                         </div>
 
-                        <button type="submit" className="w-full bg-slate-800 hover:bg-slate-750 text-slate-200 text-[11px] font-bold py-1.5 rounded transition-colors mt-2">
+                        <button type="submit" className="w-full bg-violet-600 hover:bg-violet-500 text-white text-[11px] font-bold py-2 rounded transition-colors mt-2">
                           Confirmar Atualizações
                         </button>
                       </form>
@@ -1676,9 +1855,16 @@ Assinatura do Expedidor: _______________________________`;
                             <div className="mt-4 pt-3 border-t border-slate-900 flex justify-between items-center">
                               <div className="text-xs">
                                 <span className="text-slate-500 text-[10px] uppercase font-mono block">Veículo Alocado:</span>
-                                <span className={`font-semibold ${c.veiculo !== '-' ? 'text-emerald-400' : 'text-slate-400'}`}>
-                                  {c.veiculo !== '-' ? `Frota ID: ${c.veiculo}` : 'Disponível'}
-                                </span>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className={`font-semibold ${c.veiculo && c.veiculo !== '-' ? 'text-emerald-400' : 'text-slate-400'}`}>
+                                    {c.veiculo && c.veiculo !== '-' ? `Frota ID: ${c.veiculo}` : 'Sem veículo'}
+                                  </span>
+                                  {c.placaVeiculo && (
+                                    <span className="text-[10px] text-violet-400 font-mono bg-violet-400/10 border border-violet-400/20 px-1.5 py-0.5 rounded">
+                                      {c.placaVeiculo}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                               <button
                                 onClick={() => {

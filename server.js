@@ -72,7 +72,7 @@ app.post('/api/import/parse', async (req, res) => {
 - "cnh": número de registro da CNH (ex: 11 dígitos)
 - "categoriaCnh": categoria da habilitação (ex: "A", "B", "C", "D", "E", "AB", "AD")
 - "vencCnh": data de vencimento da CNH (ex: "10/12/2030")
-- "veiculo": identificador do veículo inicial atribuído se houver (ex: "VEIC-101" ou placa)`;
+- "veiculo": identificador do veículo inicial atribuído se houver, como o número da frota, ID Interno ou placa (ex: "V-001" ou "RTY3A19")`;
     } else if (type === 'entregas') {
       typeInstructions = `Você é um assistente de IA especialista em roteirização e entregas logísticas. Extraia a lista de pontos de entrega ou coleta do documento fornecido (que pode ser um romaneio, nota fiscal, fatura, PDF de pedidos ou planilha). Retorne APENAS um array JSON contendo objetos com as seguintes propriedades:
 - "chave": chave única da entrega, identificador de pedido ou número da NFe (ex: "ENT-201", "NFE-54321")

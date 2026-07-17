@@ -128,6 +128,7 @@ export interface Condutor {
   telefone: string;
   email: string;
   veiculo: string; // ID of the vehicle assigned
+  placaVeiculo?: string; // PLACA DO VEICULO VINCULADO
   senha?: string;
   status?: 'Ativo' | 'Afastado' | 'Férias' | 'Licença' | 'Desligado' | 'Inativo';
 }

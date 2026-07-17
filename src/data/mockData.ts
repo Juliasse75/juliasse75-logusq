@@ -830,6 +830,44 @@ export const dbRepo = {
 
   cadastrarCondutor: (email: string, params: Partial<Condutor>) => {
     const list = dbRepo.getCondutoresRaw();
+    const vehicles = dbRepo.getVeiculos().filter(v => 
+      (v as any).clienteEmail === email || (!(v as any).clienteEmail && email === 'demo@logusq.com.br')
+    );
+
+    const findMatchingVehicle = (vInput: string) => {
+      if (!vInput || vInput === '-') return null;
+      const cleanInput = vInput.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      
+      // Try exact ID match
+      let match = vehicles.find(v => v.idVeiculo.trim().toUpperCase() === vInput.trim().toUpperCase());
+      if (match) return match;
+      
+      // Try exact Placa match
+      match = vehicles.find(v => v.placa.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanInput);
+      if (match) return match;
+      
+      // Try contains match
+      match = vehicles.find(v => 
+        v.idVeiculo.trim().toUpperCase().includes(vInput.trim().toUpperCase()) ||
+        vInput.trim().toUpperCase().includes(v.idVeiculo.trim().toUpperCase())
+      );
+      if (match) return match;
+
+      return null;
+    };
+
+    const inputVeiculo = params.veiculo || '';
+    const inputPlaca = params.placaVeiculo || '';
+    
+    let finalVeiculo = inputVeiculo || '-';
+    let finalPlaca = inputPlaca || '';
+    
+    const matched = findMatchingVehicle(inputVeiculo) || findMatchingVehicle(inputPlaca);
+    if (matched) {
+      finalVeiculo = matched.idVeiculo;
+      finalPlaca = matched.placa;
+    }
+
     const novo: Condutor = {
       id: `D-${Date.now()}`,
       nome: params.nome || '',
@@ -841,7 +879,8 @@ export const dbRepo = {
       vencCnh: params.vencCnh || '',
       telefone: params.telefone || '',
       email: params.email || '',
-      veiculo: params.veiculo || '-',
+      veiculo: finalVeiculo,
+      placaVeiculo: finalPlaca,
       senha: params.senha || '',
       status: params.status || 'Ativo'
     };
@@ -852,9 +891,53 @@ export const dbRepo = {
 
   editarCondutor: (email: string, condutorEmail: string, params: Partial<Condutor>) => {
     const list = dbRepo.getCondutoresRaw();
+    const vehicles = dbRepo.getVeiculos().filter(v => 
+      (v as any).clienteEmail === email || (!(v as any).clienteEmail && email === 'demo@logusq.com.br')
+    );
+
+    const findMatchingVehicle = (vInput: string) => {
+      if (!vInput || vInput === '-') return null;
+      const cleanInput = vInput.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      
+      let match = vehicles.find(v => v.idVeiculo.trim().toUpperCase() === vInput.trim().toUpperCase());
+      if (match) return match;
+      
+      match = vehicles.find(v => v.placa.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanInput);
+      if (match) return match;
+      
+      match = vehicles.find(v => 
+        v.idVeiculo.trim().toUpperCase().includes(vInput.trim().toUpperCase()) ||
+        vInput.trim().toUpperCase().includes(v.idVeiculo.trim().toUpperCase())
+      );
+      if (match) return match;
+
+      return null;
+    };
+
     const updated = list.map(c => {
       if (c.email === condutorEmail && ((c as any).clienteEmail === email || (!(c as any).clienteEmail && email === 'demo@logusq.com.br'))) {
-        return { ...c, ...params };
+        let finalVeiculo = params.veiculo !== undefined ? params.veiculo : c.veiculo;
+        let finalPlaca = params.placaVeiculo !== undefined ? params.placaVeiculo : c.placaVeiculo;
+
+        if (params.veiculo !== undefined || params.placaVeiculo !== undefined) {
+          const inputVeiculo = params.veiculo || '';
+          const inputPlaca = params.placaVeiculo || '';
+          const matched = findMatchingVehicle(inputVeiculo) || findMatchingVehicle(inputPlaca);
+          if (matched) {
+            finalVeiculo = matched.idVeiculo;
+            finalPlaca = matched.placa;
+          } else {
+            if (params.veiculo !== undefined) finalVeiculo = params.veiculo;
+            if (params.placaVeiculo !== undefined) finalPlaca = params.placaVeiculo;
+          }
+        }
+
+        return { 
+          ...c, 
+          ...params,
+          veiculo: finalVeiculo,
+          placaVeiculo: finalPlaca
+        };
       }
       return c;
     });
@@ -863,9 +946,17 @@ export const dbRepo = {
 
   vincularVeiculoCondutor: (email: string, driverEmail: string, idVeiculo: string) => {
     const list = dbRepo.getCondutoresRaw();
+    const vehicles = dbRepo.getVeiculos().filter(v => 
+      (v as any).clienteEmail === email || (!(v as any).clienteEmail && email === 'demo@logusq.com.br')
+    );
+    const matchedVeh = vehicles.find(v => v.idVeiculo === idVeiculo);
     const updated = list.map(c => {
       if (c.email === driverEmail && ((c as any).clienteEmail === email || (!(c as any).clienteEmail && email === 'demo@logusq.com.br'))) {
-        return { ...c, veiculo: idVeiculo };
+        return { 
+          ...c, 
+          veiculo: idVeiculo,
+          placaVeiculo: matchedVeh ? matchedVeh.placa : ''
+        };
       }
       return c;
     });
