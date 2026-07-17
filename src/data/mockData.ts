@@ -701,6 +701,53 @@ export const dbRepo = {
     }
   },
 
+  atualizarEntregaTiming: (clientEmail: string, entregaId: string, params: { tempoInicioAtendimento?: string; tempoFimAtendimento?: string; duracaoAtendimentoMinutos?: number }) => {
+    const list = dbRepo.getEntregas(clientEmail);
+    const updated = list.map(ent => {
+      if (ent.id === entregaId || ent.chave === entregaId) {
+        return {
+          ...ent,
+          ...params
+        };
+      }
+      return ent;
+    });
+    localStorage.setItem(`${KEYS.ENTREGAS}_${clientEmail}`, JSON.stringify(updated));
+
+    // Also update in active routes
+    const rotas = dbRepo.getRotasAtivas(clientEmail);
+    let rotasChanged = false;
+    Object.keys(rotas).forEach(rId => {
+      const route = rotas[rId];
+      if (route.path) {
+        route.path = route.path.map((ent: any) => {
+          if (ent.id === entregaId || ent.chave === entregaId) {
+            rotasChanged = true;
+            return {
+              ...ent,
+              ...params
+            };
+          }
+          return ent;
+        });
+      }
+    });
+    if (rotasChanged) {
+      dbRepo.saveRotasAtivas(clientEmail, rotas);
+    }
+  },
+
+  atualizarCondutorSenha: (email: string, novaSenha: string): boolean => {
+    const list = dbRepo.getCondutoresRaw();
+    const condutorIdx = list.findIndex(c => c.email === email);
+    if (condutorIdx !== -1) {
+      list[condutorIdx].senha = novaSenha;
+      dbRepo.saveCondutores(list);
+      return true;
+    }
+    return false;
+  },
+
   cadastrarClienteAuto: (params: any): Cliente => {
     const clientes = dbRepo.getClientes();
     const usuarios = dbRepo.getUsuarios();

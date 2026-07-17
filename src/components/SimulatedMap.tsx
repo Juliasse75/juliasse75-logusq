@@ -1,7 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Entrega, Veiculo } from '../types';
 import { DEFAULT_BASE } from '../utils/routingEngine';
-import { MapPin, Navigation, Truck, RefreshCw, Eye, EyeOff, Layers, Filter } from 'lucide-react';
+import { MapPin, Navigation, Truck, RefreshCw, Eye, EyeOff, Layers, Filter, Clock } from 'lucide-react';
+
+// Haversine formula to compute exact distance in kilometers
+function calculateHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth's radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
 
 interface SimulatedMapProps {
   baseCoords?: { lat: number; lng: number };
@@ -185,6 +198,11 @@ export default function SimulatedMap({
       let routeLabel = 'Não Roteada';
       let isPointMatch = !isFilterActive;
 
+      // Track sequence and segment math details
+      let sequenceNum = '';
+      let indexInPath = -1;
+      let pathArray: Entrega[] = [];
+
       // Match with activeRoutes if exists
       if (activeRoutes && Object.keys(activeRoutes).length > 0) {
         Object.entries(activeRoutes).forEach(([routeId, r], rIdx) => {
@@ -198,6 +216,13 @@ export default function SimulatedMap({
             if (matchDriver && matchVehicle) {
               isPointMatch = true;
             }
+            // Find index sequence
+            const matchedIdx = r.path.findIndex(p => p.id === ent.id || p.chave === ent.chave);
+            if (matchedIdx !== -1) {
+              indexInPath = matchedIdx;
+              sequenceNum = (matchedIdx + 1).toString();
+              pathArray = r.path;
+            }
           }
         });
       } else {
@@ -206,35 +231,78 @@ export default function SimulatedMap({
           if (points.some(p => p.id === ent.id || p.chave === ent.chave)) {
             pointColor = routeColors[rIdx % routeColors.length];
             routeLabel = `Rota ${rIdx + 1}`;
+            // Find index sequence
+            const matchedIdx = points.findIndex(p => p.id === ent.id || p.chave === ent.chave);
+            if (matchedIdx !== -1) {
+              indexInPath = matchedIdx;
+              sequenceNum = (matchedIdx + 1).toString();
+              pathArray = points;
+            }
           }
         });
       }
 
+      // Compute coordinate segment details from the previous point in sequence
+      let prevLat = baseCoords.lat;
+      let prevLng = baseCoords.lng;
+      let prevPointName = 'CD Hub Principal';
+
+      if (indexInPath !== -1 && pathArray.length > 0) {
+        if (indexInPath > 0) {
+          const prevStop = pathArray[indexInPath - 1];
+          prevLat = prevStop.latitude;
+          prevLng = prevStop.longitude;
+          prevPointName = prevStop.cliente;
+        }
+      }
+
+      // Calculate distance and traffic-aware transit estimate
+      const distFromPrev = calculateHaversineDistance(prevLat, prevLng, ent.latitude, ent.longitude);
+      const transitTimeEst = Math.max(2, Math.round(distFromPrev * 1.8 * 1.25)); // City speed multiplier + traffic factor
+
       // If filter is active and this point does not match, either fade it out or hide it.
-      // Fading it out maintains spatial context but keeps selected route visible.
       const opacity = isPointMatch ? 1.0 : 0.15;
 
       const pinIcon = L.divIcon({
-        html: `<div class="w-4 h-4 rounded-full border-2 border-white flex items-center justify-center shadow-md transition-all hover:scale-125" 
+        html: `<div class="w-6 h-6 rounded-full border-2 border-white flex items-center justify-center shadow-lg transition-all hover:scale-125 font-sans font-black text-[10px] text-white" 
           style="background-color: ${pointColor}; opacity: ${opacity};">
-          <div class="w-1 h-1 bg-white rounded-full"></div>
+          ${sequenceNum || '•'}
         </div>`,
         className: '',
-        iconSize: [16, 16],
-        iconAnchor: [8, 8]
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
       });
 
       const marker = L.marker([ent.latitude, ent.longitude], { icon: pinIcon })
         .addTo(map)
         .bindPopup(`
-          <div style="font-family: sans-serif; font-size: 11px; color: #1e293b; line-height: 1.4; min-width: 170px;">
+          <div style="font-family: sans-serif; font-size: 11px; color: #1e293b; line-height: 1.4; min-width: 195px;">
             <b style="font-size: 12px; color: #0f172a; display: block; margin-bottom: 3px;">${ent.cliente}</b>
-            <b>Operação:</b> <span class="uppercase text-violet-600 font-bold">${ent.tipoOperacao}</span><br/>
-            <b>Chave:</b> <code style="background: #f1f5f9; padding: 1px 4px; border-radius: 3px;">${ent.chave}</code><br/>
+            
+            <div style="margin-bottom: 4px;">
+              <span style="background-color: ${pointColor}; color: white; font-weight: bold; font-size: 9px; padding: 1px 5px; border-radius: 3px; text-transform: uppercase;">
+                ${ent.tipoOperacao} ${sequenceNum ? `#${sequenceNum}` : ''}
+              </span>
+              <span style="font-weight: bold; margin-left: 5px; color: ${ent.status === 'Pendente' ? '#d97706' : '#059669'}">${ent.status === 'Pendente' ? 'Pendente' : ent.status === 'Cancelado' ? 'Cancelada' : 'Entregue'}</span>
+            </div>
+
+            <div style="border-top: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9; padding: 4px 0; margin: 4px 0;">
+              <div><b>📍 Ponto Anterior:</b> ${prevPointName}</div>
+              <div><b>🛣️ Trecho:</b> ${distFromPrev.toFixed(1)} km (${transitTimeEst} min c/ trânsito)</div>
+              <div><b>⏱️ Tempo de Parada:</b> 
+                ${ent.status === 'Entregue' 
+                  ? `<span style="color: #059669; font-weight: bold;">✓ ${ent.duracaoAtendimentoMinutos || 5} min parado</span>` 
+                  : ent.tempoInicioAtendimento 
+                    ? `<span style="color: #d97706; font-weight: bold; animation: pulse 1s infinite;">⚡ Em atendimento...</span>`
+                    : `<span style="color: #64748b;">Aguardando (Est: 10 min)</span>`
+                }
+              </div>
+            </div>
+
+            <b>Chave NF:</b> <code style="background: #f1f5f9; padding: 1px 4px; border-radius: 3px;">${ent.chave}</code><br/>
             <b>Peso Carga:</b> ${ent.pesoMercadoriaKg} kg<br/>
-            <b>Status:</b> <span style="color: ${ent.status === 'Pendente' ? '#d97706' : '#059669'}">${ent.status}</span><br/>
-            <b>Alocação:</b> <span style="color: ${pointColor}; font-weight: bold;">${routeLabel}</span><br/>
-            <span style="display: block; margin-top: 4px; color: #64748b; font-size: 10px; border-top: 1px solid #f1f5f9; padding-top: 4px;">${ent.endereco}</span>
+            <b>Rota:</b> <span style="color: ${pointColor}; font-weight: bold;">${routeLabel}</span><br/>
+            <span style="display: block; margin-top: 4px; color: #64748b; font-size: 10px;">${ent.endereco}</span>
           </div>
         `);
       markersRef.current.push(marker);
@@ -306,6 +374,71 @@ export default function SimulatedMap({
       </div>
     );
   }
+
+  // Build dynamic routes list with calculated distances and segments for the interactive overlay
+  const sidebarRoutes = Object.entries(displayedRotas).map(([idxKey, pathPoints], rIdx) => {
+    const clusterId = Number(idxKey);
+    let routeId = `Rota ${clusterId + 1}`;
+    let driverName = 'Não Alocado';
+    let vehicleName = 'Disponível';
+    const isCompletedCount = pathPoints.filter(p => p.status === 'Entregue').length;
+
+    // Try matching with activeRoutes details
+    if (activeRoutes && Object.keys(activeRoutes).length > 0) {
+      const matchedEntry = Object.entries(activeRoutes).find(([actRouteId, r]) => {
+        return r.path.length === pathPoints.length && r.path.every((p, pIdx) => p.id === pathPoints[pIdx]?.id || p.chave === pathPoints[pIdx]?.chave);
+      });
+      if (matchedEntry) {
+        routeId = matchedEntry[0];
+        driverName = matchedEntry[1].driver;
+        vehicleName = matchedEntry[1].vehicle;
+      }
+    }
+
+    // Calculate segment details
+    let prevL = baseCoords.lat;
+    let prevG = baseCoords.lng;
+    let accumulatedKm = 0;
+    const segments: { from: string; to: string; toName: string; km: number; time: number }[] = [];
+    
+    pathPoints.forEach((stop, stopIdx) => {
+      const dist = calculateHaversineDistance(prevL, prevG, stop.latitude, stop.longitude);
+      accumulatedKm += dist;
+      segments.push({
+        from: stopIdx === 0 ? 'CD' : `#${stopIdx}`,
+        to: `#${stopIdx + 1}`,
+        toName: stop.cliente,
+        km: dist,
+        time: Math.max(2, Math.round(dist * 1.8 * 1.25))
+      });
+      prevL = stop.latitude;
+      prevG = stop.longitude;
+    });
+
+    // Final return segment to CD
+    if (pathPoints.length > 0) {
+      const finalDist = calculateHaversineDistance(prevL, prevG, baseCoords.lat, baseCoords.lng);
+      accumulatedKm += finalDist;
+      segments.push({
+        from: `#${pathPoints.length}`,
+        to: 'CD',
+        toName: 'Retorno CD',
+        km: finalDist,
+        time: Math.max(2, Math.round(finalDist * 1.8 * 1.25))
+      });
+    }
+
+    return {
+      routeId,
+      driverName,
+      vehicleName,
+      color: routeColors[rIdx % routeColors.length],
+      pathPoints,
+      accumulatedKm,
+      segments,
+      completedCount: isCompletedCount
+    };
+  }).filter(r => r.pathPoints.length > 0);
 
   return (
     <div className="relative bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-2xl h-[550px] w-full group flex flex-col isolate">
@@ -392,15 +525,71 @@ export default function SimulatedMap({
         <div ref={mapContainerRef} className="w-full h-full z-0 relative" style={{ background: '#020617' }} />
 
         {/* Top Left Status Overlay */}
-        <div className="absolute top-4 left-4 z-[1000] bg-slate-900/90 border border-slate-800/80 backdrop-blur-md px-3 py-2 rounded-lg text-[10px] font-mono text-slate-300 shadow-xl flex flex-col gap-0.5 pointer-events-none">
-          <div className="flex items-center gap-1.5 text-violet-400 font-bold">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            VETOR GEORREFERENCIADO
+        <div className="absolute top-4 left-4 z-[1000] bg-slate-900/95 border border-slate-800 backdrop-blur-md p-3.5 rounded-xl text-[11px] text-slate-300 shadow-2xl flex flex-col gap-2 max-w-[290px] max-h-[85%] overflow-y-auto pointer-events-auto font-sans">
+          <div className="flex items-center justify-between gap-2 border-b border-slate-850 pb-2">
+            <div className="flex items-center gap-1.5 text-violet-400 font-bold font-mono">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              PAINEL DE ROTAS
+            </div>
           </div>
-          <div>CD Central: <span className="text-white font-sans">{DEFAULT_BASE.cidade} - {DEFAULT_BASE.estado}</span></div>
-          <div>Pontos Totais: <span className="text-white font-bold">{entregas.length}</span></div>
-          {Object.keys(displayedRotas).some(k => displayedRotas[Number(k)]?.length > 0) && (
-            <div className="text-emerald-400 font-semibold">Rotas Filtradas Ativas</div>
+          <div className="space-y-0.5 text-slate-400 font-sans">
+            <div><b>CD Central:</b> <span className="text-white font-semibold">{DEFAULT_BASE.cidade} - {DEFAULT_BASE.estado}</span></div>
+            <div><b>Pontos Totais:</b> <span className="text-white font-bold">{entregas.length}</span></div>
+          </div>
+
+          {/* List of active routes mapped */}
+          {sidebarRoutes.length > 0 && (
+            <div className="space-y-2 pt-2 border-t border-slate-800">
+              <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">
+                <span>📊 Resumo de Roteamento</span>
+                <span>{sidebarRoutes.length} Rota(s)</span>
+              </div>
+              
+              <div className="space-y-1.5">
+                {sidebarRoutes.map((r) => {
+                  const pathLen = r.pathPoints.length;
+                  const durationEst = Math.round(r.accumulatedKm * 1.8 * 1.25) + (pathLen * 10); // 1.8 min/km + 10m stop
+                  
+                  return (
+                    <details key={r.routeId} className="group bg-slate-950/80 border border-slate-850 rounded-lg overflow-hidden transition-all">
+                      <summary className="p-2 flex items-center justify-between cursor-pointer hover:bg-slate-900/50 list-none outline-none select-none">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full inline-block border border-white" style={{ backgroundColor: r.color }} />
+                          <div>
+                            <div className="font-extrabold text-white text-[11px]">{r.routeId}</div>
+                            <div className="text-[9px] text-slate-400 font-mono">{r.driverName} • {r.vehicleName.split(' ')[0]}</div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-[10px] text-emerald-400 font-bold font-mono">{r.accumulatedKm.toFixed(1)} km</div>
+                          <div className="text-[8px] text-slate-500 font-mono uppercase font-black">{r.completedCount}/{pathLen} OK</div>
+                        </div>
+                      </summary>
+
+                      <div className="p-2 border-t border-slate-900 bg-slate-950 text-[10px] space-y-1.5">
+                        <div className="flex justify-between text-slate-400 border-b border-slate-900 pb-1 mb-1 font-mono">
+                          <span>⏱️ Duração Est. Trânsito:</span>
+                          <span className="text-white font-bold">{durationEst} min</span>
+                        </div>
+                        
+                        <div className="text-[9px] font-mono text-slate-400 space-y-1">
+                          <div className="font-semibold text-slate-500 uppercase tracking-wider text-[8px] mb-1">Sequência & Trechos</div>
+                          {r.segments.map((seg, sIdx) => (
+                            <div key={sIdx} className="flex justify-between items-start gap-2 border-l border-slate-800 pl-1.5 ml-1">
+                              <div>
+                                <span className="text-white font-bold">{seg.from} ➔ {seg.to}</span>
+                                <div className="text-[8px] text-slate-500 truncate max-w-[130px]">{seg.toName}</div>
+                              </div>
+                              <span className="text-slate-300 font-bold whitespace-nowrap">{seg.km.toFixed(1)} km ({seg.time}m)</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </details>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </div>
 

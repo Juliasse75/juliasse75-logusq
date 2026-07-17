@@ -152,6 +152,9 @@ export interface Entrega {
   status: 'Pendente' | 'Entregue' | 'Cancelado';
   observacao?: string;
   motoristaNome?: string;
+  tempoInicioAtendimento?: string;
+  tempoFimAtendimento?: string;
+  duracaoAtendimentoMinutos?: number;
 }
 
 export interface RotaAtiva {

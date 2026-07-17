@@ -38,6 +38,16 @@ export default function ImportadorUniversal({
   const [localRows, setLocalRows] = useState<string[][]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const interruptAIProcess = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsProcessing(false);
+    setErrorMessage('Processamento interrompido pelo usuário. Você pode utilizar o Analisador Local Offline (Heurística CSV) para prosseguir imediatamente.');
+  };
 
   if (!isOpen) return null;
 
@@ -141,6 +151,9 @@ export default function ImportadorUniversal({
     setErrorMessage('');
     setProcessingStatus('Preparando arquivo para processamento...');
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       let payload: any = { type };
 
@@ -170,7 +183,8 @@ export default function ImportadorUniversal({
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: controller.signal
       });
 
       if (!response.ok) {
@@ -219,6 +233,10 @@ export default function ImportadorUniversal({
       setImportStep('review');
 
     } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log('AI parsing was aborted by the user.');
+        return; // Already handled inside interruptAIProcess
+      }
       console.error(err);
       let friendlyMessage = err.message || 'Erro inesperado ao analisar o documento.';
       
@@ -254,6 +272,7 @@ export default function ImportadorUniversal({
       setErrorMessage(friendlyMessage);
     } finally {
       setIsProcessing(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -807,7 +826,7 @@ export default function ImportadorUniversal({
                     className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 disabled:from-slate-800 disabled:to-slate-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-violet-900/20 flex items-center gap-2 transition-all"
                   >
                     <Sparkles className="w-4 h-4 text-violet-300 animate-pulse" />
-                    {isProcessing ? 'Processando...' : 'Analisar com IA (Recomendado)'}
+                    {isProcessing ? 'Processando...' : 'Analisar com IA (Gemini)'}
                   </button>
                 </div>
 
@@ -820,7 +839,15 @@ export default function ImportadorUniversal({
                       <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                     </div>
                     <div className="text-xs font-mono text-violet-400 font-bold uppercase tracking-wider">{processingStatus}</div>
-                    <p className="text-[10px] text-slate-500">Isso pode levar alguns segundos dependendo do tamanho do documento.</p>
+                    <p className="text-[10px] text-slate-500">O Gemini pode demorar dependendo da fila de requisições ou tamanho do arquivo.</p>
+                    <div className="flex justify-center pt-1">
+                      <button
+                        onClick={interruptAIProcess}
+                        className="bg-red-500/20 hover:bg-red-500/30 text-red-300 font-bold px-3 py-1.5 rounded-lg border border-red-500/30 transition-colors text-[10px] uppercase font-mono tracking-wider flex items-center gap-1.5"
+                      >
+                        ✕ Interromper & Usar Analisador Local
+                      </button>
+                    </div>
                   </div>
                 )}
 

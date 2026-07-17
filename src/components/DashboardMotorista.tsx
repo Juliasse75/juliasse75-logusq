@@ -141,6 +141,49 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
     setActiveDriverRoutes(foundRoutes);
   }, [refreshKey, userEmail, driverProfile.nome]);
 
+  // Password reset state
+  const [showResetPasswordForm, setShowResetPasswordForm] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordResetSuccess, setPasswordResetSuccess] = useState(false);
+
+  const handleResetPassword = () => {
+    if (!newPassword.trim()) {
+      alert('Por favor, digite a nova senha.');
+      return;
+    }
+    if (newPassword.length < 4) {
+      alert('A senha deve conter no mínimo 4 caracteres.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      alert('A confirmação de senha não confere.');
+      return;
+    }
+
+    const success = dbRepo.atualizarCondutorSenha(userEmail, newPassword);
+    if (success) {
+      setPasswordResetSuccess(true);
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => {
+        setPasswordResetSuccess(false);
+        setShowResetPasswordForm(false);
+      }, 3000);
+    } else {
+      alert('Erro ao atualizar a senha. Tente novamente.');
+    }
+  };
+
+  // Start attendance timer
+  const handleStartAttendance = (entregaId: string, clientEmail: string) => {
+    dbRepo.atualizarEntregaTiming(clientEmail, entregaId, {
+      tempoInicioAtendimento: new Date().toISOString()
+    });
+    triggerRefresh();
+    alert('Atendimento/Entrega iniciada com sucesso! O cronômetro de parada está ativo.');
+  };
+
   // Open signature capturer
   const handleOpenProof = (entrega: Entrega, rId: string, clientEmail: string) => {
     setSelectedEntrega(entrega);
@@ -315,6 +358,19 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
       return;
     }
 
+    // Calculate elapsed duration in minutes
+    const inicioTime = selectedEntrega.tempoInicioAtendimento 
+      ? new Date(selectedEntrega.tempoInicioAtendimento).getTime() 
+      : Date.now() - 300000; // default fallback 5 minutes if they didn't manually start
+    const fimTime = Date.now();
+    const diffMin = Math.max(1, Math.round((fimTime - inicioTime) / 60000));
+
+    // Save timing details
+    dbRepo.atualizarEntregaTiming(selectedClientEmail, selectedEntrega.id, {
+      tempoFimAtendimento: new Date().toISOString(),
+      duracaoAtendimentoMinutos: diffMin
+    });
+
     // Call update on dbRepo
     dbRepo.atualizarEntregaStatus(
       selectedClientEmail,
@@ -326,7 +382,7 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
     );
 
     triggerRefresh();
-    alert(status === 'Entregue' ? 'Entrega registrada com sucesso!' : 'Operação cancelada/recusada registrada.');
+    alert(status === 'Entregue' ? `Entrega registrada com sucesso! Tempo de atendimento: ${diffMin} min` : 'Operação cancelada/recusada registrada.');
     handleCloseProof();
   };
 
@@ -373,7 +429,10 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
                 Perfil Condutor
               </span>
               <h2 className="text-base font-extrabold text-white mt-1.5">{driverProfile.nome}</h2>
-              <p className="text-xs text-slate-400">{driverProfile.email}</p>
+              <div className="flex flex-col text-xs text-slate-400 space-y-0.5 mt-1">
+                <span className="font-semibold text-emerald-400 flex items-center gap-1">🏢 {dbRepo.getCliente(activeDriverRoutes[0]?.clientEmail || 'demo@logusq.com.br')?.empresa || 'LOGUS Roteirização'}</span>
+                <span>{driverProfile.email}</span>
+              </div>
             </div>
             <div className="text-right">
               <span className="text-[10px] font-mono text-slate-400">Rotas Ativas</span>
@@ -396,6 +455,65 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
               <div className="text-sm font-bold text-red-400">{canceledDeliveries.length}</div>
             </div>
           </div>
+        </div>
+
+        {/* Redefine Password Card */}
+        <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-xl space-y-3">
+          <button 
+            onClick={() => setShowResetPasswordForm(prev => !prev)}
+            className="w-full flex justify-between items-center text-left focus:outline-none"
+          >
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 bg-slate-950 rounded-lg text-slate-400 border border-slate-850">
+                <Clock className="w-4 h-4 text-violet-400" />
+              </span>
+              <div>
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">🔒 Redefinir Senha de Acesso</h3>
+                <p className="text-[10px] text-slate-500">Mantenha as suas credenciais seguras</p>
+              </div>
+            </div>
+            <span className="text-slate-400 text-xs font-bold bg-slate-950 border border-slate-850 px-2 py-1 rounded-lg">
+              {showResetPasswordForm ? 'Recolher' : 'Alterar'}
+            </span>
+          </button>
+
+          {showResetPasswordForm && (
+            <div className="pt-3 border-t border-slate-800/60 space-y-3">
+              <div className="space-y-1">
+                <label className="block text-[9px] font-mono text-slate-400 uppercase">Nova Senha</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="Mínimo 4 caracteres"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:border-violet-500 outline-none"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-[9px] font-mono text-slate-400 uppercase">Confirmar Nova Senha</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  placeholder="Confirme a nova senha"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:border-violet-500 outline-none"
+                />
+              </div>
+
+              {passwordResetSuccess && (
+                <div className="p-2.5 bg-emerald-950/40 border border-emerald-500/20 rounded-lg text-emerald-400 text-[11px] font-mono text-center">
+                  ✓ Senha redefinida com sucesso!
+                </div>
+              )}
+
+              <button
+                onClick={handleResetPassword}
+                className="w-full bg-violet-600 hover:bg-violet-500 text-white font-bold py-2 rounded-lg text-xs transition-colors"
+              >
+                Salvar Nova Senha
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Data Retention Banner Notice */}
@@ -523,33 +641,55 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
                         </div>
 
                         {/* Actions block */}
-                        <div className="flex gap-2 pt-2">
+                        <div className="flex flex-col sm:flex-row gap-2 pt-2 w-full">
                           {/* Contact via WhatsApp trigger if number is available */}
                           {entrega.whatsapp && (
                             <a 
                               href={`https://wa.me/${entrega.whatsapp.replace(/\D/g, '')}`}
                               target="_blank"
                               rel="noreferrer"
-                              className="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700/60 p-2 rounded-lg flex items-center justify-center gap-1.5 text-xs transition-colors"
+                              className="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700/60 p-2 rounded-lg flex items-center justify-center gap-1.5 text-xs transition-colors font-mono"
                             >
                               <Phone className="w-3.5 h-3.5 text-emerald-500" /> Abrir ZAP
                             </a>
                           )}
 
                           {isPending ? (
-                            <button
-                              onClick={() => handleOpenProof(entrega, route.routeId, route.clientEmail)}
-                              className="flex-1 bg-violet-600 hover:bg-violet-500 text-white font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow transition-colors"
-                            >
-                              <Camera className="w-3.5 h-3.5" /> Comprovar Entrega / Assinatura
-                            </button>
+                            !entrega.tempoInicioAtendimento ? (
+                              <button
+                                onClick={() => handleStartAttendance(entrega.id, route.clientEmail)}
+                                className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow transition-colors font-mono cursor-pointer"
+                              >
+                                <Clock className="w-3.5 h-3.5" /> ▶️ Iniciar Atendimento
+                              </button>
+                            ) : (
+                              <div className="flex flex-col gap-2 flex-1">
+                                <div className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded border border-emerald-500/20 flex items-center gap-1.5 font-mono">
+                                  <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping"></span>
+                                  <span>Em atendimento desde: {new Date(entrega.tempoInicioAtendimento).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</span>
+                                </div>
+                                <button
+                                  onClick={() => handleOpenProof(entrega, route.routeId, route.clientEmail)}
+                                  className="w-full bg-violet-600 hover:bg-violet-500 text-white font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow transition-colors font-mono cursor-pointer"
+                                >
+                                  <Camera className="w-3.5 h-3.5" /> Finalizar & Registrar Comprovante
+                                </button>
+                              </div>
+                            )
                           ) : (
-                            <button
-                              onClick={() => handleOpenProof(entrega, route.routeId, route.clientEmail)}
-                              className="flex-1 bg-slate-800/60 hover:bg-slate-800 text-slate-300 border border-slate-700/40 py-2 rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors"
-                            >
-                              <Layers className="w-3.5 h-3.5 text-slate-500" /> Ver Comprovante Capturado
-                            </button>
+                            <div className="flex-1 flex flex-col gap-1.5">
+                              {entrega.tempoInicioAtendimento && (
+                                <div className="text-[10px] text-slate-400 bg-slate-950/40 p-1.5 rounded border border-slate-800/40 font-mono text-center">
+                                  ⏱️ Atendimento: {new Date(entrega.tempoInicioAtendimento).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})} até {entrega.tempoFimAtendimento ? new Date(entrega.tempoFimAtendimento).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'}) : ''} ({entrega.duracaoAtendimentoMinutos || 0} min)
+                                </div>
+                              )}
+                              <button
+                                onClick={() => handleOpenProof(entrega, route.routeId, route.clientEmail)}
+                                className="w-full bg-slate-800/60 hover:bg-slate-800 text-slate-300 border border-slate-700/40 py-2 rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors font-mono cursor-pointer"
+                              >
+                                <Layers className="w-3.5 h-3.5 text-slate-500" /> Ver Comprovante Capturado
+                              </button>
+                            </div>
                           )}
                         </div>
                       </div>
