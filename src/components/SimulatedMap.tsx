@@ -308,7 +308,7 @@ export default function SimulatedMap({
   }
 
   return (
-    <div className="relative bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-2xl h-[550px] w-full group flex flex-col">
+    <div className="relative bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-2xl h-[550px] w-full group flex flex-col isolate">
       
       {/* Map Control Toolbar (Header) */}
       <div className="bg-slate-900 border-b border-slate-800 p-3 flex flex-wrap gap-3 items-center justify-between z-[1001]">

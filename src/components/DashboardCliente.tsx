@@ -950,9 +950,12 @@ Assinatura do Expedidor: _______________________________`;
                       <button 
                         onClick={() => {
                           entregasPendentes.forEach(p => dbRepo.deletarEntrega(userEmail, p.chave));
+                          dbRepo.saveRotasAtivas(userEmail, {});
+                          setActiveRoutes({});
+                          setMapRoutes({});
                           triggerRefresh();
                         }}
-                        className="text-[10px] text-red-400 hover:underline"
+                        className="text-[10px] text-red-400 hover:underline animate-pulse"
                       >
                         Limpar todos
                       </button>
@@ -964,7 +967,7 @@ Assinatura do Expedidor: _______________________________`;
                       <div className="text-[11px] text-slate-500 text-center py-4">Nenhum ponto de entrega cadastrado. Importe a demo acima!</div>
                     ) : (
                       entregasPendentes.map(ent => (
-                        <div key={ent.chave} className="bg-slate-950 border border-slate-800/80 p-3 rounded-lg text-xs space-y-1.5">
+                        <div key={ent.chave} className="bg-slate-950 border border-slate-800/80 p-3 rounded-lg text-xs space-y-1.5 animate-fade-in">
                           <div className="flex justify-between items-start">
                             <div className="space-y-0.5 pr-2">
                               <div className="flex items-center gap-1.5">
@@ -981,8 +984,42 @@ Assinatura do Expedidor: _______________________________`;
                               )}
                             </div>
                             <button 
-                              onClick={() => { dbRepo.deletarEntrega(userEmail, ent.chave); triggerRefresh(); }}
-                              className="text-slate-600 hover:text-red-400 p-0.5"
+                              onClick={() => {
+                                dbRepo.deletarEntrega(userEmail, ent.chave);
+                                
+                                // Clean deleted delivery from any active routes
+                                const updatedRoutes = { ...activeRoutes };
+                                let changed = false;
+                                Object.keys(updatedRoutes).forEach(rId => {
+                                  const route = updatedRoutes[rId];
+                                  if (route.path) {
+                                    const originalLen = route.path.length;
+                                    route.path = route.path.filter((p: any) => p.chave !== ent.chave);
+                                    if (route.path.length !== originalLen) {
+                                      changed = true;
+                                      route.km = parseFloat((route.path.length * 3.2 + 4.0).toFixed(1));
+                                      route.duration = Math.round(route.path.length * 15 + 30);
+                                    }
+                                  }
+                                  if (!route.path || route.path.length === 0) {
+                                    delete updatedRoutes[rId];
+                                    changed = true;
+                                  }
+                                });
+                                
+                                if (changed) {
+                                  setActiveRoutes(updatedRoutes);
+                                  dbRepo.saveRotasAtivas(userEmail, updatedRoutes);
+                                  const newMapRoutes: Record<number, Entrega[]> = {};
+                                  Object.values(updatedRoutes).forEach((r: any, idx) => {
+                                    newMapRoutes[idx] = r.path;
+                                  });
+                                  setMapRoutes(newMapRoutes);
+                                }
+                                
+                                triggerRefresh();
+                              }}
+                              className="text-slate-600 hover:text-red-400 p-0.5 transition-colors text-xs"
                             >
                               ✕
                             </button>
