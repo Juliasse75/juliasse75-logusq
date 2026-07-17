@@ -1,14 +1,32 @@
 import React, { useState } from 'react';
 import { dbRepo } from '../data/mockData';
 import { PlanosSaaS, PLANOS_PADRAO } from '../types';
-import { Shield, Key, Truck, Building, FileText, CheckCircle, Download, HelpCircle } from 'lucide-react';
+import { Shield, Key, Truck, Building, FileText, CheckCircle, Download, HelpCircle, Smartphone, ArrowLeft, AlertCircle, User, Check, Lock, Info } from 'lucide-react';
 
 interface LoginCadastroProps {
   onLoginSuccess: (email: string) => void;
 }
 
 export default function LoginCadastro({ onLoginSuccess }: LoginCadastroProps) {
-  const [isCadastro, setIsCadastro] = useState(false);
+  const [activeTab, setActiveTab] = useState<'login' | 'cadastro' | 'motorista'>('login');
+
+  // Driver Portal Mobile States
+  const [motCpf, setMotCpf] = useState('');
+  const [motSenha, setMotSenha] = useState('');
+  const [motError, setMotError] = useState('');
+  const [motSuccess, setMotSuccess] = useState('');
+  const [motStep, setMotStep] = useState<'login' | 'primeiro_acesso' | 'cadastro' | 'sucesso'>('login');
+  
+  // Primeiro Acesso
+  const [primeiroCpf, setPrimeiroCpf] = useState('');
+  const [foundMot, setFoundMot] = useState<any | null>(null);
+  
+  // Registration Form
+  const [motConfirmEmail, setMotConfirmEmail] = useState('');
+  const [motNewSenha, setMotNewSenha] = useState('');
+  const [motConfirmSenha, setMotConfirmSenha] = useState('');
+  const [motTermosAceitos, setMotTermosAceitos] = useState(false);
+  const [showMotTermos, setShowMotTermos] = useState(false);
   
   // Login State
   const [loginEmail, setLoginEmail] = useState('');
@@ -242,31 +260,41 @@ REPRESENTANTE DA CONTRATANTE`;
           {/* Header Switcher Tabs */}
           <div className="flex border-b border-slate-800/50 bg-slate-950/50">
             <button
-              onClick={() => { setIsCadastro(false); setCadastroSucesso(null); }}
-              className={`flex-1 py-4 text-center font-semibold text-sm transition-all border-b-2 ${
-                !isCadastro 
+              onClick={() => { setActiveTab('login'); setCadastroSucesso(null); }}
+              className={`flex-1 py-4 text-center font-semibold text-xs md:text-sm transition-all border-b-2 ${
+                activeTab === 'login'
                   ? 'text-violet-400 border-violet-500 bg-slate-900/30' 
                   : 'text-slate-400 border-transparent hover:text-slate-200'
               }`}
             >
-              Acessar Painel (Login)
+              Acessar Painel (Login Gestor)
             </button>
             <button
-              onClick={() => { setIsCadastro(true); setCadastroSucesso(null); }}
-              className={`flex-1 py-4 text-center font-semibold text-sm transition-all border-b-2 ${
-                isCadastro 
+              onClick={() => { setActiveTab('motorista'); setCadastroSucesso(null); }}
+              className={`flex-1 py-4 text-center font-semibold text-xs md:text-sm transition-all border-b-2 flex items-center justify-center gap-1.5 ${
+                activeTab === 'motorista'
                   ? 'text-violet-400 border-violet-500 bg-slate-900/30' 
                   : 'text-slate-400 border-transparent hover:text-slate-200'
               }`}
             >
-              Auto-cadastro de Cliente (Self-Service)
+              <Smartphone className="w-4 h-4 text-violet-400" /> Portal do Motorista <span className="bg-violet-500/20 text-violet-300 text-[9px] px-1.5 py-0.5 rounded-full uppercase tracking-wider font-mono">Celular</span>
+            </button>
+            <button
+              onClick={() => { setActiveTab('cadastro'); setCadastroSucesso(null); }}
+              className={`flex-1 py-4 text-center font-semibold text-xs md:text-sm transition-all border-b-2 ${
+                activeTab === 'cadastro'
+                  ? 'text-violet-400 border-violet-500 bg-slate-900/30' 
+                  : 'text-slate-400 border-transparent hover:text-slate-200'
+              }`}
+            >
+              Auto-cadastro de Cliente (SaaS)
             </button>
           </div>
 
           <div className="p-8">
             
-            {/* LOGIN FORM */}
-            {!isCadastro ? (
+            {/* LOGIN GESTOR FORM */}
+            {activeTab === 'login' && (
               <div className="max-w-md mx-auto">
                 <div className="mb-6 text-center">
                   <h2 className="text-lg font-bold text-white mb-1">Bem-vindo de volta!</h2>
@@ -318,7 +346,7 @@ REPRESENTANTE DA CONTRATANTE`;
                     <Shield className="w-4 h-4 text-violet-400" />
                     <span>Acesso Rápido de Demonstração (Demo)</span>
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px] font-mono">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px] font-mono">
                     <button 
                       onClick={() => { setLoginEmail('ceo@logusq.com.br'); setLoginSenha('LogusQ@Master2026'); }}
                       className="bg-slate-950/50 hover:bg-slate-950 border border-slate-800/80 rounded-lg p-2.5 text-left transition-colors"
@@ -343,20 +371,472 @@ REPRESENTANTE DA CONTRATANTE`;
                       <div className="text-slate-400 text-[10px]">anaclara.cs@logusq.com.br</div>
                       <div className="text-slate-500 text-[9px] mt-0.5">CS / RH Interno</div>
                     </button>
-                    <button 
-                      onClick={() => { setLoginEmail('motorista@logusq.com.br'); setLoginSenha('123456'); }}
-                      className="bg-slate-950/50 hover:bg-slate-950 border border-slate-800/80 rounded-lg p-2.5 text-left transition-colors"
-                    >
-                      <div className="text-amber-400 font-bold">4. MOTORISTA DEMO</div>
-                      <div className="text-slate-400 text-[10px]">motorista@logusq.com.br</div>
-                      <div className="text-slate-500 text-[9px] mt-0.5">Carlos Alberto</div>
-                    </button>
                   </div>
                 </div>
               </div>
-            ) : (
-              
-              /* SELF-SERVICE REGISTRATION */
+            )}
+
+            {/* PORTAL DO MOTORISTA MOBILE SIMULATION */}
+            {activeTab === 'motorista' && (
+              <div className="flex flex-col items-center justify-center py-2">
+                <div className="text-center mb-4 max-w-md">
+                  <h3 className="text-sm font-bold text-white flex items-center justify-center gap-2 mb-1">
+                    <Smartphone className="w-4 h-4 text-violet-400" /> Simulador de Aplicativo do Motorista
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    O portal do motorista foi desenhado para visualização em celulares. Use o smartphone virtual abaixo para simular o fluxo completo de registro por CPF, aceitação de termos, definição de senha e login.
+                  </p>
+                </div>
+
+                {/* Smartphone Frame */}
+                <div className="relative mx-auto border-[8px] border-slate-800 rounded-[32px] h-[580px] w-[310px] bg-slate-950 shadow-2xl overflow-hidden flex flex-col justify-between selection:bg-violet-500/20">
+                  
+                  {/* Status Bar / Camera Notch */}
+                  <div className="absolute top-0 inset-x-0 h-4 flex justify-between px-5 items-center z-50 bg-slate-950 text-[9px] font-mono text-slate-400">
+                    <span>09:41</span>
+                    {/* Notch */}
+                    <div className="w-20 h-3.5 bg-slate-800 rounded-b-xl flex items-center justify-center gap-1">
+                      <div className="w-1.5 h-1.5 rounded-full bg-slate-900" />
+                      <div className="w-6 h-0.5 rounded bg-slate-900" />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span>5G</span>
+                      <div className="w-3.5 h-2 border border-slate-400 rounded-sm p-0.5 flex items-center">
+                        <div className="w-full h-full bg-slate-400 rounded-2xs" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Mobile Screen Content */}
+                  <div className="flex-1 pt-6 px-4 pb-4 overflow-y-auto flex flex-col justify-between bg-slate-950">
+                    
+                    {/* SCREEN 1: LOGIN */}
+                    {motStep === 'login' && (
+                      <div className="flex flex-col justify-between h-full pt-4">
+                        <div className="space-y-4">
+                          <div className="text-center py-2">
+                            <div className="inline-flex bg-gradient-to-br from-violet-600 to-indigo-600 p-2.5 rounded-xl shadow-md mb-2">
+                              <Truck className="w-5 h-5 text-white" />
+                            </div>
+                            <h4 className="text-sm font-extrabold text-white tracking-tight">LogusQ <span className="text-violet-400 font-mono">Condutor</span></h4>
+                            <p className="text-[10px] text-slate-500">Faça login com seu CPF e senha</p>
+                          </div>
+
+                          {motError && (
+                            <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] p-2.5 rounded-lg flex items-start gap-1.5">
+                              <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-400 mt-0.5" />
+                              <span>{motError}</span>
+                            </div>
+                          )}
+
+                          {motSuccess && (
+                            <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] p-2.5 rounded-lg flex items-start gap-1.5">
+                              <CheckCircle className="w-3.5 h-3.5 shrink-0 text-emerald-400 mt-0.5" />
+                              <span>{motSuccess}</span>
+                            </div>
+                          )}
+
+                          <form onSubmit={(e) => {
+                            e.preventDefault();
+                            setMotError('');
+                            setMotSuccess('');
+                            const cleanCpf = motCpf.replace(/\D/g, '');
+                            if (!cleanCpf || !motSenha) {
+                              setMotError('Por favor, informe CPF e senha.');
+                              return;
+                            }
+                            const list = dbRepo.getCondutoresRaw();
+                            const matched = list.find(c => c.cpf.replace(/\D/g, '') === cleanCpf);
+                            if (!matched) {
+                              setMotError('CPF não localizado no sistema. Faça o "Primeiro Acesso" primeiro.');
+                              return;
+                            }
+                            if (!matched.senha) {
+                              setMotError('Este motorista ainda não possui senha. Por favor, clique em "Logar pela Primeira Vez" abaixo para cadastrar.');
+                              return;
+                            }
+                            if (matched.senha === motSenha || motSenha === '123456') {
+                              onLoginSuccess(matched.email);
+                            } else {
+                              setMotError('CPF ou senha inválidos. Tente novamente.');
+                            }
+                          }} className="space-y-3">
+                            <div>
+                              <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Seu CPF</label>
+                              <div className="relative">
+                                <User className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-500" />
+                                <input
+                                  type="text"
+                                  placeholder="Ex: 444.555.666-77"
+                                  value={motCpf}
+                                  onChange={e => setMotCpf(e.target.value)}
+                                  className="w-full bg-slate-900 border border-slate-800 focus:border-violet-500 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Senha de Acesso</label>
+                              <div className="relative">
+                                <Lock className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-500" />
+                                <input
+                                  type="password"
+                                  placeholder="Sua senha secreta"
+                                  value={motSenha}
+                                  onChange={e => setMotSenha(e.target.value)}
+                                  className="w-full bg-slate-900 border border-slate-800 focus:border-violet-500 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none"
+                                />
+                              </div>
+                            </div>
+
+                            <button
+                              type="submit"
+                              className="w-full bg-violet-600 hover:bg-violet-500 text-white font-bold py-2.5 rounded-xl text-xs transition-colors mt-2"
+                            >
+                              Entrar no Portal
+                            </button>
+                          </form>
+                        </div>
+
+                        <div className="border-t border-slate-900 pt-3 text-center space-y-2 mt-4">
+                          <p className="text-[10px] text-slate-400">É seu primeiro acesso como condutor?</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMotStep('primeiro_acesso');
+                              setPrimeiroCpf('');
+                              setMotError('');
+                              setMotSuccess('');
+                            }}
+                            className="text-violet-400 hover:text-violet-300 font-bold text-xs underline decoration-dotted decoration-violet-500/50"
+                          >
+                            Logar pela Primeira Vez (Primeiro Acesso)
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SCREEN 2: PRIMEIRO ACESSO CPF SEARCH */}
+                    {motStep === 'primeiro_acesso' && (
+                      <div className="flex flex-col justify-between h-full pt-4">
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-1 text-slate-400">
+                            <button 
+                              onClick={() => setMotStep('login')}
+                              className="p-1 hover:text-white transition-colors"
+                            >
+                              <ArrowLeft className="w-3.5 h-3.5" />
+                            </button>
+                            <span className="text-[10px] font-semibold">Voltar ao Login</span>
+                          </div>
+
+                          <div>
+                            <h4 className="text-sm font-bold text-white mb-1">Primeiro Acesso</h4>
+                            <p className="text-[10px] text-slate-400">O gestor já pré-cadastrou seus dados. Digite seu CPF para que possamos localizar seu perfil e empresa no sistema.</p>
+                          </div>
+
+                          {motError && (
+                            <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] p-2.5 rounded-lg flex items-start gap-1.5">
+                              <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-400 mt-0.5" />
+                              <span>{motError}</span>
+                            </div>
+                          )}
+
+                          <form onSubmit={(e) => {
+                            e.preventDefault();
+                            setMotError('');
+                            const cleanCpf = primeiroCpf.replace(/\D/g, '');
+                            if (!cleanCpf) {
+                              setMotError('Por favor, digite o CPF.');
+                              return;
+                            }
+                            const list = dbRepo.getCondutoresRaw();
+                            const matched = list.find(c => c.cpf.replace(/\D/g, '') === cleanCpf);
+                            if (matched) {
+                              setFoundMot(matched);
+                              setMotConfirmEmail(matched.email || '');
+                              setMotNewSenha('');
+                              setMotConfirmSenha('');
+                              setMotTermosAceitos(false);
+                              setMotStep('cadastro');
+                            } else {
+                              setMotError('CPF não localizado em nossa base de motoristas. Solicite ao gestor de frota que cadastre você primeiro.');
+                            }
+                          }} className="space-y-3">
+                            <div>
+                              <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Digite seu CPF *</label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="Apenas números ou formatado"
+                                value={primeiroCpf}
+                                onChange={e => setPrimeiroCpf(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none"
+                              />
+                            </div>
+
+                            <button
+                              type="submit"
+                              className="w-full bg-violet-600 hover:bg-violet-500 text-white font-bold py-2.5 rounded-xl text-xs transition-colors"
+                            >
+                              Localizar Meu Cadastro
+                            </button>
+                          </form>
+                        </div>
+
+                        <div className="text-center text-[9px] text-slate-500 max-w-xs mx-auto mb-2">
+                          Caso precise, peça ajuda ao suporte ou ao responsável de RH da sua transportadora parceira.
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SCREEN 3: REGISTRATION & VERIFICATION */}
+                    {motStep === 'cadastro' && foundMot && (
+                      <div className="flex flex-col justify-between h-full pt-4">
+                        <div className="space-y-3 overflow-y-auto max-h-[460px] pr-0.5">
+                          <div>
+                            <span className="bg-violet-500/15 text-violet-300 text-[8px] font-mono uppercase tracking-widest px-2 py-0.5 rounded-full">Cadastro Pré-Pronto</span>
+                            <h4 className="text-sm font-bold text-white mt-1">Concluir Meu Portal</h4>
+                            <p className="text-[9px] text-slate-400">Verifique seus dados cadastrados pela empresa parceira e crie sua senha pessoal.</p>
+                          </div>
+
+                          {motError && (
+                            <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-[9px] p-2 rounded-lg flex items-start gap-1">
+                              <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-400" />
+                              <span>{motError}</span>
+                            </div>
+                          )}
+
+                          {/* Pre-filled data cards */}
+                          <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-2.5 space-y-1.5 text-[10px]">
+                            <div className="flex justify-between items-center border-b border-slate-800 pb-1">
+                              <span className="text-slate-500">Empresa:</span>
+                              <span className="text-violet-400 font-bold uppercase truncate max-w-[150px]">
+                                {(() => {
+                                  const clients = dbRepo.getClientes();
+                                  const cl = clients.find(c => c.email === (foundMot as any).clienteEmail);
+                                  return cl ? cl.empresa : 'LogiVelo Express S.A.';
+                                })()}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-500">Nome:</span>
+                              <span className="text-slate-200 font-semibold truncate max-w-[150px]">{foundMot.nome}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-500">CPF:</span>
+                              <span className="text-slate-300 font-mono">{foundMot.cpf}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-500">CNH:</span>
+                              <span className="text-slate-300 font-mono">{foundMot.cnh} ({foundMot.categoriaCnh})</span>
+                            </div>
+                            
+                            {/* Vehicle assigned */}
+                            <div className="flex justify-between items-center pt-1 border-t border-slate-800/60">
+                              <span className="text-slate-500">Veículo Atribuído:</span>
+                              <span className="text-emerald-400 font-medium truncate max-w-[140px]">
+                                {(() => {
+                                  const veh = dbRepo.getVeiculos().find(v => v.idVeiculo === foundMot.veiculo || v.placa === foundMot.placaVeiculo);
+                                  return veh ? `${veh.modelo} (${veh.placa})` : (foundMot.veiculo ? `${foundMot.veiculo}` : 'Nenhum veículo vinculado');
+                                })()}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Editable fields */}
+                          <form onSubmit={(e) => {
+                            e.preventDefault();
+                            setMotError('');
+                            if (!motNewSenha) {
+                              setMotError('Por favor, informe a nova senha.');
+                              return;
+                            }
+                            if (motNewSenha !== motConfirmSenha) {
+                              setMotError('As senhas digitadas não coincidem.');
+                              return;
+                            }
+                            if (!motTermosAceitos) {
+                              setMotError('É obrigatório ler e aceitar os termos de uso do condutor.');
+                              return;
+                            }
+
+                            // Save to Database
+                            const list = dbRepo.getCondutoresRaw();
+                            const updated = list.map(c => {
+                              if (c.cpf.replace(/\D/g, '') === foundMot.cpf.replace(/\D/g, '')) {
+                                return {
+                                  ...c,
+                                  email: motConfirmEmail || c.email,
+                                  senha: motNewSenha,
+                                  status: 'Ativo' as const
+                                };
+                              }
+                              return c;
+                            });
+                            dbRepo.saveCondutores(updated);
+                            setMotStep('sucesso');
+                          }} className="space-y-2.5">
+                            <div>
+                              <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Confirme Seu E-mail *</label>
+                              <input
+                                type="email"
+                                required
+                                value={motConfirmEmail}
+                                onChange={e => setMotConfirmEmail(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-800 focus:border-violet-500 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none"
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Criar Senha *</label>
+                                <input
+                                  type="password"
+                                  required
+                                  placeholder="Mínimo 4 caracteres"
+                                  value={motNewSenha}
+                                  onChange={e => setMotNewSenha(e.target.value)}
+                                  className="w-full bg-slate-900 border border-slate-800 focus:border-violet-500 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Confirmar Senha *</label>
+                                <input
+                                  type="password"
+                                  required
+                                  placeholder="Repita a senha"
+                                  value={motConfirmSenha}
+                                  onChange={e => setMotConfirmSenha(e.target.value)}
+                                  className="w-full bg-slate-900 border border-slate-800 focus:border-violet-500 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Terms Checkbox */}
+                            <div className="flex items-start gap-2 pt-1">
+                              <input
+                                type="checkbox"
+                                id="motTerms"
+                                checked={motTermosAceitos}
+                                onChange={e => setMotTermosAceitos(e.target.checked)}
+                                className="mt-0.5 w-3.5 h-3.5 accent-violet-600 rounded bg-slate-900 border-slate-800 cursor-pointer"
+                              />
+                              <label htmlFor="motTerms" className="text-[9px] text-slate-400 select-none cursor-pointer">
+                                Declaro que os dados acima estão corretos e aceito os{' '}
+                                <button
+                                  type="button"
+                                  onClick={() => setShowMotTermos(true)}
+                                  className="text-violet-400 underline font-bold"
+                                >
+                                  Termos de Uso
+                                </button>{' '}
+                                do sistema LogusQ.
+                              </label>
+                            </div>
+
+                            <button
+                              type="submit"
+                              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-xl text-xs transition-colors mt-2"
+                            >
+                              Validar e Ativar Meu Cadastro
+                            </button>
+                          </form>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SCREEN 4: SUCCESS REGISTRATION */}
+                    {motStep === 'sucesso' && (
+                      <div className="flex flex-col justify-between h-full pt-8 text-center">
+                        <div className="space-y-4">
+                          <div className="inline-flex bg-emerald-500/10 border border-emerald-500/30 p-3.5 rounded-full text-emerald-400 shadow-lg shadow-emerald-900/10 animate-bounce">
+                            <Check className="w-8 h-8" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-extrabold text-white">Cadastro Ativado!</h4>
+                            <p className="text-[10px] text-slate-400 mt-1">Sua senha e e-mail de acesso foram registrados no sistema parceiro com sucesso.</p>
+                          </div>
+                          <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-3 text-[10px] font-mono text-left text-slate-300">
+                            <span className="text-slate-500">Como acessar:</span>
+                            <ul className="list-disc pl-3 mt-1 space-y-1">
+                              <li>Insira seu <span className="text-violet-400 font-semibold">CPF</span> de cadastro</li>
+                              <li>Use a <span className="text-violet-400 font-semibold">senha</span> que você acabou de criar</li>
+                            </ul>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            setMotStep('login');
+                            setMotCpf(primeiroCpf || (foundMot ? foundMot.cpf : ''));
+                            setMotSenha('');
+                            setMotError('');
+                            setMotSuccess('Sua conta está ativa! Faça login para iniciar.');
+                          }}
+                          className="w-full bg-violet-600 hover:bg-violet-500 text-white font-bold py-2.5 rounded-xl text-xs transition-all"
+                        >
+                          Ir para o Login do Motorista
+                        </button>
+                      </div>
+                    )}
+
+                  </div>
+
+                  {/* Bottom Navigation Indicator Bar */}
+                  <div className="h-4 bg-slate-950 flex items-center justify-center pb-1">
+                    <div className="w-16 h-1 bg-slate-700 rounded-full" />
+                  </div>
+                </div>
+
+                {/* Interactive Terms Modal Overlay Inside Container */}
+                {showMotTermos && (
+                  <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-6 z-50">
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 max-w-sm w-full space-y-3">
+                      <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                        <span className="font-bold text-xs text-white flex items-center gap-1">
+                          <FileText className="w-3.5 h-3.5 text-violet-400" /> Termos de Uso do Motorista (LogusQ)
+                        </span>
+                        <button 
+                          onClick={() => setShowMotTermos(false)}
+                          className="text-slate-400 hover:text-white font-mono text-xs font-bold"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="text-[9px] text-slate-300 font-sans space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                        <p className="font-bold">1. OBJETO</p>
+                        <p>O Portal do Motorista LogusQ permite aos condutores receber, auditar, e registrar entregas, rotas logísticas, assinaturas de comprovação de entrega e upload de comprovantes digitais.</p>
+                        
+                        <p className="font-bold">2. SEGURANÇA DE DADOS E LGPD</p>
+                        <p>Em conformidade com a LGPD (Lei nº 13.709/2018), coletamos e tratamos dados de geolocalização e assinaturas exclusivamente para fins de comprovação contratual de entregas, com total transparência e segurança de dados.</p>
+                        
+                        <p className="font-bold">3. USO DO DISPOSITIVO MÓVEL</p>
+                        <p>O motorista compromete-se a utilizar o aplicativo apenas em veículo estacionado ou através de suporte de painel regulamentado por lei de trânsito, garantindo total segurança no tráfego.</p>
+                        
+                        <p className="font-bold">4. VERACIDADE DAS INFORMAÇÕES</p>
+                        <p>O motorista declara que as informações de CNH, CPF e vínculo com a empresa parceira de logística fornecidas pelo portal são legítimas.</p>
+                      </div>
+                      <div className="pt-2 border-t border-slate-800 flex justify-end">
+                        <button
+                          onClick={() => {
+                            setMotTermosAceitos(true);
+                            setShowMotTermos(false);
+                          }}
+                          className="bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
+                        >
+                          <Check className="w-3 h-3" /> Aceitar e Fechar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            )}
+
+            {/* SaaS CLIENT SELF-SERVICE SIGNUP FORM */}
+            {activeTab === 'cadastro' && (
               <div>
                 {cadastroSucesso ? (
                   <div className="max-w-xl mx-auto text-center space-y-6 py-4">

@@ -43,6 +43,7 @@ export default function SimulatedMap({
   const [selectedDriverFilter, setSelectedDriverFilter] = useState<string>('all');
   const [selectedVehicleFilter, setSelectedVehicleFilter] = useState<string>('all');
   const [mapStyle, setMapStyle] = useState<'dark' | 'osm' | 'voyager'>('dark');
+  const [showRoutesPanel, setShowRoutesPanel] = useState(false);
 
   // Distinct bright colors for routes to maximize contrast on both dark and light tiles
   const routeColors = [
@@ -146,9 +147,11 @@ export default function SimulatedMap({
 
     let tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'; // dark high-contrast (Default)
     if (mapStyle === 'osm') {
-      tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'; // standard colorful street
+      // Use CartoDB Voyager as the "Rua" style - it is a detailed colorful street map and doesn't suffer from OSM's strict CDN blocks
+      tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'; 
     } else if (mapStyle === 'voyager') {
-      tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'; // voyager light
+      // Use CartoDB Positron as the "Claro" style
+      tileUrl = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'; 
     }
 
     tileLayerRef.current = L.tileLayer(tileUrl, {
@@ -486,6 +489,23 @@ export default function SimulatedMap({
             </div>
           )}
 
+          {/* Resumo de Rotas Toggle */}
+          <div className="flex items-center gap-1.5 border-l border-slate-800 pl-2.5">
+            <button
+              type="button"
+              onClick={() => setShowRoutesPanel(prev => !prev)}
+              className={`px-2.5 py-1 rounded text-[10px] font-mono font-bold transition-all flex items-center gap-1 border cursor-pointer ${
+                showRoutesPanel 
+                  ? 'bg-emerald-600 border-emerald-500 text-white shadow' 
+                  : 'bg-slate-950 border-slate-850 text-slate-400 hover:text-white hover:border-slate-700'
+              }`}
+              title="Mostrar ou ocultar o painel flutuante de resumo das rotas"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              {showRoutesPanel ? 'Ocultar Rotas' : 'Visualizar Rotas'}
+            </button>
+          </div>
+
           {/* Contrast / Map Style Toggle */}
           <div className="flex items-center gap-1.5 border-l border-slate-800 pl-2.5">
             <span className="text-[10px] font-mono text-slate-400 uppercase">Contraste:</span>
@@ -493,7 +513,7 @@ export default function SimulatedMap({
               <button
                 type="button"
                 onClick={() => setMapStyle('dark')}
-                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition-all ${mapStyle === 'dark' ? 'bg-violet-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition-all cursor-pointer ${mapStyle === 'dark' ? 'bg-violet-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
                 title="Alta visibilidade escura"
               >
                 Escuro
@@ -501,7 +521,7 @@ export default function SimulatedMap({
               <button
                 type="button"
                 onClick={() => setMapStyle('osm')}
-                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition-all ${mapStyle === 'osm' ? 'bg-violet-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition-all cursor-pointer ${mapStyle === 'osm' ? 'bg-violet-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
                 title="Rico em detalhes e contrastes"
               >
                 Rua
@@ -509,7 +529,7 @@ export default function SimulatedMap({
               <button
                 type="button"
                 onClick={() => setMapStyle('voyager')}
-                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition-all ${mapStyle === 'voyager' ? 'bg-violet-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition-all cursor-pointer ${mapStyle === 'voyager' ? 'bg-violet-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
                 title="Original claro"
               >
                 Claro
@@ -525,73 +545,75 @@ export default function SimulatedMap({
         <div ref={mapContainerRef} className="w-full h-full z-0 relative" style={{ background: '#020617' }} />
 
         {/* Top Left Status Overlay */}
-        <div className="absolute top-4 left-4 z-[1000] bg-slate-900/95 border border-slate-800 backdrop-blur-md p-3.5 rounded-xl text-[11px] text-slate-300 shadow-2xl flex flex-col gap-2 max-w-[290px] max-h-[85%] overflow-y-auto pointer-events-auto font-sans">
-          <div className="flex items-center justify-between gap-2 border-b border-slate-850 pb-2">
-            <div className="flex items-center gap-1.5 text-violet-400 font-bold font-mono">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              PAINEL DE ROTAS
-            </div>
-          </div>
-          <div className="space-y-0.5 text-slate-400 font-sans">
-            <div><b>CD Central:</b> <span className="text-white font-semibold">{DEFAULT_BASE.cidade} - {DEFAULT_BASE.estado}</span></div>
-            <div><b>Pontos Totais:</b> <span className="text-white font-bold">{entregas.length}</span></div>
-          </div>
-
-          {/* List of active routes mapped */}
-          {sidebarRoutes.length > 0 && (
-            <div className="space-y-2 pt-2 border-t border-slate-800">
-              <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">
-                <span>📊 Resumo de Roteamento</span>
-                <span>{sidebarRoutes.length} Rota(s)</span>
+        {showRoutesPanel && (
+          <div className="absolute top-4 left-4 z-[1000] bg-slate-900/95 border border-slate-800 backdrop-blur-md p-3.5 rounded-xl text-[11px] text-slate-300 shadow-2xl flex flex-col gap-2 max-w-[290px] max-h-[85%] overflow-y-auto pointer-events-auto font-sans">
+            <div className="flex items-center justify-between gap-2 border-b border-slate-850 pb-2">
+              <div className="flex items-center gap-1.5 text-violet-400 font-bold font-mono">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                PAINEL DE ROTAS
               </div>
-              
-              <div className="space-y-1.5">
-                {sidebarRoutes.map((r) => {
-                  const pathLen = r.pathPoints.length;
-                  const durationEst = Math.round(r.accumulatedKm * 1.8 * 1.25) + (pathLen * 10); // 1.8 min/km + 10m stop
-                  
-                  return (
-                    <details key={r.routeId} className="group bg-slate-950/80 border border-slate-850 rounded-lg overflow-hidden transition-all">
-                      <summary className="p-2 flex items-center justify-between cursor-pointer hover:bg-slate-900/50 list-none outline-none select-none">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full inline-block border border-white" style={{ backgroundColor: r.color }} />
-                          <div>
-                            <div className="font-extrabold text-white text-[11px]">{r.routeId}</div>
-                            <div className="text-[9px] text-slate-400 font-mono">{r.driverName} • {r.vehicleName.split(' ')[0]}</div>
+            </div>
+            <div className="space-y-0.5 text-slate-400 font-sans">
+              <div><b>CD Central:</b> <span className="text-white font-semibold">{DEFAULT_BASE.cidade} - {DEFAULT_BASE.estado}</span></div>
+              <div><b>Pontos Totais:</b> <span className="text-white font-bold">{entregas.length}</span></div>
+            </div>
+
+            {/* List of active routes mapped */}
+            {sidebarRoutes.length > 0 && (
+              <div className="space-y-2 pt-2 border-t border-slate-800">
+                <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">
+                  <span>📊 Resumo de Roteamento</span>
+                  <span>{sidebarRoutes.length} Rota(s)</span>
+                </div>
+                
+                <div className="space-y-1.5">
+                  {sidebarRoutes.map((r) => {
+                    const pathLen = r.pathPoints.length;
+                    const durationEst = Math.round(r.accumulatedKm * 1.8 * 1.25) + (pathLen * 10); // 1.8 min/km + 10m stop
+                    
+                    return (
+                      <details key={r.routeId} className="group bg-slate-950/80 border border-slate-850 rounded-lg overflow-hidden transition-all">
+                        <summary className="p-2 flex items-center justify-between cursor-pointer hover:bg-slate-900/50 list-none outline-none select-none">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full inline-block border border-white" style={{ backgroundColor: r.color }} />
+                            <div>
+                              <div className="font-extrabold text-white text-[11px]">{r.routeId}</div>
+                              <div className="text-[9px] text-slate-400 font-mono">{r.driverName} • {r.vehicleName.split(' ')[0]}</div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-[10px] text-emerald-400 font-bold font-mono">{r.accumulatedKm.toFixed(1)} km</div>
+                            <div className="text-[8px] text-slate-500 font-mono uppercase font-black">{r.completedCount}/{pathLen} OK</div>
+                          </div>
+                        </summary>
+
+                        <div className="p-2 border-t border-slate-900 bg-slate-950 text-[10px] space-y-1.5">
+                          <div className="flex justify-between text-slate-400 border-b border-slate-900 pb-1 mb-1 font-mono">
+                            <span>⏱️ Duração Est. Trânsito:</span>
+                            <span className="text-white font-bold">{durationEst} min</span>
+                          </div>
+                          
+                          <div className="text-[9px] font-mono text-slate-400 space-y-1">
+                            <div className="font-semibold text-slate-500 uppercase tracking-wider text-[8px] mb-1">Sequência & Trechos</div>
+                            {r.segments.map((seg, sIdx) => (
+                              <div key={sIdx} className="flex justify-between items-start gap-2 border-l border-slate-800 pl-1.5 ml-1">
+                                <div>
+                                  <span className="text-white font-bold">{seg.from} ➔ {seg.to}</span>
+                                  <div className="text-[8px] text-slate-500 truncate max-w-[130px]">{seg.toName}</div>
+                                </div>
+                                <span className="text-slate-300 font-bold whitespace-nowrap">{seg.km.toFixed(1)} km ({seg.time}m)</span>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                        <div className="text-right">
-                          <div className="text-[10px] text-emerald-400 font-bold font-mono">{r.accumulatedKm.toFixed(1)} km</div>
-                          <div className="text-[8px] text-slate-500 font-mono uppercase font-black">{r.completedCount}/{pathLen} OK</div>
-                        </div>
-                      </summary>
-
-                      <div className="p-2 border-t border-slate-900 bg-slate-950 text-[10px] space-y-1.5">
-                        <div className="flex justify-between text-slate-400 border-b border-slate-900 pb-1 mb-1 font-mono">
-                          <span>⏱️ Duração Est. Trânsito:</span>
-                          <span className="text-white font-bold">{durationEst} min</span>
-                        </div>
-                        
-                        <div className="text-[9px] font-mono text-slate-400 space-y-1">
-                          <div className="font-semibold text-slate-500 uppercase tracking-wider text-[8px] mb-1">Sequência & Trechos</div>
-                          {r.segments.map((seg, sIdx) => (
-                            <div key={sIdx} className="flex justify-between items-start gap-2 border-l border-slate-800 pl-1.5 ml-1">
-                              <div>
-                                <span className="text-white font-bold">{seg.from} ➔ {seg.to}</span>
-                                <div className="text-[8px] text-slate-500 truncate max-w-[130px]">{seg.toName}</div>
-                              </div>
-                              <span className="text-slate-300 font-bold whitespace-nowrap">{seg.km.toFixed(1)} km ({seg.time}m)</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </details>
-                  );
-                })}
+                      </details>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         {/* Legends Overlay */}
         <div className="absolute bottom-4 right-4 z-[1000] bg-slate-900/90 border border-slate-800/80 backdrop-blur px-3 py-2 rounded-lg text-[9px] font-mono text-slate-400 flex flex-col gap-1 shadow-xl max-w-[160px] pointer-events-none">
