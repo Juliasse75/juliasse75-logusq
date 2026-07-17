@@ -220,16 +220,38 @@ export default function ImportadorUniversal({
 
     } catch (err: any) {
       console.error(err);
-      if (err.message === 'API_KEY_MISSING') {
-        // Offer local heuristic parse option directly to user
-        setErrorMessage('Sua chave do Gemini (GEMINI_API_KEY) não está configurada nos Secrets da plataforma. Mas não se preocupe! Podemos usar o processamento local para ler arquivos estruturados TXT ou CSV.');
+      let friendlyMessage = err.message || 'Erro inesperado ao analisar o documento.';
+      
+      const is503 = friendlyMessage.includes('503') || friendlyMessage.includes('UNAVAILABLE') || friendlyMessage.includes('high demand') || friendlyMessage.includes('experiencing high demand');
+      const isRateLimit = friendlyMessage.includes('429') || friendlyMessage.includes('RESOURCE_EXHAUSTED') || friendlyMessage.includes('quota');
+      
+      if (err.message === 'API_KEY_MISSING' || friendlyMessage.includes('API_KEY_MISSING')) {
+        friendlyMessage = 'Sua chave do Gemini (GEMINI_API_KEY) não está configurada nos Secrets da plataforma. Mas não se preocupe! Podemos usar o processamento local para ler arquivos estruturados TXT ou CSV.';
         // Trigger local fallback if it was a plain CSV/TXT file
         if (activeInputMode === 'file' && file && (file.name.endsWith('.csv') || file.name.endsWith('.txt') || file.name.endsWith('.tsv'))) {
           runLocalHeuristics();
         }
-      } else {
-        setErrorMessage(err.message || 'Erro inesperado ao analisar o documento.');
+      } else if (is503) {
+        friendlyMessage = 'O serviço do Gemini está temporariamente com alta demanda ou instável (Erro 503). Por favor, aguarde alguns instantes e clique em "Analisar com IA" novamente. Você também pode utilizar o nosso Analisador Local Offline (Heurística CSV) clicando no botão abaixo para processar seu arquivo instantaneamente sem internet!';
+      } else if (isRateLimit) {
+        friendlyMessage = 'O limite de requisições da IA do Gemini foi atingido temporariamente (Erro 429). Por favor, aguarde um momento e tente novamente, ou utilize o nosso Analisador Local Offline (Heurística CSV) clicando no botão abaixo para processar seu arquivo offline imediatamente.';
+      } else if (friendlyMessage.startsWith('{')) {
+        try {
+          const parsedErr = JSON.parse(friendlyMessage);
+          if (parsedErr.error && parsedErr.error.message) {
+            const innerMsg = parsedErr.error.message;
+            if (innerMsg.includes('high demand') || innerMsg.includes('temporary') || innerMsg.includes('UNAVAILABLE') || innerMsg.includes('503')) {
+              friendlyMessage = 'O serviço do Gemini está temporariamente com alta demanda ou instável (Erro 503). Por favor, aguarde alguns instantes e clique em "Analisar com IA" novamente. Você também pode utilizar o nosso Analisador Local Offline (Heurística CSV) clicando no botão abaixo para processar seu arquivo instantaneamente sem internet!';
+            } else {
+              friendlyMessage = `Erro retornado pela IA: ${innerMsg}`;
+            }
+          }
+        } catch (e) {
+          // ignore parsing error, keep raw
+        }
       }
+      
+      setErrorMessage(friendlyMessage);
     } finally {
       setIsProcessing(false);
     }
@@ -760,14 +782,12 @@ export default function ImportadorUniversal({
                     <div className="text-xs space-y-1">
                       <p className="font-bold">Aviso sobre o processamento</p>
                       <p className="leading-relaxed text-red-300">{errorMessage}</p>
-                      {errorMessage.includes('GEMINI_API_KEY') && (
-                        <button
-                          onClick={runLocalHeuristics}
-                          className="mt-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 font-bold px-3 py-1 rounded border border-red-500/30 transition-colors text-[10px] uppercase font-mono tracking-wider"
-                        >
-                          Usar Analisador Local Offline (Sem IA)
-                        </button>
-                      )}
+                      <button
+                        onClick={runLocalHeuristics}
+                        className="mt-2 bg-violet-600/20 hover:bg-violet-600/30 text-violet-300 font-bold px-3 py-1 rounded border border-violet-500/30 transition-colors text-[10px] uppercase font-mono tracking-wider flex items-center gap-1.5"
+                      >
+                        <Table className="w-3.5 h-3.5" /> Usar Analisador Local Offline (Sem IA)
+                      </button>
                     </div>
                   </div>
                 )}

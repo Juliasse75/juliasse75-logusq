@@ -102,13 +102,43 @@ Retorne estritamente um array JSON de objetos válidos, sem formatação markdow
     }
 
     console.log(`Chamando Gemini 3.5 Flash para analisar importação do tipo: ${type}...`);
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
-      contents: contents,
-      config: {
-        responseMimeType: 'application/json'
+    
+    // Implementation of retry logic with exponential backoff for 503/429/UNAVAILABLE/RESOURCE_EXHAUSTED errors
+    let response;
+    let retries = 3;
+    let delay = 1000;
+    
+    for (let i = 0; i < retries; i++) {
+      try {
+        response = await ai.models.generateContent({
+          model: 'gemini-3.5-flash',
+          contents: contents,
+          config: {
+            responseMimeType: 'application/json'
+          }
+        });
+        break; // Success! Exit retry loop.
+      } catch (error) {
+        const errorStr = (error.message || '').toString();
+        const isTransient = 
+          errorStr.includes('503') || 
+          errorStr.includes('429') || 
+          errorStr.includes('UNAVAILABLE') || 
+          errorStr.includes('RESOURCE_EXHAUSTED') ||
+          error.status === 503 || 
+          error.status === 429;
+          
+        if (isTransient && i < retries - 1) {
+          console.warn(`Gemini API retornou erro temporário. Tentando novamente em ${delay}ms... (Tentativa ${i + 1} de ${retries})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay *= 2; // Exponential backoff
+          continue;
+        }
+        
+        // If we ran out of retries, or it is a non-transient error, throw it
+        throw error;
       }
-    });
+    }
 
     const responseText = response.text || '';
     console.log(`Resposta recebida do Gemini.`);
