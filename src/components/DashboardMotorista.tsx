@@ -71,6 +71,25 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
   const [selectedRouteId, setSelectedRouteId] = useState<string>('');
   const [selectedClientEmail, setSelectedClientEmail] = useState<string>('');
 
+  const resolvedCompany = (() => {
+    const emailToLookUp = activeDriverRoutes[0]?.clientEmail || (driverProfile as any).clienteEmail || driverClientEmail;
+    if (emailToLookUp) {
+      const cl = dbRepo.getCliente(emailToLookUp);
+      if (cl) return cl.empresa;
+    }
+    const allClients = dbRepo.getClientes();
+    for (const cl of allClients) {
+      const condutoresOfCl = dbRepo.getCondutores(cl.email);
+      if (condutoresOfCl.some(cond => cond.email === userEmail)) {
+        return cl.empresa;
+      }
+    }
+    if (allClients.length > 0) {
+      return allClients[0].empresa;
+    }
+    return 'LOGUS Roteirização';
+  })();
+
   // Proof capturing state
   const [obsText, setObsText] = useState('');
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
@@ -546,7 +565,7 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
               </span>
               <h2 className="text-base font-extrabold text-white mt-1.5">{driverProfile.nome}</h2>
               <div className="flex flex-col text-xs text-slate-400 space-y-0.5 mt-1">
-                <span className="font-semibold text-emerald-400 flex items-center gap-1">🏢 {dbRepo.getCliente(activeDriverRoutes[0]?.clientEmail || driverClientEmail)?.empresa || 'LOGUS Roteirização'}</span>
+                <span className="font-semibold text-emerald-400 flex items-center gap-1">🏢 {resolvedCompany}</span>
                 <span>{driverProfile.email}</span>
               </div>
             </div>

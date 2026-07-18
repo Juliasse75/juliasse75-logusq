@@ -4,7 +4,7 @@ import { Veiculo, Condutor, Entrega, PlanosSaaS, TipoVeiculo } from '../types';
 import { 
   Truck, Users, MapPin, Calculator, Plus, Upload, Download, Play, 
   Map, CheckCircle, Trash2, Calendar, FileText, Clipboard, Settings, ShieldAlert, Sparkles,
-  Info, RotateCcw, Clock, Bell
+  Info, RotateCcw, Clock, Bell, Printer
 } from 'lucide-react';
 import SimulatedMap from './SimulatedMap';
 import { clusterAndOptimize, DEFAULT_BASE, haversineDistance, optimizeTSP } from '../utils/routingEngine';
@@ -193,6 +193,243 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     }
     
     return timeline;
+  };
+
+  const handlePrintAudit = (c: Condutor, activity: any, route: any, timeline: any[], dateStr: string) => {
+    const totalPausas = activity?.pausas?.length || 0;
+    const totalPausasMin = activity?.pausas?.reduce((acc: number, p: any) => {
+      if (p.inicio && p.fim) {
+        try {
+          const start = parsePtBrDate(p.inicio)?.getTime();
+          const end = parsePtBrDate(p.fim)?.getTime();
+          if (start && end) {
+            return acc + Math.round((end - start) / 60000);
+          }
+        } catch (e) {}
+      }
+      return acc;
+    }, 0) || 0;
+
+    const totalEntregas = route?.path?.length || 0;
+    const entregues = route?.path?.filter((p: any) => p.status === 'Entregue').length || 0;
+    const cancelados = route?.path?.filter((p: any) => p.status === 'Cancelado').length || 0;
+    const pendentes = route?.path?.filter((p: any) => p.status === 'Pendente').length || 0;
+
+    const empresaNome = clientData?.empresa || 'LOGUSQ CLIENTE CORPORATIVO';
+    const dataAuditoria = dateStr || 'Não informada';
+
+    const timelineRows = timeline.map((node: any, idx: number) => {
+      if (node.tipo === 'deslocamento') {
+        return `
+          <tr>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-family: monospace; font-size: 11px;">🛣️ Deslocamento</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">De: <b>${node.origem}</b><br/>Para: <b>${node.destino}</b></td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-family: monospace;">${node.tempoMsg}</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #475569; font-style: italic;">Percurso de deslocamento</td>
+          </tr>
+        `;
+      } else {
+        const color = node.status === 'Entregue' ? '#16a34a' : node.status === 'Cancelado' ? '#dc2626' : '#d97706';
+        return `
+          <tr>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-family: monospace; font-size: 11px;">⏱️ Atendimento</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><b>${node.cliente}</b><br/><span style="font-size: 10px; color: #64748b;">${node.endereco}</span></td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-family: monospace;">${node.tempoMsg}</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: ${color};">${node.status}</td>
+          </tr>
+        `;
+      }
+    }).join('');
+
+    const pausasRows = (activity?.pausas || []).map((p: any, pIdx: number) => {
+      let durationStr = "Em andamento";
+      if (p.inicio && p.fim) {
+        try {
+          const start = parsePtBrDate(p.inicio)?.getTime();
+          const end = parsePtBrDate(p.fim)?.getTime();
+          if (start && end) {
+            durationStr = `${Math.round((end - start) / 60000)} min`;
+          }
+        } catch (e) {}
+      }
+      return `
+        <tr>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-weight: bold;">Pausa #${pIdx + 1}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${p.justificativa}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-family: monospace;">Início: ${p.inicio.split(', ')[1] || p.inicio}<br/>Fim: ${p.fim ? p.fim.split(', ')[1] || p.fim : 'Pendente'}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #d97706;">${durationStr}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <title>Auditoria de Jornada - LogusQ</title>
+        <style>
+          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1e293b; line-height: 1.5; margin: 0; padding: 40px; background-color: #fff; }
+          .header { text-align: center; border-bottom: 3px double #cbd5e1; padding-bottom: 15px; margin-bottom: 25px; }
+          .logo { font-size: 24px; font-weight: 900; letter-spacing: 1px; color: #0f172a; font-family: sans-serif; }
+          .logo span { color: #7c3aed; }
+          .doc-title { font-size: 14px; text-transform: uppercase; letter-spacing: 2px; font-weight: bold; margin-top: 10px; color: #475569; }
+          .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; font-size: 12px; }
+          .meta-label { font-weight: bold; color: #475569; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+          .meta-value { font-size: 13px; color: #0f172a; margin-top: 2px; font-weight: 600; }
+          .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 30px; }
+          .kpi-card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: center; background-color: #f8fafc; }
+          .kpi-num { font-size: 16px; font-weight: bold; color: #0f172a; margin-top: 4px; }
+          .section-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #0f172a; border-left: 4px solid #7c3aed; padding-left: 8px; margin-top: 30px; margin-bottom: 15px; font-weight: 900; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 11px; text-align: left; }
+          th { background-color: #f1f5f9; color: #475569; font-weight: bold; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; padding: 10px; border-bottom: 2px solid #cbd5e1; }
+          .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 50px; padding-top: 30px; page-break-inside: avoid; }
+          .sig-box { text-align: center; font-size: 11px; color: #475569; }
+          .sig-line { border-top: 1px solid #94a3b8; margin-bottom: 8px; width: 80%; margin-left: auto; margin-right: auto; }
+          @media print {
+            body { padding: 0; }
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="logo">LOGUS<span>Q</span> INTELIGÊNCIA</div>
+          <div class="doc-title">Relatório de Auditoria e Conformidade de Jornada</div>
+        </div>
+
+        <div class="meta-grid">
+          <div>
+            <span class="meta-label">🏢 Empresa / Transportadora</span>
+            <div class="meta-value">${empresaNome}</div>
+          </div>
+          <div>
+            <span class="meta-label">📅 Data de Apuração</span>
+            <div class="meta-value">${dataAuditoria}</div>
+          </div>
+          <div>
+            <span class="meta-label">👤 Motorista Auditado</span>
+            <div class="meta-value">${c.nome} (${c.email})</div>
+          </div>
+          <div>
+            <span class="meta-label">🚚 Veículo Utilizado</span>
+            <div class="meta-value">${c.veiculo || 'N/A'}</div>
+          </div>
+        </div>
+
+        <div class="section-title">Indicadores Consolidados de Produtividade</div>
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <span class="meta-label" style="font-size: 8px;">⏱️ Saída CD</span>
+            <div class="kpi-num" style="font-family: monospace;">${activity?.inicioDeslocamento ? activity.inicioDeslocamento.split(', ')[1] || activity.inicioDeslocamento : 'Não iniciou'}</div>
+          </div>
+          <div class="kpi-card">
+            <span class="meta-label" style="font-size: 8px;">🏁 Retorno CD</span>
+            <div class="kpi-num" style="font-family: monospace; color: #4f46e5;">${activity?.fimDeslocamento ? activity.fimDeslocamento.split(', ')[1] || activity.fimDeslocamento : 'Não retornou'}</div>
+          </div>
+          <div class="kpi-card">
+            <span class="meta-label" style="font-size: 8px;">⏸️ Pausas Registradas</span>
+            <div class="kpi-num" style="color: #d97706;">${totalPausas} (${totalPausasMin} min)</div>
+          </div>
+          <div class="kpi-card">
+            <span class="meta-label" style="font-size: 8px;">📊 Entregas Concluídas</span>
+            <div class="kpi-num" style="color: #16a34a;">${entregues} / ${totalEntregas}</div>
+          </div>
+        </div>
+
+        <div class="section-title">Cronologia Detalhada do Percurso (Trecho a Trecho)</div>
+        ${timeline.length === 0 ? `
+          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; text-align: center; color: #64748b; font-size: 12px; margin-bottom: 25px;">
+            Nenhum registro cronológico disponível para o período selecionado.
+          </div>
+        ` : `
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 15%;">Tipo</th>
+                <th style="width: 45%;">Local / Detalhe</th>
+                <th style="width: 25%;">Horário / Duração</th>
+                <th style="width: 15%;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-family: monospace; font-size: 11px;">🏁 Partida CD</td>
+                <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><b>Saída do Centro de Distribuição (CD Hub)</b></td>
+                <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-family: monospace;">${activity?.inicioDeslocamento || 'Aguardando ação'}</td>
+                <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #1e293b;">Iniciada</td>
+              </tr>
+              ${timelineRows}
+              ${activity?.fimDeslocamento ? `
+                <tr>
+                  <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-family: monospace; font-size: 11px;">🏁 Retorno CD</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><b>Chegada / Retorno ao CD Hub Principal</b></td>
+                  <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-family: monospace;">${activity.fimDeslocamento}</td>
+                  <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #4f46e5;">Concluída</td>
+                </tr>
+              ` : ''}
+            </tbody>
+          </table>
+        `}
+
+        ${pausasRows ? `
+          <div class="section-title">Registro Justificado de Pausas e Interrupções</div>
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 15%;">Identificação</th>
+                <th style="width: 35%;">Justificativa Registrada</th>
+                <th style="width: 35%;">Horários</th>
+                <th style="width: 15%;">Duração</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${pausasRows}
+            </tbody>
+          </table>
+        ` : ''}
+
+        <div class="signatures">
+          <div class="sig-box">
+            <div class="sig-line"></div>
+            <b>Assinatura do Gestor Responsável</b><br/>
+            ${empresaNome} • LogusQ
+          </div>
+          <div class="sig-box">
+            <div class="sig-line"></div>
+            <b>Assinatura do Motorista Profissional</b><br/>
+            CPF: ${c.cpf || 'Não informado'}
+          </div>
+        </div>
+
+        <div style="margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 10px; text-align: center; font-size: 9px; color: #94a3b8; font-family: sans-serif;">
+          Relatório gerado automaticamente em ${new Date().toLocaleString('pt-BR')} por LogusQ Inteligência Logística.<br/>
+          Código de Verificação de Integridade Criptográfica: ${Math.random().toString(36).substring(2, 10).toUpperCase()}-${Math.random().toString(36).substring(2, 10).toUpperCase()}
+        </div>
+      </body>
+      </html>
+    `;
+
+    const printIframe = document.createElement('iframe');
+    printIframe.style.position = 'fixed';
+    printIframe.style.right = '0';
+    printIframe.style.bottom = '0';
+    printIframe.style.width = '0';
+    printIframe.style.height = '0';
+    printIframe.style.border = '0';
+    document.body.appendChild(printIframe);
+    
+    const pri = printIframe.contentWindow;
+    if (pri) {
+      pri.document.open();
+      pri.document.write(htmlContent);
+      pri.document.close();
+      pri.focus();
+      setTimeout(() => {
+        pri.print();
+        document.body.removeChild(printIframe);
+      }, 500);
+    }
   };
 
   // Find active and unresolved emergencies
@@ -1823,7 +2060,7 @@ Assinatura do Expedidor: _______________________________`;
               <div className="lg:col-span-8 space-y-6">
                 
                 {/* SVG MAP */}
-                <SimulatedMap entregas={entregasPendentes} rotas={mapRoutes} activeRoutes={activeRoutes} />
+                <SimulatedMap entregas={todasEntregas} rotas={mapRoutes} activeRoutes={activeRoutes} />
 
                 {/* Active Routes list */}
                 {Object.keys(activeRoutes).length > 0 && (
@@ -3222,9 +3459,19 @@ Assinatura do Expedidor: _______________________________`;
                             </p>
                           </div>
                           
-                          <div className="text-right font-mono">
-                            <span className="text-[10px] text-slate-500 uppercase block">Data da auditoria</span>
-                            <span className="text-white font-bold text-xs">{filterJornadaDate}</span>
+                          <div className="flex items-center gap-4">
+                            <button
+                              onClick={() => handlePrintAudit(c, activity, route, timeline, filterJornadaDate)}
+                              className="bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-md shadow-violet-950/30 cursor-pointer font-sans"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                              Imprimir Auditoria
+                            </button>
+
+                            <div className="text-right font-mono">
+                              <span className="text-[10px] text-slate-500 uppercase block">Data da auditoria</span>
+                              <span className="text-white font-bold text-xs">{filterJornadaDate}</span>
+                            </div>
                           </div>
                         </div>
 

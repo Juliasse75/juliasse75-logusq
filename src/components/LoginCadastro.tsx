@@ -218,33 +218,59 @@ export default function LoginCadastro({ onLoginSuccess }: LoginCadastroProps) {
     const dataAtual = new Date().toLocaleDateString('pt-BR');
     return `CONTRATO DE ADESÃO DE SERVIÇOS SAAS - LOGUSQ LOGÍSTICA
 
-CONTRATANTE: ${dados.empresa || '[EMPRESA CONTRATANTE]'}
+CONTRATANTE:
+Razão Social / Nome da Empresa: ${dados.empresa || '[EMPRESA CONTRATANTE]'}
 CNPJ: ${dados.cnpj || '[CNPJ]'}
 REPRESENTANTE LEGAL: ${dados.respNome || '[REPRESENTANTE]'}
 E-MAIL DE ACESSO: ${dados.email || '[EMAIL]'}
 
-CONTRATADA: LOGUSQ LOGÍSTICA INTELIGENTE LTDA.
-CNPJ: 45.123.456/0001-89
+CONTRATADA:
+LOGUSQ LOGÍSTICA INTELIGENTE LTDA.
+CNPJ: 45.123.456/0001-89 (Aguardando CNPJ definitivo)
 ENDEREÇO: Avenida do Contorno, 6000, Savassi, Belo Horizonte/MG
 
-CLÁUSULA 1ª - DO OBJETO:
-O presente instrumento tem por objeto a licença de uso do software LogusQ, em modalidade SaaS, para otimização de frotas e roteirização inteligente.
+Pelo presente instrumento particular, as partes acima qualificadas celebram o presente Contrato de Licenciamento de Uso de Software em modalidade SaaS, que se regerá pelas seguintes cláusulas e condições:
 
-CLÁUSULA 2ª - DO PLANO E VALORES:
-A CONTRATANTE adere ao Plano: ${dados.plano || 'Start'}
-Valor Mensal: R$ ${(dados.valor || 350).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-Limite de Veículos Cadastrados: ${PLANOS_PADRAO[dados.plano as keyof PlanosSaaS]?.max_veiculos || 15} veículos.
+CLÁUSULA 1ª - DO OBJETO
+1.1. O presente instrumento tem por objeto a licença de uso, em caráter não exclusivo, intransferível e revogável, do software LogusQ, em modalidade SaaS (Software as a Service), desenvolvido para gestão logística, otimização de frotas e roteirização inteligente.
+1.2. O software é fornecido "no estado em que se encontra" (as is). A CONTRATADA reserva-se o direito de realizar atualizações, adições ou remoções de funcionalidades a seu exclusivo critério, visando a melhoria contínua e a segurança da plataforma.
 
-CLÁUSULA 3ª - DA VIGÊNCIA E RESCISÃO:
-O contrato tem prazo de 30 dias com renovação automática mensal mediante pagamento da mensalidade correspondente.
+CLÁUSULA 2ª - DOS PLANOS, VALORES E FATURAMENTO
+2.1. A CONTRATANTE adere expressamente ao plano comercial abaixo descrito, de acordo com as especificações geradas pelo sistema:
+• Plano Contratado: ${dados.plano || 'Start'}
+• Valor Mensal: R$ ${(dados.valor || 350).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+• Limite de Veículos Cadastrados: ${PLANOS_PADRAO[dados.plano as keyof PlanosSaaS]?.max_veiculos || 15} veículos
+2.2. Em caso de atraso no pagamento da mensalidade superior a 05 (cinco) dias, o acesso à plataforma será suspenso automaticamente, incidindo sobre o valor devido multa moratória de 2% (dois por cento) e juros de 1% (um por cento) ao mês.
+
+CLÁUSULA 3ª - DA VIGÊNCIA E CANCELAMENTO
+3.1. Este contrato entra em vigor na data de seu aceite e possui prazo de vigência de 30 (trinta) dias, com renovação automática mensal, mediante o pagamento da respectiva fatura ou mensalidade.
+3.2. O cancelamento pode ser solicitado pela CONTRATANTE a qualquer momento através do painel do sistema ou via suporte, com antecedência mínima de 15 (quinze) dias do próximo ciclo de faturamento, não havendo devolução de valores proporcionais referentes ao ciclo vigente em andamento.
+
+CLÁUSULA 4ª - DO NÍVEL DE SERVIÇO (SLA) E SUPORTE
+4.1. A CONTRATADA envidará os melhores esforços técnicos e comerciais para manter a plataforma disponível 99% (noventa e nove por cento) do tempo durante o mês.
+4.2. A CONTRATADA não se responsabiliza por indisponibilidades decorrentes de manutenções emergenciais ou programadas, falhas em provedores de infraestrutura em nuvem (hospedagem) terceirizados, instabilidades na rede de internet da CONTRATANTE ou motivos de força maior.
+
+CLÁUSULA 5ª - DA PRIVACIDADE E PROTEÇÃO DE DADOS (LGPD)
+5.1. Para os fins da Lei Geral de Proteção de Dados (Lei nº 13.709/2018 - LGPD), a CONTRATANTE atua exclusivamente como "Controladora" dos dados pessoais inseridos na plataforma (tais como nomes de motoristas, documentos, geolocalização e rotas), cabendo-lhe a responsabilidade integral de obter os consentimentos ou estabelecer as bases legais para o tratamento junto aos seus colaboradores.
+5.2. A CONTRATADA atua estritamente como "Operadora", comprometendo-se a processar os dados apenas para viabilizar as funcionalidades do sistema LogusQ, adotando as medidas de segurança e criptografia adequadas.
+
+CLÁUSULA 6ª - PROPRIEDADE INTELECTUAL
+6.1. Todos os direitos de propriedade intelectual e industrial sobre o software LogusQ, incluindo código-fonte, bancos de dados, algoritmos de roteirização, interface visual, documentação e marca, pertencem exclusivamente à CONTRATADA.
+6.2. É terminantemente proibido à CONTRATANTE copiar, modificar, distribuir, realizar engenharia reversa ou sublicenciar o software para terceiros sem prévia e expressa autorização por escrito.
+
+CLÁUSULA 7ª - LIMITAÇÃO DE RESPONSABILIDADE
+7.1. A responsabilidade máxima e total da CONTRATADA, em caso de falha sistêmica comprovada, indisponibilidade ou perda de dados, fica estritamente limitada ao valor equivalente à última mensalidade paga pela CONTRATANTE no mês da ocorrência.
+7.2. A CONTRATADA não responderá, em nenhuma hipótese, por lucros cessantes, perdas de negócios, atrasos logísticos, danos a cargas, multas de trânsito ou quaisquer danos indiretos e incidentais sofridos pela CONTRATANTE.
+
+CLÁUSULA 8ª - DISPOSIÇÕES GERAIS E FORO
+8.1. Fica eleito o foro da Comarca de Belo Horizonte/MG para dirimir quaisquer dúvidas ou litígios oriundos da interpretação ou execução deste contrato, com renúncia expressa a qualquer outro, por mais privilegiado que seja.
 
 Belo Horizonte/MG, ${dataAtual}.
 
-___________________________________________________
 LOGUSQ LOGÍSTICA INTELIGENTE LTDA
 
-___________________________________________________
-REPRESENTANTE DA CONTRATANTE`;
+REPRESENTANTE DA CONTRATANTE
+(Assinatura Digital / Aceite Eletrônico)`;
   };
 
   const downloadContratoTxt = (dados: any) => {
@@ -900,7 +926,7 @@ REPRESENTANTE DA CONTRATANTE`;
             Desenvolvido em conformidade com as diretrizes de alta resiliência matemática e integridade humana.
           </p>
           <p className="font-mono text-[10px] text-slate-600">
-            &copy; {new Date().getFullYear()} LogusQ S.A. Todos os direitos reservados. CNPJ 45.123.456/0001-89
+            &copy; {new Date().getFullYear()} LogusQ S.A. Todos os direitos reservados.
           </p>
         </footer>
       </div>

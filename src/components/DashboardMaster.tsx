@@ -3161,7 +3161,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                   <div>
                     <p>Por este instrumento particular de contrato, de um lado:</p>
                     <p className="mt-2 pl-4 border-l-2 border-slate-300">
-                      <strong>LICENCIANTE:</strong> LOGUSQ TECNOLOGIA LTDA, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 12.345.678/0001-99, com sede na Avenida do Contorno, nº 4500, Savassi, Belo Horizonte - MG, neste ato representada na forma de seus atos constitutivos; e
+                      <strong>LICENCIANTE:</strong> LOGUSQ TECNOLOGIA LTDA, pessoa jurídica de direito privado, com CNPJ (Aguardando CNPJ definitivo), com sede na Avenida do Contorno, nº 4500, Savassi, Belo Horizonte - MG, neste ato representada na forma de seus atos constitutivos; e
                     </p>
                     <p className="mt-2 pl-4 border-l-2 border-slate-300">
                       <strong>LICENCIADA:</strong> {selectedClient.empresa}, inscrita no CNPJ sob o nº {selectedClient.cnpj || 'CONTRATO-GERADO'}, sediada em {selectedClient.endereco}, nº {selectedClient.numero} {selectedClient.complemento && `(${selectedClient.complemento})`}, {selectedClient.bairro}, {selectedClient.cidade}/{selectedClient.estado}, representada neste ato por seu gestor responsável legal, <strong>{selectedClient.respNome}</strong>, portador do CPF nº {selectedClient.respCpf || 'Sob consulta'}.
