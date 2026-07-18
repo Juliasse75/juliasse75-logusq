@@ -1283,9 +1283,9 @@ REPRESENTANTE DA CONTRATANTE
 
                           {/* Pre-filled data cards */}
                           <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-2.5 space-y-1.5 text-[10px]">
-                            <div className="flex justify-between items-center border-b border-slate-800 pb-1">
-                              <span className="text-slate-500">Empresa:</span>
-                              <span className="text-violet-400 font-bold uppercase truncate max-w-[150px]">
+                            <div className="flex justify-between items-start gap-4 border-b border-slate-800 pb-1">
+                              <span className="text-slate-500 shrink-0">Empresa:</span>
+                              <span className="text-violet-400 font-bold uppercase text-right leading-tight">
                                 {(() => {
                                   const clients = dbRepo.getClientes();
                                   const cl = clients.find(c => c.email === (foundMot as any).clienteEmail);
@@ -1293,9 +1293,9 @@ REPRESENTANTE DA CONTRATANTE
                                 })()}
                               </span>
                             </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-slate-500">Nome:</span>
-                              <span className="text-slate-200 font-semibold truncate max-w-[150px]">{foundMot.nome}</span>
+                            <div className="flex justify-between items-start gap-4">
+                              <span className="text-slate-500 shrink-0">Nome:</span>
+                              <span className="text-slate-200 font-semibold text-right leading-tight">{foundMot.nome}</span>
                             </div>
                             <div className="flex justify-between items-center">
                               <span className="text-slate-500">CPF:</span>
@@ -1307,9 +1307,9 @@ REPRESENTANTE DA CONTRATANTE
                             </div>
                             
                             {/* Vehicle assigned */}
-                            <div className="flex justify-between items-center pt-1 border-t border-slate-800/60">
-                              <span className="text-slate-500">Veículo Atribuído:</span>
-                              <span className="text-emerald-400 font-medium truncate max-w-[140px]">
+                            <div className="flex justify-between items-start gap-4 pt-1 border-t border-slate-800/60">
+                              <span className="text-slate-500 shrink-0">Veículo Atribuído:</span>
+                              <span className="text-emerald-400 font-medium text-right leading-tight">
                                 {(() => {
                                   const veh = dbRepo.getVeiculos().find(v => v.idVeiculo === foundMot.veiculo || v.placa === foundMot.placaVeiculo);
                                   return veh ? `${veh.modelo} (${veh.placa})` : (foundMot.veiculo ? `${foundMot.veiculo}` : 'Nenhum veículo vinculado');

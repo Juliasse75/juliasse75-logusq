@@ -4,7 +4,7 @@ import { Veiculo, Condutor, Entrega, PlanosSaaS, TipoVeiculo } from '../types';
 import { 
   Truck, Users, MapPin, Calculator, Plus, Upload, Download, Play, 
   Map, CheckCircle, Trash2, Calendar, FileText, Clipboard, Settings, ShieldAlert, Sparkles,
-  Info, RotateCcw, Clock, Bell, Printer
+  Info, RotateCcw, Clock, Bell, Printer, UserCheck
 } from 'lucide-react';
 import SimulatedMap from './SimulatedMap';
 import { clusterAndOptimize, DEFAULT_BASE, haversineDistance, optimizeTSP } from '../utils/routingEngine';
@@ -50,6 +50,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   const [searchCompNF, setSearchCompNF] = useState('');
   const [filterCompDriver, setFilterCompDriver] = useState('');
   const [filterCompStatus, setFilterCompStatus] = useState('');
+  const [filterCompDate, setFilterCompDate] = useState('');
   const [zoomPhoto, setZoomPhoto] = useState<string | null>(null);
 
   // --- JORNADAS TAB FILTERS ---
@@ -454,12 +455,12 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
 
   // --- TRANSBORDO DE EMERGÊNCIA (CROSS-DOCKING DE SUPORTE) STATE & METODOS ---
   const [activeRescueCalc, setActiveRescueCalc] = useState<{
-    type: 'recolher' | 'redistribuir' | null;
+    type: 'recolher' | 'redistribuir' | 'manual' | null;
     driverEmail: string;
     result: any;
   }>({ type: null, driverEmail: '', result: null });
 
-  const calculateRescueOptions = (driverEmail: string, type: 'recolher' | 'redistribuir') => {
+  const calculateRescueOptions = (driverEmail: string, type: 'recolher' | 'redistribuir' | 'manual') => {
     const brokenRouteEntry = Object.entries(activeRoutes).find(([rId, r]: [string, any]) => r.driverEmail === driverEmail);
     if (!brokenRouteEntry) {
       alert("Nenhuma rota ativa encontrada para o motorista em pane.");
@@ -479,12 +480,12 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
 
     const otherRoutes = Object.entries(activeRoutes).filter(([rId, r]: [string, any]) => r.driverEmail !== driverEmail);
 
-    if (otherRoutes.length === 0) {
-      alert("Não há outros veículos em operação no momento para apoiar no resgate.");
-      return;
-    }
-
     if (type === 'recolher') {
+      if (otherRoutes.length === 0) {
+        alert("Não há outros veículos em operação no momento para apoiar no resgate.");
+        return;
+      }
+
       const options = otherRoutes.map(([rId, r]: [string, any]) => {
         const v = frota.find(item => `${item.modelo} (${item.placa})` === r.vehicle);
         const capacity = v?.capacidadeKg || 1200;
@@ -526,13 +527,25 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
           options
         }
       });
-    } else {
+    } else if (type === 'redistribuir') {
+      if (otherRoutes.length === 0) {
+        alert("Não há outros veículos em operação no momento para apoiar no resgate.");
+        return;
+      }
+
       const assignments: any[] = [];
       const vehiclePendingWeights: Record<string, number> = {};
+      const virtualPositions: Record<string, { lat: number, lng: number }> = {};
 
       otherRoutes.forEach(([rId, r]: [string, any]) => {
         const currentWeight = (r.path || []).filter((p: any) => p.status === 'Pendente').reduce((sum: number, p: any) => sum + (p.pesoMercadoriaKg || 0), 0);
         vehiclePendingWeights[rId] = currentWeight;
+
+        const lastCompleted = (r.path || []).filter((p: any) => p.status === 'Entregue');
+        virtualPositions[rId] = {
+          lat: lastCompleted.length > 0 ? lastCompleted[lastCompleted.length - 1].latitude : DEFAULT_BASE.latitude,
+          lng: lastCompleted.length > 0 ? lastCompleted[lastCompleted.length - 1].longitude : DEFAULT_BASE.longitude
+        };
       });
 
       pendingPoints.forEach((point: any) => {
@@ -541,9 +554,8 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
           const capacity = v?.capacidadeKg || 1200;
           const availableCapacity = capacity - vehiclePendingWeights[rId];
 
-          const lastCompleted = (r.path || []).filter((p: any) => p.status === 'Entregue');
-          const vehicleLat = lastCompleted.length > 0 ? lastCompleted[lastCompleted.length - 1].latitude : DEFAULT_BASE.latitude;
-          const vehicleLng = lastCompleted.length > 0 ? lastCompleted[lastCompleted.length - 1].longitude : DEFAULT_BASE.longitude;
+          const vehicleLat = virtualPositions[rId].lat;
+          const vehicleLng = virtualPositions[rId].lng;
 
           const distance = haversineDistance(vehicleLat, vehicleLng, point.latitude, point.longitude);
 
@@ -558,7 +570,9 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
 
         const bestVehicle = scoredVehicles.find(v => v.availableCapacity >= point.pesoMercadoriaKg) || scoredVehicles[0];
 
+        // Update weights and virtual position to simulate sequential travel
         vehiclePendingWeights[bestVehicle.routeId] += point.pesoMercadoriaKg;
+        virtualPositions[bestVehicle.routeId] = { lat: point.latitude, lng: point.longitude };
 
         assignments.push({
           point,
@@ -576,6 +590,72 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
           pendingPoints,
           assignments,
           vehicleWeights: vehiclePendingWeights
+        }
+      });
+    } else if (type === 'manual') {
+      const allDrivers = dbRepo.getCondutores(userEmail);
+      const options = allDrivers.map((driver: any) => {
+        if (driver.email === driverEmail) return null;
+
+        const activeRouteEntry = Object.entries(activeRoutes).find(([rId, r]: [string, any]) => r.driverEmail === driver.email);
+        
+        let hasActiveRoute = false;
+        let routeId = '';
+        let currentWeight = 0;
+        let vehicleLat = DEFAULT_BASE.latitude;
+        let vehicleLng = DEFAULT_BASE.longitude;
+        let routeStatus = 'Disponível (Sem Rota)';
+
+        const v = frota.find(item => item.idVeiculo === driver.veiculo || `${item.modelo} (${item.placa})` === driver.veiculo || item.placa === driver.veiculo);
+        const capacity = v?.capacidadeKg || 1200;
+
+        if (activeRouteEntry) {
+          hasActiveRoute = true;
+          routeId = activeRouteEntry[0];
+          const r = activeRouteEntry[1];
+          const pending = (r.path || []).filter((p: any) => p.status === 'Pendente');
+          currentWeight = pending.reduce((sum: number, p: any) => sum + (p.pesoMercadoriaKg || 0), 0);
+          
+          const lastCompleted = (r.path || []).filter((p: any) => p.status === 'Entregue');
+          if (lastCompleted.length > 0) {
+            vehicleLat = lastCompleted[lastCompleted.length - 1].latitude;
+            vehicleLng = lastCompleted[lastCompleted.length - 1].longitude;
+          }
+          
+          if (pending.length > 0) {
+            routeStatus = 'Em Rota Ativa';
+          } else {
+            routeStatus = 'Rota Concluída';
+          }
+        }
+
+        const availableCapacity = capacity - currentWeight;
+        const distance = haversineDistance(vehicleLat, vehicleLng, breakdownLat, breakdownLng);
+
+        return {
+          routeId,
+          driver: driver.nome,
+          driverEmail: driver.email,
+          vehicle: driver.veiculo ? (v ? `${v.modelo} (${v.placa})` : driver.veiculo) : 'Nenhum veículo',
+          hasActiveRoute,
+          routeStatus,
+          distance: parseFloat(distance.toFixed(1)),
+          capacity,
+          availableCapacity,
+          exceedsCapacity: availableCapacity < totalPendingWeight
+        };
+      }).filter(Boolean);
+
+      setActiveRescueCalc({
+        type: 'manual',
+        driverEmail,
+        result: {
+          brokenRouteId,
+          totalPendingWeight,
+          pendingPoints,
+          breakdownLat,
+          breakdownLng,
+          options
         }
       });
     }
@@ -690,6 +770,98 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     setMapRoutes(newMapRoutes);
 
     alert(`✓ Redistribuição de Cargas Concluída! Os pontos pendentes foram redistribuídos e re-optimizados matematicamente (via algoritmo TSP) nas rotas dos veículos operacionais.`);
+    setActiveRescueCalc({ type: null, driverEmail: '', result: null });
+    triggerRefresh();
+  };
+
+  const handleConfirmRescueManual = (selectedOption: any) => {
+    const { brokenRouteId, pendingPoints, totalPendingWeight, breakdownLat, breakdownLng } = activeRescueCalc.result;
+
+    const updatedRoutes = { ...activeRoutes };
+    const brokenRoute = updatedRoutes[brokenRouteId];
+
+    // 1. Cancel the pending points on the broken route
+    brokenRoute.path = brokenRoute.path.map((p: any) => {
+      if (p.status === 'Pendente') {
+        return { ...p, status: 'Cancelado', observacao: `Carga transbordada manualmente para ${selectedOption.driver} (Apoio Emergencial)` };
+      }
+      return p;
+    });
+
+    const rescueStop: Entrega = {
+      id: `RESCUE-${Date.now()}`,
+      chave: `RSC-${Math.floor(1000 + Math.random() * 9000)}`,
+      cliente: `RESGATE DE EMERGÊNCIA (Carga de ${brokenRoute.driver})`,
+      endereco: `Local da Pane: Próximo à entrega de ${pendingPoints[0]?.cliente || 'Cliente'}`,
+      latitude: breakdownLat,
+      longitude: breakdownLng,
+      pesoMercadoriaKg: totalPendingWeight,
+      tipoOperacao: 'Coleta',
+      status: 'Pendente',
+      pontoReferencia: `Pane do veículo ${brokenRoute.vehicle}`,
+      tempoServicoMin: 15,
+      observacao: `COLETAR: ${pendingPoints.length} cargas (${totalPendingWeight} kg) no local da pane.`,
+      valorMercadoria: pendingPoints.reduce((sum: number, p: any) => sum + (p.valorMercadoria || 0), 0)
+    };
+
+    if (selectedOption.hasActiveRoute) {
+      const rescueRoute = updatedRoutes[selectedOption.routeId];
+      const completedStops = (rescueRoute.path || []).filter((p: any) => p.status === 'Entregue' || p.status === 'Cancelado');
+      const futureStops = (rescueRoute.path || []).filter((p: any) => p.status === 'Pendente');
+
+      const clonedPending = pendingPoints.map((p: any) => ({
+        ...p,
+        id: `${p.id}-RSC`,
+        status: 'Pendente',
+        observacao: `Carga incorporada manualmente de ${brokenRoute.driver} (Pane)`
+      }));
+
+      const startLat = completedStops.length > 0 ? completedStops[completedStops.length - 1].latitude : DEFAULT_BASE.latitude;
+      const startLng = completedStops.length > 0 ? completedStops[completedStops.length - 1].longitude : DEFAULT_BASE.longitude;
+
+      // Put rescue stop at the beginning of the pending points, then other pending ones, then TSP-optimize them
+      const allNewPending = [rescueStop, ...clonedPending, ...futureStops];
+      const optimizedPending = optimizeTSP(startLat, startLng, allNewPending);
+
+      const newPath = [...completedStops, ...optimizedPending];
+      rescueRoute.path = newPath;
+      rescueRoute.km = parseFloat((newPath.length * 3.2 + 6.0).toFixed(1));
+      const totServ = newPath.reduce((acc: number, p: any) => acc + dbRepo.getAverageServiceTime(userEmail, p.cliente), 0);
+      rescueRoute.duration = Math.round(totServ + newPath.length * 10 + 20);
+    } else {
+      // Driver does not have an active route! Create a brand new active route for them!
+      const newRouteId = `ROTA-${Date.now().toString().slice(-6)}`;
+      
+      const clonedPending = pendingPoints.map((p: any) => ({
+        ...p,
+        id: `${p.id}-RSC`,
+        status: 'Pendente',
+        observacao: `Carga incorporada manualmente de ${brokenRoute.driver} (Pane)`
+      }));
+
+      const allNewPending = [rescueStop, ...clonedPending];
+      const optimizedPending = optimizeTSP(DEFAULT_BASE.latitude, DEFAULT_BASE.longitude, allNewPending);
+
+      updatedRoutes[newRouteId] = {
+        driver: selectedOption.driver,
+        driverEmail: selectedOption.driverEmail,
+        vehicle: selectedOption.vehicle,
+        path: optimizedPending,
+        km: parseFloat((optimizedPending.length * 3.2 + 6.0).toFixed(1)),
+        duration: Math.round(optimizedPending.reduce((acc: number, p: any) => acc + dbRepo.getAverageServiceTime(userEmail, p.cliente), 0) + optimizedPending.length * 10 + 20)
+      };
+    }
+
+    setActiveRoutes(updatedRoutes);
+    dbRepo.saveRotasAtivas(userEmail, updatedRoutes);
+
+    const newMapRoutes: Record<number, Entrega[]> = {};
+    Object.values(updatedRoutes).forEach((r: any, idx) => {
+      newMapRoutes[idx] = r.path;
+    });
+    setMapRoutes(newMapRoutes);
+
+    alert(`✓ Sucesso! Carga transferida manualmente para o motorista ${selectedOption.driver} (${selectedOption.vehicle}).`);
     setActiveRescueCalc({ type: null, driverEmail: '', result: null });
     triggerRefresh();
   };
@@ -1576,6 +1748,17 @@ Assinatura do Expedidor: _______________________________`;
                       <Calculator className="w-3.5 h-3.5" />
                       2. Redistribuir Cargas Pendentes
                     </button>
+                    <button
+                      onClick={() => calculateRescueOptions(em.driverEmail, 'manual')}
+                      className={`text-xs font-bold px-4 py-2 rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 ${
+                        activeRescueCalc.type === 'manual' && activeRescueCalc.driverEmail === em.driverEmail
+                          ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-600/25'
+                          : 'bg-red-950/40 hover:bg-blue-600 hover:text-white text-blue-400 border-blue-500/30'
+                      }`}
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      3. Direcionar para Motorista Específico
+                    </button>
                   </div>
                 </div>
 
@@ -1595,7 +1778,7 @@ Assinatura do Expedidor: _______________________________`;
                       </button>
                     </div>
 
-                    {activeRescueCalc.type === 'recolher' ? (
+                    {activeRescueCalc.type === 'recolher' && (
                       <div className="space-y-3">
                         <div className="bg-slate-900 p-3 rounded-lg border border-slate-800 flex flex-wrap gap-x-6 gap-y-2 justify-between font-mono text-[10px] text-slate-400">
                           <div>Carga Total a Resgatar: <span className="text-amber-400 font-bold">{activeRescueCalc.result.totalPendingWeight} kg</span></div>
@@ -1654,7 +1837,9 @@ Assinatura do Expedidor: _______________________________`;
                           </div>
                         </div>
                       </div>
-                    ) : (
+                    )}
+
+                    {activeRescueCalc.type === 'redistribuir' && (
                       <div className="space-y-3">
                         <div className="bg-slate-900 p-3 rounded-lg border border-slate-800 flex flex-wrap gap-x-6 gap-y-2 justify-between font-mono text-[10px] text-slate-400">
                           <div>Quantidade de Cargas: <span className="text-white font-bold">{activeRescueCalc.result.pendingPoints.length}</span></div>
@@ -1689,6 +1874,63 @@ Assinatura do Expedidor: _______________________________`;
                               <Calculator className="w-4 h-4" />
                               Confirmar Redistribuição Otimizada via TSP (Re-roteirizar com IA)
                             </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {activeRescueCalc.type === 'manual' && (
+                      <div className="space-y-3">
+                        <div className="bg-slate-900 p-3 rounded-lg border border-slate-800 flex flex-wrap gap-x-6 gap-y-2 justify-between font-mono text-[10px] text-slate-400">
+                          <div>Carga Total a Transferir: <span className="text-amber-400 font-bold">{activeRescueCalc.result.totalPendingWeight} kg</span></div>
+                          <div>Número de Entregas: <span className="text-white font-bold">{activeRescueCalc.result.pendingPoints.length}</span></div>
+                          <div>Local da Pane: <span className="text-slate-300">Lat {activeRescueCalc.result.breakdownLat.toFixed(4)}, Lng {activeRescueCalc.result.breakdownLng.toFixed(4)}</span></div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Escolher Qualquer Motorista Cadastrado na Empresa</span>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[350px] overflow-y-auto pr-1">
+                            {activeRescueCalc.result.options.map((opt: any) => (
+                              <div
+                                key={opt.driverEmail}
+                                className={`p-3.5 rounded-xl border flex flex-col justify-between space-y-3 transition-all bg-slate-900/60 border-slate-800/80 hover:border-slate-700`}
+                              >
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="font-extrabold text-white text-xs">{opt.driver}</span>
+                                      <span className={`text-[8px] px-1.5 py-0.2 rounded font-black tracking-wider uppercase font-mono ${
+                                        opt.routeStatus === 'Em Rota Ativa'
+                                          ? 'bg-violet-500/20 text-violet-400'
+                                          : opt.routeStatus === 'Rota Concluída'
+                                          ? 'bg-amber-500/20 text-amber-400'
+                                          : 'bg-slate-500/20 text-slate-400'
+                                      }`}>
+                                        {opt.routeStatus}
+                                      </span>
+                                    </div>
+                                    <span className="text-[10px] text-slate-500 block font-mono">{opt.vehicle} {opt.routeId ? `• ${opt.routeId}` : ''}</span>
+                                  </div>
+                                  <div className="text-right">
+                                    <span className="text-slate-500 block text-[9px] font-mono uppercase">Distância da Pane</span>
+                                    <span className="text-xs font-black font-mono text-slate-300">{opt.distance} km</span>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 text-[10px] font-mono border-t border-slate-800/50 pt-2 text-slate-400">
+                                  <div>Capac. Ociosa: <b className={opt.exceedsCapacity ? 'text-red-400' : 'text-emerald-400'}>{opt.availableCapacity} kg</b></div>
+                                  <div>Capac. Total: <b className="text-slate-300">{opt.capacity} kg</b></div>
+                                </div>
+
+                                <button
+                                  onClick={() => handleConfirmRescueManual(opt)}
+                                  className="w-full py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/25"
+                                >
+                                  Designar Resgate para {opt.driver}
+                                </button>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       </div>
@@ -3115,7 +3357,7 @@ Assinatura do Expedidor: _______________________________`;
             {/* Filter controls */}
             <div className="bg-slate-900 border border-slate-800/80 p-4 rounded-xl space-y-4">
               <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Filtros de Pesquisa Rápidos</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
                 
                 {/* Search by client */}
                 <div>
@@ -3170,10 +3412,22 @@ Assinatura do Expedidor: _______________________________`;
                   </select>
                 </div>
 
+                {/* Filter by date */}
+                <div>
+                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Data (Ex: 18/07/2026)</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: 18/07/2026"
+                    value={filterCompDate}
+                    onChange={e => setFilterCompDate(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-violet-500 font-mono placeholder-slate-600"
+                  />
+                </div>
+
               </div>
 
               {/* Clean Filters Button */}
-              {(searchCompClient || searchCompNF || filterCompDriver || filterCompStatus) && (
+              {(searchCompClient || searchCompNF || filterCompDriver || filterCompStatus || filterCompDate) && (
                 <div className="flex justify-end pt-1">
                   <button
                     onClick={() => {
@@ -3181,6 +3435,7 @@ Assinatura do Expedidor: _______________________________`;
                       setSearchCompNF('');
                       setFilterCompDriver('');
                       setFilterCompStatus('');
+                      setFilterCompDate('');
                     }}
                     className="text-[10px] text-violet-400 hover:text-violet-300 font-mono flex items-center gap-1"
                   >
@@ -3203,6 +3458,7 @@ Assinatura do Expedidor: _______________________________`;
                   if (searchCompNF && (!e.notaFiscal || !e.notaFiscal.toLowerCase().includes(searchCompNF.toLowerCase()))) return false;
                   if (filterCompDriver && (!e.motoristaNome || !e.motoristaNome.toLowerCase().includes(filterCompDriver.toLowerCase()))) return false;
                   if (filterCompStatus && e.status !== filterCompStatus) return false;
+                  if (filterCompDate && (!e.dataEntregue || !e.dataEntregue.includes(filterCompDate))) return false;
 
                   return true;
                 });
