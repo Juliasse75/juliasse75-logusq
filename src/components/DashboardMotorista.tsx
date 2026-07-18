@@ -188,12 +188,18 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
     const entregues = allStops.filter(s => s.status === 'Entregue').map(s => `${s.cliente} (${s.tipoOperacao})`);
     const pendentes = allStops.filter(s => s.status === 'Pendente').map(s => `${s.cliente} (${s.tipoOperacao})`);
 
+    const lastCompletedStop = allStops.filter(s => s.status === 'Entregue').slice(-1)[0];
+    const lat = lastCompletedStop ? lastCompletedStop.latitude : -19.93; // Default near BH CD Central
+    const lng = lastCompletedStop ? lastCompletedStop.longitude : -43.93;
+
     const novaEmergencia = {
       horario: new Date().toLocaleString('pt-BR'),
       tipo: emergencyType,
       justificativa: emergencyJustification || 'Sem detalhes adicionais',
       entreguesAteMomento: entregues,
-      faltandoEntregar: pendentes
+      faltandoEntregar: pendentes,
+      latitude: lat,
+      longitude: lng
     };
 
     const updated = {

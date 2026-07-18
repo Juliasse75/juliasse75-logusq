@@ -2302,7 +2302,7 @@ Assinatura do Expedidor: _______________________________`;
               <div className="lg:col-span-8 space-y-6">
                 
                 {/* SVG MAP */}
-                <SimulatedMap entregas={todasEntregas} rotas={mapRoutes} activeRoutes={activeRoutes} />
+                <SimulatedMap entregas={todasEntregas} rotas={mapRoutes} activeRoutes={activeRoutes} emergencias={unresolvedEmergencies} />
 
                 {/* Active Routes list */}
                 {Object.keys(activeRoutes).length > 0 && (

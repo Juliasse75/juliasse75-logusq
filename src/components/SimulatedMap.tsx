@@ -23,6 +23,7 @@ interface SimulatedMapProps {
   veiculosSelecionados?: Veiculo[];
   activeRoutes?: Record<string, { driver: string; driverEmail?: string; vehicle: string; path: Entrega[]; km: number; duration: number }>;
   onSelectEntrega?: (entrega: Entrega) => void;
+  emergencias?: any[];
 }
 
 export default function SimulatedMap({
@@ -30,7 +31,8 @@ export default function SimulatedMap({
   entregas,
   rotas = {},
   veiculosSelecionados = [],
-  activeRoutes = {}
+  activeRoutes = {},
+  emergencias = []
 }: SimulatedMapProps) {
   const [leafletLoaded, setLeafletLoaded] = useState(false);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -348,6 +350,53 @@ export default function SimulatedMap({
       routesRef.current.push(activePath);
     });
 
+    // Draw emergency markers
+    if (emergencias && emergencias.length > 0) {
+      emergencias.forEach((em) => {
+        // If filters are active, check if this driver or vehicle matches
+        const matchDriver = selectedDriverFilter === 'all' || em.driverName === selectedDriverFilter;
+        const matchVehicle = selectedVehicleFilter === 'all' || em.vehicle === selectedVehicleFilter;
+        
+        if (!matchDriver || !matchVehicle) return;
+
+        const lat = em.latitude !== undefined ? em.latitude : (em.lat !== undefined ? em.lat : DEFAULT_BASE.latitude);
+        const lng = em.longitude !== undefined ? em.longitude : (em.lng !== undefined ? em.lng : DEFAULT_BASE.longitude);
+
+        const emIcon = L.divIcon({
+          html: `<div class="relative flex items-center justify-center pointer-events-auto">
+            <span class="animate-ping absolute inline-flex h-8 w-8 rounded-full bg-red-500 opacity-75"></span>
+            <div class="relative w-6 h-6 rounded-full bg-red-600 border-2 border-white flex items-center justify-center shadow-lg hover:scale-125 transition-all">
+              <span class="text-white font-black text-xs animate-pulse">E</span>
+            </div>
+          </div>`,
+          className: '',
+          iconSize: [32, 32],
+          iconAnchor: [16, 16]
+        });
+
+        const emMarker = L.marker([lat, lng], { icon: emIcon })
+          .addTo(map)
+          .bindPopup(`
+            <div style="font-family: sans-serif; font-size: 11px; color: #1e293b; line-height: 1.4; min-width: 200px;">
+              <b style="font-size: 13px; color: #dc2626; display: flex; items-center gap-1; margin-bottom: 4px;">
+                🚨 ALERTA DE EMERGÊNCIA
+              </b>
+              <div style="margin-bottom: 5px; border-bottom: 1px solid #f1f5f9; pb-3px;">
+                <b>Motorista:</b> <span style="color: #0f172a; font-weight: bold;">${em.driverName}</span><br/>
+                <b>Veículo:</b> <span style="color: #059669; font-weight: bold;">${em.vehicle}</span><br/>
+                <b>Horário:</b> <span style="font-mono: true;">${em.horario}</span>
+              </div>
+              <div style="background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 6px; border-radius: 6px; font-size: 10px; margin-bottom: 4px;">
+                <b>Ocorrência:</b> ${em.tipo || 'Pane Mecânica'}<br/>
+                <b>Detalhes:</b> ${em.justificativa || 'Sem detalhes fornecidos.'}
+              </div>
+              <span style="font-size: 8px; color: #ef4444; font-weight: bold; text-transform: uppercase; tracking: 0.05em;">Ação corretiva requerida no painel</span>
+            </div>
+          `);
+        markersRef.current.push(emMarker);
+      });
+    }
+
     // Auto fit map bounds to cover visible filtered points
     const activeCoords = [
       baseCoords,
@@ -364,6 +413,16 @@ export default function SimulatedMap({
           });
         }
         return isMatch ? { lat: e.latitude, lng: e.longitude } : null;
+      }).filter(Boolean) as { lat: number; lng: number }[],
+      ...emergencias.map(em => {
+        const matchDriver = selectedDriverFilter === 'all' || em.driverName === selectedDriverFilter;
+        const matchVehicle = selectedVehicleFilter === 'all' || em.vehicle === selectedVehicleFilter;
+        if (matchDriver && matchVehicle) {
+          const lat = em.latitude !== undefined ? em.latitude : (em.lat !== undefined ? em.lat : DEFAULT_BASE.latitude);
+          const lng = em.longitude !== undefined ? em.longitude : (em.lng !== undefined ? em.lng : DEFAULT_BASE.longitude);
+          return { lat, lng };
+        }
+        return null;
       }).filter(Boolean) as { lat: number; lng: number }[]
     ];
 
@@ -373,7 +432,7 @@ export default function SimulatedMap({
     } else {
       map.setView([baseCoords.lat, baseCoords.lng], 13);
     }
-  }, [leafletLoaded, entregas, displayedRotas, baseCoords, mapStyle, selectedDriverFilter, selectedVehicleFilter, activeRoutes]);
+  }, [leafletLoaded, entregas, displayedRotas, baseCoords, mapStyle, selectedDriverFilter, selectedVehicleFilter, activeRoutes, emergencias]);
 
   if (!leafletLoaded) {
     return (
@@ -640,6 +699,13 @@ export default function SimulatedMap({
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-red-500 border border-white" />
             <span className="text-red-400 font-bold">Insucesso / Falha</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-red-600 border border-white"></span>
+            </span>
+            <span className="text-red-500 font-black">E - Emergência Ativa</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-4 h-0.5 border-t border-dashed border-emerald-400 inline-block" />
