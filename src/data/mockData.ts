@@ -746,10 +746,58 @@ export const dbRepo = {
     }
   },
 
+  saveServiceTimeHistory: (clientEmail: string, destinationName: string, minutes: number) => {
+    try {
+      const key = `logusq_service_history_${clientEmail}`;
+      const saved = localStorage.getItem(key);
+      const history = saved ? JSON.parse(saved) : {};
+      const cleanName = destinationName.trim();
+      if (!history[cleanName]) {
+        history[cleanName] = [];
+      }
+      history[cleanName].push(minutes);
+      if (history[cleanName].length > 10) {
+        history[cleanName].shift();
+      }
+      localStorage.setItem(key, JSON.stringify(history));
+    } catch (e) {
+      console.error("Error saving service time history:", e);
+    }
+  },
+
+  getAverageServiceTime: (clientEmail: string, destinationName: string): number => {
+    try {
+      const key = `logusq_service_history_${clientEmail}`;
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        const history = JSON.parse(saved);
+        const cleanName = destinationName.trim();
+        const records = history[cleanName];
+        if (records && records.length > 0) {
+          const sum = records.reduce((acc: number, val: number) => acc + val, 0);
+          return Math.round(sum / records.length);
+        }
+      }
+    } catch (e) {}
+    return 15;
+  },
+
+  getServiceTimeHistory: (clientEmail: string): Record<string, number[]> => {
+    try {
+      const key = `logusq_service_history_${clientEmail}`;
+      const saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {}
+    return {};
+  },
+
   atualizarEntregaTiming: (clientEmail: string, entregaId: string, params: { tempoInicioAtendimento?: string; tempoFimAtendimento?: string; duracaoAtendimentoMinutos?: number }) => {
     const list = dbRepo.getEntregas(clientEmail);
     const updated = list.map(ent => {
       if (ent.id === entregaId || ent.chave === entregaId) {
+        if (params.duracaoAtendimentoMinutos && ent.cliente) {
+          dbRepo.saveServiceTimeHistory(clientEmail, ent.cliente, params.duracaoAtendimentoMinutos);
+        }
         return {
           ...ent,
           ...params
@@ -768,6 +816,9 @@ export const dbRepo = {
         route.path = route.path.map((ent: any) => {
           if (ent.id === entregaId || ent.chave === entregaId) {
             rotasChanged = true;
+            if (params.duracaoAtendimentoMinutos && ent.cliente) {
+              dbRepo.saveServiceTimeHistory(clientEmail, ent.cliente, params.duracaoAtendimentoMinutos);
+            }
             return {
               ...ent,
               ...params

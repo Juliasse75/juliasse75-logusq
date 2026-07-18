@@ -266,9 +266,17 @@ export default function SimulatedMap({
       // If filter is active and this point does not match, either fade it out or hide it.
       const opacity = isPointMatch ? 1.0 : 0.15;
 
+      // Overrides pointColor with green for delivered and red for cancelled/failed
+      let markerColor = pointColor;
+      if (ent.status === 'Entregue') {
+        markerColor = '#22c55e'; // Green for success
+      } else if (ent.status === 'Cancelado') {
+        markerColor = '#ef4444'; // Red for failure
+      }
+
       const pinIcon = L.divIcon({
         html: `<div class="w-6 h-6 rounded-full border-2 border-white flex items-center justify-center shadow-lg transition-all hover:scale-125 font-sans font-black text-[10px] text-white" 
-          style="background-color: ${pointColor}; opacity: ${opacity};">
+          style="background-color: ${markerColor}; opacity: ${opacity};">
           ${sequenceNum || '•'}
         </div>`,
         className: '',
@@ -283,10 +291,10 @@ export default function SimulatedMap({
             <b style="font-size: 12px; color: #0f172a; display: block; margin-bottom: 3px;">${ent.cliente}</b>
             
             <div style="margin-bottom: 4px;">
-              <span style="background-color: ${pointColor}; color: white; font-weight: bold; font-size: 9px; padding: 1px 5px; border-radius: 3px; text-transform: uppercase;">
+              <span style="background-color: ${markerColor}; color: white; font-weight: bold; font-size: 9px; padding: 1px 5px; border-radius: 3px; text-transform: uppercase;">
                 ${ent.tipoOperacao} ${sequenceNum ? `#${sequenceNum}` : ''}
               </span>
-              <span style="font-weight: bold; margin-left: 5px; color: ${ent.status === 'Pendente' ? '#d97706' : '#059669'}">${ent.status === 'Pendente' ? 'Pendente' : ent.status === 'Cancelado' ? 'Cancelada' : 'Entregue'}</span>
+              <span style="font-weight: bold; margin-left: 5px; color: ${ent.status === 'Pendente' ? '#d97706' : ent.status === 'Cancelado' ? '#ef4444' : '#22c55e'}">${ent.status === 'Pendente' ? 'Pendente' : ent.status === 'Cancelado' ? 'Cancelada' : 'Entregue'}</span>
             </div>
 
             <div style="border-top: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9; padding: 4px 0; margin: 4px 0;">
@@ -616,7 +624,7 @@ export default function SimulatedMap({
         )}
 
         {/* Legends Overlay */}
-        <div className="absolute bottom-4 right-4 z-[1000] bg-slate-900/90 border border-slate-800/80 backdrop-blur px-3 py-2 rounded-lg text-[9px] font-mono text-slate-400 flex flex-col gap-1 shadow-xl max-w-[160px] pointer-events-none">
+        <div className="absolute bottom-4 right-4 z-[1000] bg-slate-900/90 border border-slate-800/80 backdrop-blur px-3 py-2 rounded-lg text-[9px] font-mono text-slate-400 flex flex-col gap-1 shadow-xl max-w-[170px] pointer-events-none">
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-violet-500 border border-white" />
             <span className="text-slate-200">Hub CD Central</span>
@@ -624,6 +632,14 @@ export default function SimulatedMap({
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-slate-500 border border-white" />
             <span className="text-slate-400">Ponto Não Roteado</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 border border-white" />
+            <span className="text-emerald-400 font-bold">Entrega Realizada</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-red-500 border border-white" />
+            <span className="text-red-400 font-bold">Insucesso / Falha</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-4 h-0.5 border-t border-dashed border-emerald-400 inline-block" />

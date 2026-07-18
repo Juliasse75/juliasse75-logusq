@@ -17,7 +17,10 @@ import {
   FileText,
   Clock,
   Sparkles,
-  Info
+  Info,
+  Play,
+  Pause,
+  AlertTriangle
 } from 'lucide-react';
 
 interface DashboardMotoristaProps {
@@ -75,6 +78,114 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
   const [cameraActive, setCameraActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // --- JOURNEY AND ACTIVITY TRACKING STATE ---
+  const [atividade, setAtividade] = useState<{
+    inicioDeslocamento?: string;
+    fimDeslocamento?: string;
+    pausas: Array<{ inicio: string; fim?: string; justificativa: string; justificativaRetorno?: string }>;
+    emergencias: Array<{ horario: string; tipo: string; justificativa: string; entreguesAteMomento: string[]; faltandoEntregar: string[] }>;
+  }>(() => {
+    const saved = localStorage.getItem(`logusq_atividade_${userEmail}`);
+    return saved ? JSON.parse(saved) : { pausas: [], emergencias: [] };
+  });
+
+  const saveAtividadeState = (newState: typeof atividade) => {
+    setAtividade(newState);
+    localStorage.setItem(`logusq_atividade_${userEmail}`, JSON.stringify(newState));
+    triggerRefresh();
+  };
+
+  const [showPauseModal, setShowPauseModal] = useState(false);
+  const [pauseJustification, setPauseJustification] = useState('Pausa para almoço');
+  const [pauseCustomJust, setPauseCustomJust] = useState('');
+
+  const [showResumeModal, setShowResumeModal] = useState(false);
+  const [resumeJustification, setResumeJustification] = useState('Fim do almoço');
+
+  const [showEmergencyModal, setShowEmergencyModal] = useState(false);
+  const [emergencyType, setEmergencyType] = useState('Pneu furado');
+  const [emergencyJustification, setEmergencyJustification] = useState('');
+
+  const handleStartActivity = () => {
+    const updated = {
+      ...atividade,
+      inicioDeslocamento: new Date().toLocaleString('pt-BR'),
+      fimDeslocamento: undefined // reset previous if any
+    };
+    saveAtividadeState(updated);
+    alert('🚀 Deslocamento Iniciado! Horário de saída do CD registrado com sucesso.');
+  };
+
+  const handleEndActivity = () => {
+    if (!atividade.inicioDeslocamento) {
+      alert('É necessário iniciar o deslocamento primeiro!');
+      return;
+    }
+    const updated = {
+      ...atividade,
+      fimDeslocamento: new Date().toLocaleString('pt-BR')
+    };
+    saveAtividadeState(updated);
+    alert('🏁 Atividades de Deslocamento Encerradas! Chegada ao CD registrada com sucesso.');
+  };
+
+  const handlePauseActivity = () => {
+    const just = pauseJustification === 'Outro' ? (pauseCustomJust || 'Pausa não especificada') : pauseJustification;
+    const novaPausa = {
+      inicio: new Date().toLocaleString('pt-BR'),
+      justificativa: just
+    };
+    const updated = {
+      ...atividade,
+      pausas: [...(atividade.pausas || []), novaPausa]
+    };
+    saveAtividadeState(updated);
+    setShowPauseModal(false);
+    setPauseCustomJust('');
+    alert(`⏸️ Atividade Interrompida: "${just}"`);
+  };
+
+  const handleResumeActivity = () => {
+    const pausas = [...(atividade.pausas || [])];
+    if (pausas.length > 0) {
+      const lastPause = pausas[pausas.length - 1];
+      if (!lastPause.fim) {
+        lastPause.fim = new Date().toLocaleString('pt-BR');
+        lastPause.justificativaRetorno = resumeJustification;
+      }
+    }
+    const updated = {
+      ...atividade,
+      pausas
+    };
+    saveAtividadeState(updated);
+    setShowResumeModal(false);
+    alert(`▶️ Atividades Retomadas! Justificativa de retorno registrada: "${resumeJustification}"`);
+  };
+
+  const handleTriggerEmergency = () => {
+    const allStops = activeDriverRoutes.flatMap(r => r.path);
+    const entregues = allStops.filter(s => s.status === 'Entregue').map(s => `${s.cliente} (${s.tipoOperacao})`);
+    const pendentes = allStops.filter(s => s.status === 'Pendente').map(s => `${s.cliente} (${s.tipoOperacao})`);
+
+    const novaEmergencia = {
+      horario: new Date().toLocaleString('pt-BR'),
+      tipo: emergencyType,
+      justificativa: emergencyJustification || 'Sem detalhes adicionais',
+      entreguesAteMomento: entregues,
+      faltandoEntregar: pendentes
+    };
+
+    const updated = {
+      ...atividade,
+      emergencias: [...(atividade.emergencias || []), novaEmergencia]
+    };
+    saveAtividadeState(updated);
+    setShowEmergencyModal(false);
+    setEmergencyJustification('');
+    alert('🚨 ALERTA DE EMERGÊNCIA ENVIADO IMEDIATAMENTE AO PORTAL DO GESTOR!');
+  };
 
   useEffect(() => {
     const foundRoutes: ActiveRouteDriver[] = [];
@@ -520,6 +631,290 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
             </div>
           )}
         </div>
+
+        {/* --- DYNAMIC JOURNEY & ACTIVITY CONTROL CARD --- */}
+        <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-xl space-y-4">
+          <div className="flex items-center gap-2 border-b border-slate-800/60 pb-3">
+            <span className="p-1.5 bg-indigo-500/10 rounded-lg text-indigo-400 border border-indigo-500/20">
+              <Clock className="w-4 h-4" />
+            </span>
+            <div>
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider">⏱️ Painel de Jornada & Atividades</h3>
+              <p className="text-[10px] text-slate-500">Controle de deslocamento, pausas e emergências</p>
+            </div>
+          </div>
+
+          {/* Current Status Badges */}
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="bg-slate-950/80 p-2.5 rounded-xl border border-slate-800">
+              <span className="text-[9px] text-slate-500 font-mono uppercase block mb-1">Status Deslocamento</span>
+              {!atividade.inicioDeslocamento ? (
+                <span className="text-amber-400 font-bold flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-400"></span> No CD (Aguardando Saída)
+                </span>
+              ) : atividade.fimDeslocamento ? (
+                <span className="text-indigo-400 font-bold flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-indigo-400"></span> Concluído (Retorno ao CD)
+                </span>
+              ) : (
+                <span className="text-emerald-400 font-bold flex items-center gap-1.5 animate-pulse">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span> Em Rota de Entrega
+                </span>
+              )}
+            </div>
+
+            <div className="bg-slate-950/80 p-2.5 rounded-xl border border-slate-800">
+              <span className="text-[9px] text-slate-500 font-mono uppercase block mb-1">Status Atividade</span>
+              {atividade.pausas?.some((p: any) => !p.fim) ? (
+                <span className="text-red-400 font-bold flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-red-400 animate-ping"></span> ⏸️ Pausado / Interrompido
+                </span>
+              ) : (
+                <span className="text-emerald-500 font-bold flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span> ▶️ Em Execução Ativa
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Active pause detail banner */}
+          {atividade.pausas?.some((p: any) => !p.fim) && (
+            <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-xl text-xs text-red-300">
+              <b>⚠️ Pausa Ativa:</b> {atividade.pausas.find((p: any) => !p.fim)?.justificativa}<br/>
+              <span className="text-[10px] text-slate-400">Iniciado em: {atividade.pausas.find((p: any) => !p.fim)?.inicio}</span>
+            </div>
+          )}
+
+          {/* Active emergency detail banner */}
+          {atividade.emergencias?.length > 0 && (
+            <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-xl text-xs text-amber-300 animate-pulse">
+              <b>🚨 Último Alerta Enviado:</b> {atividade.emergencias[atividade.emergencias.length - 1].tipo}<br/>
+              <span className="text-[10px] text-slate-400">"{atividade.emergencias[atividade.emergencias.length - 1].justificativa}" às {atividade.emergencias[atividade.emergencias.length - 1].horario}</span>
+            </div>
+          )}
+
+          {/* Control Buttons Block */}
+          <div className="space-y-2">
+            {/* Displacement Start & End buttons */}
+            <div className="grid grid-cols-2 gap-2">
+              {!atividade.inicioDeslocamento ? (
+                <button
+                  onClick={handleStartActivity}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white py-2 px-3 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-md shadow-emerald-950/50"
+                >
+                  <Play className="w-3.5 h-3.5" /> Iniciar Atividade / CD
+                </button>
+              ) : (
+                <div className="bg-slate-950/50 border border-slate-800 rounded-xl py-2 px-3 text-center text-[10px] text-slate-400 flex items-center justify-center font-mono">
+                  🛫 CD Saída: {atividade.inicioDeslocamento.split(', ')[1] || atividade.inicioDeslocamento}
+                </div>
+              )}
+
+              {!atividade.fimDeslocamento ? (
+                <button
+                  onClick={handleEndActivity}
+                  disabled={!atividade.inicioDeslocamento}
+                  className={`py-2 px-3 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                    atividade.inicioDeslocamento 
+                      ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md' 
+                      : 'bg-slate-800 text-slate-500 border border-slate-850 cursor-not-allowed'
+                  }`}
+                >
+                  <CheckCircle className="w-3.5 h-3.5" /> Fim Deslocamento / CD
+                </button>
+              ) : (
+                <div className="bg-slate-950/50 border border-slate-800 rounded-xl py-2 px-3 text-center text-[10px] text-indigo-400 flex items-center justify-center font-mono">
+                  🏁 CD Retorno: {atividade.fimDeslocamento.split(', ')[1] || atividade.fimDeslocamento}
+                </div>
+              )}
+            </div>
+
+            {/* Pause & Resume Activity buttons */}
+            <div className="grid grid-cols-2 gap-2">
+              {atividade.pausas?.some((p: any) => !p.fim) ? (
+                <button
+                  onClick={() => setShowResumeModal(true)}
+                  className="col-span-2 bg-emerald-600 hover:bg-emerald-500 text-white py-2 px-3 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Play className="w-3.5 h-3.5" /> Retomar Atividades
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowPauseModal(true)}
+                  disabled={!atividade.inicioDeslocamento || !!atividade.fimDeslocamento}
+                  className={`col-span-2 py-2 px-3 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                    atividade.inicioDeslocamento && !atividade.fimDeslocamento
+                      ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-750' 
+                      : 'bg-slate-950/50 text-slate-600 border border-slate-900 cursor-not-allowed'
+                  }`}
+                >
+                  <Pause className="w-3.5 h-3.5" /> Interromper Atividade (Pausa)
+                </button>
+              )}
+            </div>
+
+            {/* Emergency trigger button */}
+            <button
+              onClick={() => setShowEmergencyModal(true)}
+              className="w-full bg-red-600/30 hover:bg-red-600 text-red-300 hover:text-white py-2.5 px-3 rounded-xl text-[11px] font-black tracking-wider uppercase flex items-center justify-center gap-1.5 transition-all border border-red-500/20 shadow-lg shadow-red-950/50 cursor-pointer mt-1"
+            >
+              <AlertTriangle className="w-4 h-4 text-red-400 animate-pulse" /> 🚨 Acionamento de Emergência (Pane)
+            </button>
+          </div>
+        </div>
+
+        {/* --- MODAL: INTERROMPER ATIVIDADE --- */}
+        {showPauseModal && (
+          <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl w-full max-w-sm space-y-4 shadow-2xl">
+              <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+                <Pause className="w-4 h-4 text-amber-400" />
+                <h4 className="font-bold text-white text-sm">Interromper Atividade (Pausa)</h4>
+              </div>
+
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-mono text-slate-400 uppercase">Selecione o Motivo</label>
+                  <select
+                    value={pauseJustification}
+                    onChange={e => setPauseJustification(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-violet-500 outline-none"
+                  >
+                    <option value="Pausa para almoço">Pausa para Almoço</option>
+                    <option value="Descanso regulamentar">Descanso Regulamentar</option>
+                    <option value="Abastecimento do veículo">Abastecimento do Veículo</option>
+                    <option value="Manutenção preventiva">Manutenção Rápida / Calibragem</option>
+                    <option value="Outro">Outro Motivo (Especificar)</option>
+                  </select>
+                </div>
+
+                {pauseJustification === 'Outro' && (
+                  <div className="space-y-1">
+                    <label className="block text-[10px] font-mono text-slate-400 uppercase">Descreva a Justificativa</label>
+                    <textarea
+                      value={pauseCustomJust}
+                      onChange={e => setPauseCustomJust(e.target.value)}
+                      placeholder="Descreva detalhadamente o motivo da pausa..."
+                      rows={3}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:border-violet-500 outline-none resize-none"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => setShowPauseModal(false)}
+                  className="flex-1 bg-slate-850 hover:bg-slate-800 text-slate-300 py-2 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handlePauseActivity}
+                  className="flex-1 bg-violet-600 hover:bg-violet-500 text-white py-2 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  Registrar Pausa
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* --- MODAL: RETOMAR ATIVIDADE --- */}
+        {showResumeModal && (
+          <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl w-full max-w-sm space-y-4 shadow-2xl">
+              <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+                <Play className="w-4 h-4 text-emerald-400" />
+                <h4 className="font-bold text-white text-sm">Retomar Atividades</h4>
+              </div>
+
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-mono text-slate-400 uppercase">Nota de Retorno</label>
+                  <input
+                    type="text"
+                    value={resumeJustification}
+                    onChange={e => setResumeJustification(e.target.value)}
+                    placeholder="Ex: Fim do almoço, Retorno às entregas..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-violet-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => setShowResumeModal(false)}
+                  className="flex-1 bg-slate-850 hover:bg-slate-800 text-slate-300 py-2 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleResumeActivity}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  Retomar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* --- MODAL: ACIONAMENTO DE EMERGÊNCIA --- */}
+        {showEmergencyModal && (
+          <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-slate-900 border border-red-900 p-5 rounded-2xl w-full max-w-sm space-y-4 shadow-2xl shadow-red-950/20">
+              <div className="flex items-center gap-2 border-b border-slate-800 pb-2 text-red-400">
+                <AlertTriangle className="w-4.5 h-4.5 text-red-500 animate-pulse" />
+                <h4 className="font-black text-white text-sm tracking-wide uppercase">🚨 Acionar Emergência (Pane)</h4>
+              </div>
+
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-mono text-slate-400 uppercase">Tipo de Defeito / Pane</label>
+                  <select
+                    value={emergencyType}
+                    onChange={e => setEmergencyType(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-violet-500 outline-none"
+                  >
+                    <option value="Pneu furado">Pneu Furado</option>
+                    <option value="Falta de gasolina">Falta de Gasolina (Pane Seca)</option>
+                    <option value="Pane elétrica">Pane Elétrica</option>
+                    <option value="Problema mecânico no motor">Problema Mecânico no Motor</option>
+                    <option value="Acidente de trânsito">Acidente de Trânsito</option>
+                    <option value="Outro defeito">Outro Defeito / Impedimento</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-mono text-slate-400 uppercase">Justificativa & Detalhes</label>
+                  <textarea
+                    value={emergencyJustification}
+                    onChange={e => setEmergencyJustification(e.target.value)}
+                    placeholder="Descreva a situação detalhadamente para que o gestor possa providenciar o apoio/guincho necessário..."
+                    rows={4}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:border-red-500 outline-none resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => setShowEmergencyModal(false)}
+                  className="flex-1 bg-slate-850 hover:bg-slate-800 text-slate-300 py-2 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleTriggerEmergency}
+                  className="flex-1 bg-red-600 hover:bg-red-500 text-white py-2 rounded-xl text-xs font-extrabold cursor-pointer"
+                >
+                  🚨 ENVIAR ALERTA
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Data Retention Banner Notice */}
         <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-xl flex items-start gap-2.5">

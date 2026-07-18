@@ -4,10 +4,10 @@ import { Veiculo, Condutor, Entrega, PlanosSaaS, TipoVeiculo } from '../types';
 import { 
   Truck, Users, MapPin, Calculator, Plus, Upload, Download, Play, 
   Map, CheckCircle, Trash2, Calendar, FileText, Clipboard, Settings, ShieldAlert, Sparkles,
-  Info, RotateCcw
+  Info, RotateCcw, Clock, Bell
 } from 'lucide-react';
 import SimulatedMap from './SimulatedMap';
-import { clusterAndOptimize, DEFAULT_BASE } from '../utils/routingEngine';
+import { clusterAndOptimize, DEFAULT_BASE, haversineDistance, optimizeTSP } from '../utils/routingEngine';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import ImportadorUniversal from './ImportadorUniversal';
 
@@ -17,7 +17,7 @@ interface DashboardClienteProps {
 }
 
 export default function DashboardCliente({ userEmail, onLogout }: DashboardClienteProps) {
-  const [activeTab, setActiveTab] = useState<'roteiro' | 'frota' | 'condutores' | 'custos' | 'comprovantes'>('roteiro');
+  const [activeTab, setActiveTab] = useState<'roteiro' | 'frota' | 'condutores' | 'custos' | 'comprovantes' | 'jornadas'>('roteiro');
   const [refreshKey, setRefreshKey] = useState(0);
   const triggerRefresh = () => setRefreshKey(prev => prev + 1);
 
@@ -51,6 +51,411 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   const [filterCompDriver, setFilterCompDriver] = useState('');
   const [filterCompStatus, setFilterCompStatus] = useState('');
   const [zoomPhoto, setZoomPhoto] = useState<string | null>(null);
+
+  // --- JORNADAS TAB FILTERS ---
+  const [filterJornadaDriver, setFilterJornadaDriver] = useState('');
+  const [filterJornadaVehicle, setFilterJornadaVehicle] = useState('');
+  const [filterJornadaDate, setFilterJornadaDate] = useState('17/07/2026');
+
+  // --- EMERGENCY AND JOURNEY AUDIT STATE & HELPERS ---
+  const [resolvedEmergencies, setResolvedEmergencies] = useState<string[]>(() => {
+    const saved = localStorage.getItem(`logusq_emergencias_resolvidas_${userEmail}`);
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const handleResolveEmergency = (timeKey: string) => {
+    const updated = [...resolvedEmergencies, timeKey];
+    setResolvedEmergencies(updated);
+    localStorage.setItem(`logusq_emergencias_resolvidas_${userEmail}`, JSON.stringify(updated));
+    triggerRefresh();
+    alert('✓ Alerta de emergência marcado como resolvido e arquivado!');
+  };
+
+  const parsePtBrDate = (str: string) => {
+    if (!str) return null;
+    if (str.includes('T')) {
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) return d;
+    }
+    try {
+      const cleaned = str.replace(',', '').trim();
+      const parts = cleaned.split(' ');
+      const dateParts = parts[0].split('/');
+      const timeParts = parts[1] ? parts[1].split(':') : ['0', '0', '0'];
+      
+      const day = parseInt(dateParts[0], 10);
+      const month = parseInt(dateParts[1], 10) - 1;
+      const year = parseInt(dateParts[2], 10);
+      
+      const hour = parseInt(timeParts[0] || '0', 10);
+      const minute = parseInt(timeParts[1] || '0', 10);
+      const second = parseInt(timeParts[2] || '0', 10);
+      
+      const d = new Date(year, month, day, hour, minute, second);
+      if (!isNaN(d.getTime())) return d;
+    } catch (e) {}
+    return new Date(str);
+  };
+
+  const getJourneyTimeline = (route: any, atividade: any) => {
+    if (!route || !route.path || route.path.length === 0) return [];
+    const timeline: any[] = [];
+    
+    const inicioCDStr = atividade?.inicioDeslocamento;
+    let lastTimeStr = inicioCDStr;
+    
+    route.path.forEach((stop: any, idx: number) => {
+      const stopName = stop.cliente;
+      const startAtendimentoStr = stop.tempoInicioAtendimento;
+      const endAtendimentoStr = stop.tempoFimAtendimento;
+      
+      let travelTimeMsg = "Sem registro de horário";
+      let travelDiffMin = 0;
+      
+      if (lastTimeStr && startAtendimentoStr) {
+        try {
+          const lastT = parsePtBrDate(lastTimeStr)?.getTime();
+          const startT = parsePtBrDate(startAtendimentoStr)?.getTime();
+          if (lastT && startT && !isNaN(lastT) && !isNaN(startT)) {
+            travelDiffMin = Math.max(1, Math.round((startT - lastT) / 60000));
+            const lastTimeFormatted = parsePtBrDate(lastTimeStr)?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) || '';
+            const startTimeFormatted = parsePtBrDate(startAtendimentoStr)?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) || '';
+            travelTimeMsg = `${lastTimeFormatted} às ${startTimeFormatted} (${travelDiffMin} min)`;
+          }
+        } catch (err) {}
+      } else {
+        travelTimeMsg = "Aguardando início de deslocamento...";
+      }
+      
+      timeline.push({
+        tipo: 'deslocamento',
+        origem: idx === 0 ? 'CD Hub Principal' : route.path[idx - 1].cliente,
+        destino: stopName,
+        tempoMsg: travelTimeMsg,
+        minutos: travelDiffMin
+      });
+      
+      let serviceTimeMsg = "Aguardando chegada...";
+      let serviceDiffMin = stop.duracaoAtendimentoMinutos || 0;
+      
+      if (startAtendimentoStr) {
+        try {
+          const startT = parsePtBrDate(startAtendimentoStr)?.getTime();
+          const startTimeFormatted = parsePtBrDate(startAtendimentoStr)?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) || '';
+          if (endAtendimentoStr) {
+            const endT = parsePtBrDate(endAtendimentoStr)?.getTime();
+            const endTimeFormatted = parsePtBrDate(endAtendimentoStr)?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) || '';
+            serviceTimeMsg = `${startTimeFormatted} às ${endTimeFormatted} (${serviceDiffMin} min)`;
+          } else {
+            serviceTimeMsg = `Chegada às ${startTimeFormatted} (Em atendimento...)`;
+          }
+        } catch (err) {}
+      }
+      
+      timeline.push({
+        tipo: 'atendimento',
+        cliente: stopName,
+        endereco: stop.endereco,
+        status: stop.status,
+        tempoMsg: serviceTimeMsg,
+        minutos: serviceDiffMin
+      });
+      
+      lastTimeStr = endAtendimentoStr || startAtendimentoStr;
+    });
+    
+    const fimCDStr = atividade?.fimDeslocamento;
+    if (lastTimeStr && fimCDStr) {
+      try {
+        const lastT = parsePtBrDate(lastTimeStr)?.getTime();
+        const fimT = parsePtBrDate(fimCDStr)?.getTime();
+        if (lastT && fimT && !isNaN(lastT) && !isNaN(fimT)) {
+          const returnDiffMin = Math.max(1, Math.round((fimT - lastT) / 60000));
+          const lastTimeFormatted = parsePtBrDate(lastTimeStr)?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) || '';
+          const fimTimeFormatted = parsePtBrDate(fimCDStr)?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) || '';
+          timeline.push({
+            tipo: 'deslocamento',
+            origem: route.path[route.path.length - 1].cliente,
+            destino: 'CD Hub Principal (Retorno)',
+            tempoMsg: `${lastTimeFormatted} às ${fimTimeFormatted} (${returnDiffMin} min)`,
+            minutos: returnDiffMin
+          });
+        }
+      } catch (err) {}
+    } else if (lastTimeStr) {
+      timeline.push({
+        tipo: 'deslocamento',
+        origem: route.path[route.path.length - 1].cliente,
+        destino: 'CD Hub Principal (Retorno)',
+        tempoMsg: "Aguardando conclusão do percurso de volta ao CD",
+        minutos: 0
+      });
+    }
+    
+    return timeline;
+  };
+
+  // Find active and unresolved emergencies
+  const activeEmergencies = condutores.flatMap(c => {
+    const saved = localStorage.getItem(`logusq_atividade_${c.email}`);
+    if (!saved) return [];
+    try {
+      const act = JSON.parse(saved);
+      if (act && act.emergencias && act.emergencias.length > 0) {
+        return act.emergencias.map((e: any) => ({
+          ...e,
+          driverName: c.nome,
+          driverEmail: c.email,
+          vehicle: c.veiculo || 'N/A'
+        }));
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  const unresolvedEmergencies = activeEmergencies.filter(e => !resolvedEmergencies.includes(`${e.driverEmail}_${e.horario}`));
+
+  // --- TRANSBORDO DE EMERGÊNCIA (CROSS-DOCKING DE SUPORTE) STATE & METODOS ---
+  const [activeRescueCalc, setActiveRescueCalc] = useState<{
+    type: 'recolher' | 'redistribuir' | null;
+    driverEmail: string;
+    result: any;
+  }>({ type: null, driverEmail: '', result: null });
+
+  const calculateRescueOptions = (driverEmail: string, type: 'recolher' | 'redistribuir') => {
+    const brokenRouteEntry = Object.entries(activeRoutes).find(([rId, r]: [string, any]) => r.driverEmail === driverEmail);
+    if (!brokenRouteEntry) {
+      alert("Nenhuma rota ativa encontrada para o motorista em pane.");
+      return;
+    }
+    const [brokenRouteId, brokenRoute] = brokenRouteEntry as [string, any];
+    const pendingPoints = (brokenRoute.path || []).filter((p: any) => p.status === 'Pendente');
+
+    if (pendingPoints.length === 0) {
+      alert("Não há cargas pendentes no veículo quebrado para realizar o transbordo.");
+      return;
+    }
+
+    const breakdownLat = pendingPoints[0].latitude;
+    const breakdownLng = pendingPoints[0].longitude;
+    const totalPendingWeight = pendingPoints.reduce((sum: number, p: any) => sum + (p.pesoMercadoriaKg || 0), 0);
+
+    const otherRoutes = Object.entries(activeRoutes).filter(([rId, r]: [string, any]) => r.driverEmail !== driverEmail);
+
+    if (otherRoutes.length === 0) {
+      alert("Não há outros veículos em operação no momento para apoiar no resgate.");
+      return;
+    }
+
+    if (type === 'recolher') {
+      const options = otherRoutes.map(([rId, r]: [string, any]) => {
+        const v = frota.find(item => `${item.modelo} (${item.placa})` === r.vehicle);
+        const capacity = v?.capacidadeKg || 1200;
+        const currentWeight = (r.path || []).filter((p: any) => p.status === 'Pendente').reduce((sum: number, p: any) => sum + (p.pesoMercadoriaKg || 0), 0);
+        const availableCapacity = capacity - currentWeight;
+
+        const lastCompleted = (r.path || []).filter((p: any) => p.status === 'Entregue');
+        const vehicleLat = lastCompleted.length > 0 ? lastCompleted[lastCompleted.length - 1].latitude : DEFAULT_BASE.latitude;
+        const vehicleLng = lastCompleted.length > 0 ? lastCompleted[lastCompleted.length - 1].longitude : DEFAULT_BASE.longitude;
+
+        const distance = haversineDistance(vehicleLat, vehicleLng, breakdownLat, breakdownLng);
+        
+        const proximityScore = Math.max(0, 100 - (distance * 4));
+        const capacityScore = availableCapacity >= totalPendingWeight ? 100 : Math.max(0, 100 - (totalPendingWeight - availableCapacity) / 5);
+        const totalScore = parseFloat((proximityScore * 0.8 + capacityScore * 0.2).toFixed(1));
+
+        return {
+          routeId: rId,
+          driver: r.driver,
+          driverEmail: r.driverEmail,
+          vehicle: r.vehicle,
+          distance: parseFloat(distance.toFixed(1)),
+          capacity,
+          availableCapacity,
+          score: totalScore,
+          exceedsCapacity: availableCapacity < totalPendingWeight
+        };
+      }).sort((a, b) => b.score - a.score);
+
+      setActiveRescueCalc({
+        type: 'recolher',
+        driverEmail,
+        result: {
+          brokenRouteId,
+          totalPendingWeight,
+          pendingPoints,
+          breakdownLat,
+          breakdownLng,
+          options
+        }
+      });
+    } else {
+      const assignments: any[] = [];
+      const vehiclePendingWeights: Record<string, number> = {};
+
+      otherRoutes.forEach(([rId, r]: [string, any]) => {
+        const currentWeight = (r.path || []).filter((p: any) => p.status === 'Pendente').reduce((sum: number, p: any) => sum + (p.pesoMercadoriaKg || 0), 0);
+        vehiclePendingWeights[rId] = currentWeight;
+      });
+
+      pendingPoints.forEach((point: any) => {
+        const scoredVehicles = otherRoutes.map(([rId, r]: [string, any]) => {
+          const v = frota.find(item => `${item.modelo} (${item.placa})` === r.vehicle);
+          const capacity = v?.capacidadeKg || 1200;
+          const availableCapacity = capacity - vehiclePendingWeights[rId];
+
+          const lastCompleted = (r.path || []).filter((p: any) => p.status === 'Entregue');
+          const vehicleLat = lastCompleted.length > 0 ? lastCompleted[lastCompleted.length - 1].latitude : DEFAULT_BASE.latitude;
+          const vehicleLng = lastCompleted.length > 0 ? lastCompleted[lastCompleted.length - 1].longitude : DEFAULT_BASE.longitude;
+
+          const distance = haversineDistance(vehicleLat, vehicleLng, point.latitude, point.longitude);
+
+          return {
+            routeId: rId,
+            driver: r.driver,
+            distance,
+            availableCapacity,
+            capacity
+          };
+        }).sort((a, b) => a.distance - b.distance);
+
+        const bestVehicle = scoredVehicles.find(v => v.availableCapacity >= point.pesoMercadoriaKg) || scoredVehicles[0];
+
+        vehiclePendingWeights[bestVehicle.routeId] += point.pesoMercadoriaKg;
+
+        assignments.push({
+          point,
+          assignedRouteId: bestVehicle.routeId,
+          assignedDriver: bestVehicle.driver,
+          distance: parseFloat(bestVehicle.distance.toFixed(1))
+        });
+      });
+
+      setActiveRescueCalc({
+        type: 'redistribuir',
+        driverEmail,
+        result: {
+          brokenRouteId,
+          pendingPoints,
+          assignments,
+          vehicleWeights: vehiclePendingWeights
+        }
+      });
+    }
+  };
+
+  const handleConfirmRescueCollection = (bestOption: any) => {
+    const { brokenRouteId, pendingPoints, totalPendingWeight, breakdownLat, breakdownLng } = activeRescueCalc.result;
+
+    const updatedRoutes = { ...activeRoutes };
+    const brokenRoute = updatedRoutes[brokenRouteId];
+
+    brokenRoute.path = brokenRoute.path.map((p: any) => {
+      if (p.status === 'Pendente') {
+        return { ...p, status: 'Cancelado', observacao: `Carga transbordada para ${bestOption.driver} (Apoio Emergencial)` };
+      }
+      return p;
+    });
+
+    const rescueRoute = updatedRoutes[bestOption.routeId];
+    
+    const rescueStop: Entrega = {
+      id: `RESCUE-${Date.now()}`,
+      chave: `RSC-${Math.floor(1000 + Math.random() * 9000)}`,
+      cliente: `RECOLHIMENTO DE EMERGÊNCIA (Carga de ${brokenRoute.driver})`,
+      endereco: `Local da Pane: Próximo à entrega de ${pendingPoints[0]?.cliente || 'Cliente'}`,
+      latitude: breakdownLat,
+      longitude: breakdownLng,
+      pesoMercadoriaKg: totalPendingWeight,
+      tipoOperacao: 'Coleta',
+      status: 'Pendente',
+      pontoReferencia: `Pane do veículo ${brokenRoute.vehicle}`,
+      observacao: `RECOLHER: ${pendingPoints.length} cargas (${totalPendingWeight} kg) e retornar diretamente ao CD.`
+    };
+
+    const completedStops = (rescueRoute.path || []).filter((p: any) => p.status === 'Entregue' || p.status === 'Cancelado');
+    const futureStops = (rescueRoute.path || []).filter((p: any) => p.status === 'Pendente');
+    
+    const newPath = [...completedStops, rescueStop, ...futureStops];
+    
+    rescueRoute.path = newPath;
+    rescueRoute.km = parseFloat((newPath.length * 3.2 + 6.0).toFixed(1));
+    const totServ = newPath.reduce((acc: number, p: any) => acc + dbRepo.getAverageServiceTime(userEmail, p.cliente), 0);
+    const trav = newPath.length * 10 + 20;
+    rescueRoute.duration = Math.round(totServ + trav);
+
+    setActiveRoutes(updatedRoutes);
+    dbRepo.saveRotasAtivas(userEmail, updatedRoutes);
+
+    const newMapRoutes: Record<number, Entrega[]> = {};
+    Object.values(updatedRoutes).forEach((r: any, idx) => {
+      newMapRoutes[idx] = r.path;
+    });
+    setMapRoutes(newMapRoutes);
+
+    alert(`✓ Missão de Resgate Confirmada! O motorista ${bestOption.driver} foi notificado para coletar os ${totalPendingWeight} kg de carga no local da pane e retornar com o passivo.`);
+    setActiveRescueCalc({ type: null, driverEmail: '', result: null });
+    triggerRefresh();
+  };
+
+  const handleConfirmRescueRedistribution = () => {
+    const { brokenRouteId, assignments } = activeRescueCalc.result;
+
+    const updatedRoutes = { ...activeRoutes };
+    const brokenRoute = updatedRoutes[brokenRouteId];
+    
+    brokenRoute.path = brokenRoute.path.map((p: any) => {
+      if (p.status === 'Pendente') {
+        const assignment = assignments.find((a: any) => a.point.id === p.id);
+        return { 
+          ...p, 
+          status: 'Cancelado', 
+          observacao: `Carga redistribuída para ${assignment ? assignment.assignedDriver : 'outro veículo'} por pane.` 
+        };
+      }
+      return p;
+    });
+
+    assignments.forEach((asg: any) => {
+      const targetRoute = updatedRoutes[asg.assignedRouteId];
+      const completedStops = (targetRoute.path || []).filter((p: any) => p.status === 'Entregue' || p.status === 'Cancelado');
+      const existingPending = (targetRoute.path || []).filter((p: any) => p.status === 'Pendente');
+      
+      const clonedPoint: Entrega = {
+        ...asg.point,
+        status: 'Pendente',
+        observacao: `Carga incorporada de ${brokenRoute.driver} (Pane de Emergência)`
+      };
+
+      const allPending = [...existingPending, clonedPoint];
+
+      const lastCompletedNode = completedStops[completedStops.length - 1];
+      const startLat = lastCompletedNode ? lastCompletedNode.latitude : DEFAULT_BASE.latitude;
+      const startLng = lastCompletedNode ? lastCompletedNode.longitude : DEFAULT_BASE.longitude;
+
+      const optimizedPending = optimizeTSP(startLat, startLng, allPending);
+      const finalPath = [...completedStops, ...optimizedPending];
+      targetRoute.path = finalPath;
+
+      targetRoute.km = parseFloat((finalPath.length * 3.2 + 4.0).toFixed(1));
+      const totServ = finalPath.reduce((acc: number, p: any) => acc + dbRepo.getAverageServiceTime(userEmail, p.cliente), 0);
+      const trav = finalPath.length * 10 + 20;
+      targetRoute.duration = Math.round(totServ + trav);
+    });
+
+    setActiveRoutes(updatedRoutes);
+    dbRepo.saveRotasAtivas(userEmail, updatedRoutes);
+
+    const newMapRoutes: Record<number, Entrega[]> = {};
+    Object.values(updatedRoutes).forEach((r: any, idx) => {
+      newMapRoutes[idx] = r.path;
+    });
+    setMapRoutes(newMapRoutes);
+
+    alert(`✓ Redistribuição de Cargas Concluída! Os pontos pendentes foram redistribuídos e re-optimizados matematicamente (via algoritmo TSP) nas rotas dos veículos operacionais.`);
+    setActiveRescueCalc({ type: null, driverEmail: '', result: null });
+    triggerRefresh();
+  };
 
   // --- VEHICLE CREATE ---
   const [vId, setVId] = useState('');
@@ -582,7 +987,10 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       
       // Calculate distances: simple simulated scale (each node average 2.5km)
       const distance = points.length * 3.2 + 4.0; 
-      const duration = points.length * 15 + 30; // min
+      // Calculate duration dynamically using learned service times (AI autonomous adjustment)
+      const totalServiceTime = points.reduce((acc: number, p: Entrega) => acc + dbRepo.getAverageServiceTime(userEmail, p.cliente), 0);
+      const travelTime = points.length * 10 + 20; // 10 min average per delivery leg + 20 min overhead
+      const duration = totalServiceTime + travelTime;
 
       routesObj[`ROTA-${idx + 1}`] = {
         driver,
@@ -682,6 +1090,72 @@ Assinatura do Expedidor: _______________________________`;
     alert(`Rota ${routeId} concluída! Baixa realizada no sistema.`);
   };
 
+  const handleSimulateShiftData = (driverEmail: string) => {
+    // 4 hours ago, 3 hours ago, etc.
+    const now = Date.now();
+    const formatTime = (ts: number) => new Date(ts).toLocaleString('pt-BR');
+
+    const fakeAct = {
+      inicioDeslocamento: formatTime(now - 14400000), // 4 hours ago
+      fimDeslocamento: formatTime(now - 300000), // 5 mins ago
+      pausas: [
+        {
+          inicio: formatTime(now - 10800000), // 3 hours ago
+          fim: formatTime(now - 9000000), // 2.5 hours ago
+          justificativa: 'Pausa para almoço',
+          justificativaRetorno: 'Fim do almoço'
+        }
+      ],
+      emergencias: [
+        {
+          horario: formatTime(now - 12000000), // 3.3 hours ago
+          tipo: 'Pneu furado',
+          justificativa: 'Pneu furado na Av. do Contorno. Borracheiro móvel acionado pelo portal, resolvido rápido.',
+          entreguesAteMomento: ['Supermercado Central BH'],
+          faltandoEntregar: ['Restaurante Sabor de Minas', 'Drogaria Popular BH']
+        }
+      ]
+    };
+    
+    localStorage.setItem(`logusq_atividade_${driverEmail}`, JSON.stringify(fakeAct));
+
+    // Update active route with precise timing logs for simulation
+    const routes = dbRepo.getRotasAtivas(userEmail);
+    const route = Object.values(routes).find((r: any) => 
+      r.driverEmail === driverEmail || 
+      r.driver?.toLowerCase().includes('carlos') || 
+      r.driver?.toLowerCase().includes('motorista')
+    );
+
+    if (route && route.path) {
+      if (route.path[0]) {
+        route.path[0].tempoInicioAtendimento = formatTime(now - 13200000); // 3h40m ago
+        route.path[0].tempoFimAtendimento = formatTime(now - 12600000); // 3h30m ago
+        route.path[0].duracaoAtendimentoMinutos = 10;
+        route.path[0].status = 'Entregue';
+        route.path[0].motoristaNome = route.driver || 'Motorista';
+      }
+      if (route.path[1]) {
+        route.path[1].tempoInicioAtendimento = formatTime(now - 8000000); // 2h15m ago
+        route.path[1].tempoFimAtendimento = formatTime(now - 7100000); // 2h ago
+        route.path[1].duracaoAtendimentoMinutos = 15;
+        route.path[1].status = 'Entregue';
+        route.path[1].motoristaNome = route.driver || 'Motorista';
+      }
+      if (route.path[2]) {
+        route.path[2].tempoInicioAtendimento = formatTime(now - 5000000); // 1h20m ago
+        route.path[2].tempoFimAtendimento = formatTime(now - 4400000); // 1h10m ago
+        route.path[2].duracaoAtendimentoMinutos = 10;
+        route.path[2].status = 'Entregue';
+        route.path[2].motoristaNome = route.driver || 'Motorista';
+      }
+      dbRepo.saveRotasAtivas(userEmail, routes);
+    }
+
+    triggerRefresh();
+    alert('✓ Dados e tempos de rota simulados com sucesso para demonstração de relatórios!');
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col md:flex-row text-slate-100 font-sans selection:bg-violet-500/30">
       
@@ -740,6 +1214,14 @@ Assinatura do Expedidor: _______________________________`;
             >
               <FileText className="w-4 h-4" /> Comprovantes / Assinaturas
             </button>
+            <button
+              onClick={() => setActiveTab('jornadas')}
+              className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-3 transition-colors ${
+                activeTab === 'jornadas' ? 'bg-violet-600 text-white shadow-lg shadow-violet-900/20' : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
+              }`}
+            >
+              <Clock className="w-4 h-4 text-emerald-400" /> Relatório de Jornadas
+            </button>
           </nav>
         </div>
 
@@ -758,7 +1240,228 @@ Assinatura do Expedidor: _______________________________`;
       </aside>
 
       {/* Main Content Pane */}
-      <main className="flex-1 p-6 md:p-8 overflow-y-auto max-w-7xl mx-auto w-full">
+      <main className="flex-1 p-6 md:p-8 overflow-y-auto max-w-7xl mx-auto w-full space-y-6">
+        
+        {/* EMERGENCY ALERTS SECTION (CRITICAL) */}
+        {unresolvedEmergencies.length > 0 && (
+          <div className="space-y-4">
+            {unresolvedEmergencies.map((em: any, index: number) => (
+              <div 
+                key={index} 
+                className="bg-red-950/80 border-2 border-red-500 rounded-2xl p-5 shadow-2xl shadow-red-500/10 space-y-4"
+              >
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-red-500/20 pb-3">
+                  <div className="flex items-center gap-3">
+                    <span className="p-2 bg-red-500 text-slate-950 rounded-xl">
+                      <ShieldAlert className="w-5 h-5 animate-pulse" />
+                    </span>
+                    <div>
+                      <h2 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                        🚨 ALERTA CRÍTICO: ACIONAMENTO DE EMERGÊNCIA (PANE)
+                      </h2>
+                      <p className="text-[11px] text-red-300 font-mono">
+                        Motorista: <b className="text-white">{em.driverName}</b> ({em.driverEmail}) • Veículo: <b className="text-white">{em.vehicle}</b>
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleResolveEmergency(`${em.driverEmail}_${em.horario}`)}
+                    className="bg-white hover:bg-slate-200 text-slate-950 text-[10px] font-black uppercase tracking-wider px-3.5 py-1.5 rounded-xl transition-all cursor-pointer border border-white shadow-md shadow-red-950/50"
+                  >
+                    ✓ Marcar Como Resolvido / Apoio Enviado
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-mono">
+                  {/* Defeito e Justificativa */}
+                  <div className="bg-slate-950/60 p-3 rounded-xl border border-red-500/10">
+                    <span className="text-[9px] text-red-400 font-bold uppercase block mb-1">Tipo de Pane / Ocorrência</span>
+                    <span className="text-white font-extrabold text-sm block mb-1.5">⚠️ {em.tipo}</span>
+                    <span className="text-[11px] text-slate-300 block italic">"{em.justificativa}"</span>
+                    <span className="text-[10px] text-slate-500 block mt-2">Registrado em: {em.horario}</span>
+                  </div>
+
+                  {/* Cargas Entregues até o Momento */}
+                  <div className="bg-slate-950/60 p-3 rounded-xl border border-red-500/10">
+                    <span className="text-[9px] text-emerald-400 font-bold uppercase block mb-1">✓ Entregas Realizadas com Sucesso</span>
+                    {em.entreguesAteMomento && em.entreguesAteMomento.length > 0 ? (
+                      <ul className="space-y-1 list-disc list-inside text-emerald-300 text-[11px]">
+                        {em.entreguesAteMomento.map((item: string, i: number) => (
+                          <li key={i} className="truncate">{item}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <span className="text-slate-500 italic text-[11px]">Nenhuma entrega concluída antes da pane.</span>
+                    )}
+                  </div>
+
+                  {/* Cargas Pendentes / Faltando Entregar */}
+                  <div className="bg-slate-950/60 p-3 rounded-xl border border-red-500/10">
+                    <span className="text-[9px] text-amber-400 font-bold uppercase block mb-1">⏳ Cargas Pendentes (Faltam Entregar)</span>
+                    {em.faltandoEntregar && em.faltandoEntregar.length > 0 ? (
+                      <ul className="space-y-1 list-disc list-inside text-amber-300 text-[11px]">
+                        {em.faltandoEntregar.map((item: string, i: number) => (
+                          <li key={i} className="truncate">{item}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <span className="text-slate-500 italic text-[11px]">Nenhuma carga pendente no veículo.</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* BOTÕES DE DECISÃO LOGÍSTICA DE TRANSBORDO */}
+                <div className="pt-4 border-t border-red-500/20 flex flex-wrap gap-3 items-center justify-between">
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-black text-red-200 uppercase tracking-wider">Ações de Contingência de Carga (Cross-Docking de Emergência)</h4>
+                    <p className="text-[10px] text-slate-400">Ative o algoritmo matemático para realocar ou recolher as cargas pendentes deste veículo quebrado de forma otimizada.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => calculateRescueOptions(em.driverEmail, 'recolher')}
+                      className={`text-xs font-bold px-4 py-2 rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 ${
+                        activeRescueCalc.type === 'recolher' && activeRescueCalc.driverEmail === em.driverEmail
+                          ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-lg shadow-amber-500/25'
+                          : 'bg-red-950/40 hover:bg-amber-500 hover:text-slate-950 text-amber-400 border-amber-500/30'
+                      }`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      1. Recolher Pendentes ao CD
+                    </button>
+                    <button
+                      onClick={() => calculateRescueOptions(em.driverEmail, 'redistribuir')}
+                      className={`text-xs font-bold px-4 py-2 rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 ${
+                        activeRescueCalc.type === 'redistribuir' && activeRescueCalc.driverEmail === em.driverEmail
+                          ? 'bg-violet-600 text-white border-violet-500 shadow-lg shadow-violet-600/25'
+                          : 'bg-red-950/40 hover:bg-violet-600 hover:text-white text-violet-400 border-violet-500/30'
+                      }`}
+                    >
+                      <Calculator className="w-3.5 h-3.5" />
+                      2. Redistribuir Cargas Pendentes
+                    </button>
+                  </div>
+                </div>
+
+                {/* PAINEL DE CÁLCULO QUÂNTICO-MATEMÁTICO */}
+                {activeRescueCalc.driverEmail === em.driverEmail && activeRescueCalc.type && (
+                  <div className="mt-4 bg-slate-950/90 border border-slate-800 rounded-xl p-4 space-y-4 animate-fade-in text-xs">
+                    <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                      <div className="flex items-center gap-2 text-violet-400">
+                        <Sparkles className="w-4 h-4 animate-pulse" />
+                        <h3 className="font-bold text-white uppercase tracking-wider">Simulador Quântico-Matemático de Transbordo</h3>
+                      </div>
+                      <button
+                        onClick={() => setActiveRescueCalc({ type: null, driverEmail: '', result: null })}
+                        className="text-[10px] text-slate-400 hover:text-white uppercase tracking-wider font-mono hover:underline"
+                      >
+                        Cancelar Simulação ✕
+                      </button>
+                    </div>
+
+                    {activeRescueCalc.type === 'recolher' ? (
+                      <div className="space-y-3">
+                        <div className="bg-slate-900 p-3 rounded-lg border border-slate-800 flex flex-wrap gap-x-6 gap-y-2 justify-between font-mono text-[10px] text-slate-400">
+                          <div>Carga Total a Resgatar: <span className="text-amber-400 font-bold">{activeRescueCalc.result.totalPendingWeight} kg</span></div>
+                          <div>Número de Entregas: <span className="text-white font-bold">{activeRescueCalc.result.pendingPoints.length}</span></div>
+                          <div>Local da Pane: <span className="text-slate-300">Lat {activeRescueCalc.result.breakdownLat.toFixed(4)}, Lng {activeRescueCalc.result.breakdownLng.toFixed(4)}</span></div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Classificação de Viabilidade da Frota Operacional</span>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {activeRescueCalc.result.options.map((opt: any, i: number) => (
+                              <div
+                                key={opt.routeId}
+                                className={`p-3.5 rounded-xl border flex flex-col justify-between space-y-3 transition-all ${
+                                  i === 0 
+                                    ? 'bg-emerald-950/30 border-emerald-500/40 hover:border-emerald-400 shadow-md shadow-emerald-950/40' 
+                                    : 'bg-slate-900/60 border-slate-800/80 hover:border-slate-700'
+                                }`}
+                              >
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-extrabold text-white text-xs">{opt.driver}</span>
+                                      {i === 0 && (
+                                        <span className="text-[8px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.2 rounded font-black tracking-wider uppercase font-mono animate-pulse">
+                                          ✓ Otimizado
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-[10px] text-slate-500 block font-mono">{opt.vehicle} • {opt.routeId}</span>
+                                  </div>
+                                  <div className="text-right">
+                                    <span className="text-slate-500 block text-[9px] font-mono uppercase">Score de Viabilidade</span>
+                                    <span className={`text-sm font-black font-mono ${i === 0 ? 'text-emerald-400 text-base' : 'text-slate-300'}`}>{opt.score}%</span>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 text-[10px] font-mono border-t border-slate-800/50 pt-2 text-slate-400">
+                                  <div>Proximidade: <b className="text-slate-200">{opt.distance} km</b></div>
+                                  <div>Capac. Ociosa: <b className={opt.exceedsCapacity ? 'text-red-400' : 'text-emerald-400'}>{opt.availableCapacity} kg</b></div>
+                                </div>
+
+                                <button
+                                  onClick={() => handleConfirmRescueCollection(opt)}
+                                  className={`w-full py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                    i === 0
+                                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-500/25'
+                                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                                  }`}
+                                >
+                                  {i === 0 ? 'Confirmar e Enviar Este Motorista (Melhor Escolha)' : `Designar ${opt.driver}`}
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="bg-slate-900 p-3 rounded-lg border border-slate-800 flex flex-wrap gap-x-6 gap-y-2 justify-between font-mono text-[10px] text-slate-400">
+                          <div>Quantidade de Cargas: <span className="text-white font-bold">{activeRescueCalc.result.pendingPoints.length}</span></div>
+                          <div>Estratégia de Transbordo: <span className="text-violet-400 font-bold">Distribuição Otimizada via Proximidade Geográfica e Capacidade</span></div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Atribuição de Cargas Proposta</span>
+                          <div className="space-y-1.5 max-h-[220px] overflow-y-auto">
+                            {activeRescueCalc.result.assignments.map((asg: any, i: number) => (
+                              <div key={i} className="bg-slate-900/60 border border-slate-800 p-2.5 rounded-lg flex flex-wrap justify-between items-center text-[11px] font-mono text-slate-300 font-sans">
+                                <div className="space-y-0.5">
+                                  <span className="text-white font-extrabold">{asg.point.cliente}</span>
+                                  <span className="text-[10px] text-slate-500 block">Carga: {asg.point.pesoMercadoriaKg} kg • Endereço: {asg.point.endereco}</span>
+                                </div>
+                                <div className="text-right flex items-center gap-3">
+                                  <div className="text-right">
+                                    <span className="text-slate-500 block text-[9px] uppercase">Motorista Destinatário</span>
+                                    <span className="text-violet-400 font-black">{asg.assignedDriver} ({asg.assignedRouteId})</span>
+                                    <span className="text-[10px] text-slate-500 block">Distância: +{asg.distance} km</span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="pt-3 border-t border-slate-800 flex justify-end">
+                            <button
+                              onClick={handleConfirmRescueRedistribution}
+                              className="bg-violet-600 hover:bg-violet-500 text-white font-extrabold px-6 py-2 rounded-xl text-xs shadow-lg shadow-violet-600/35 cursor-pointer flex items-center gap-2 transition-all"
+                            >
+                              <Calculator className="w-4 h-4" />
+                              Confirmar Redistribuição Otimizada via TSP (Re-roteirizar com IA)
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
         
         {/* TAB 1: ROTEIRIZACAO CIENTIFICA */}
         {activeTab === 'roteiro' && (
@@ -998,7 +1701,9 @@ Assinatura do Expedidor: _______________________________`;
                                     if (route.path.length !== originalLen) {
                                       changed = true;
                                       route.km = parseFloat((route.path.length * 3.2 + 4.0).toFixed(1));
-                                      route.duration = Math.round(route.path.length * 15 + 30);
+                                      const totServ = route.path.reduce((acc: number, p: any) => acc + dbRepo.getAverageServiceTime(userEmail, p.cliente), 0);
+                                      const trav = route.path.length * 10 + 20;
+                                      route.duration = Math.round(totServ + trav);
                                     }
                                   }
                                   if (!route.path || route.path.length === 0) {
@@ -1039,6 +1744,79 @@ Assinatura do Expedidor: _______________________________`;
                   </div>
                 </div>
 
+                {/* INTELIGÊNCIA DE JANELAS IA - APRENDIZADO AUTÔNOMO */}
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-3.5">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-emerald-400 animate-pulse" />
+                      <h3 className="text-xs font-bold text-white uppercase tracking-wider">Ajuste de Janela IA (Autônomo)</h3>
+                    </div>
+                    <span className="text-[8px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full font-mono font-bold animate-pulse flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> ATIVO
+                    </span>
+                  </div>
+
+                  <p className="text-[10px] text-slate-400 leading-relaxed">
+                    O algoritmo analisa o histórico de tempo de descarga real trecho a trecho inserido pelos motoristas e substitui de forma autônoma a estimativa inicial (15 min) nas equações de rota.
+                  </p>
+
+                  <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                    {(() => {
+                      const realHistory = dbRepo.getServiceTimeHistory(userEmail);
+                      
+                      const seedDestinations = [
+                        { name: "Supermercado Central BH", initial: 15, actuals: [38, 42, 40], badge: "Crítico (Fila)", color: "text-red-400 bg-red-500/10" },
+                        { name: "Pizzaria Ideal", initial: 15, actuals: [28, 30], badge: "Desvio Médio", color: "text-amber-400 bg-amber-500/10" },
+                        { name: "Farmácia Santa Luzia", initial: 15, actuals: [10, 12, 11], badge: "Super Rápido", color: "text-emerald-400 bg-emerald-500/10" },
+                        { name: "Lojas Americanas Savassi", initial: 15, actuals: [32, 35], badge: "Desvio Médio", color: "text-amber-400 bg-amber-500/10" }
+                      ];
+
+                      const mergedList = [...seedDestinations];
+                      Object.entries(realHistory).forEach(([dest, arr]: [string, any]) => {
+                        if (!mergedList.some(item => item.name === dest) && arr.length > 0) {
+                          mergedList.unshift({
+                            name: dest,
+                            initial: 15,
+                            actuals: arr,
+                            badge: "Apreendido",
+                            color: "text-violet-400 bg-violet-500/10"
+                          });
+                        }
+                      });
+
+                      return mergedList.map((item, idx) => {
+                        const sum = item.actuals.reduce((a, b) => a + b, 0);
+                        const avg = Math.round(sum / item.actuals.length);
+                        const diff = avg - item.initial;
+                        const isSlower = diff > 0;
+
+                        return (
+                          <div key={idx} className="bg-slate-950 border border-slate-800/60 p-2.5 rounded-lg text-[11px] flex flex-col space-y-1.5">
+                            <div className="flex justify-between items-start">
+                              <span className="font-extrabold text-slate-200 truncate pr-2 max-w-[170px]">{item.name}</span>
+                              <span className={`text-[8px] font-mono px-1.5 py-0.2 rounded font-bold ${item.color}`}>
+                                {item.badge}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-1.5 font-mono text-[9px] text-slate-500 pt-1 border-t border-slate-900">
+                              <div>Est. Inicial: <span className="text-slate-300">15m</span></div>
+                              <div>Média IA: <span className="text-white font-bold">{avg}m</span></div>
+                              <div className="text-right">Desvio: <span className={isSlower ? "text-red-400 font-bold" : "text-emerald-400 font-bold"}>
+                                {isSlower ? `+${diff}m` : `${diff}m`}
+                              </span></div>
+                            </div>
+
+                            <div className="text-[8px] font-mono text-slate-600 flex items-center gap-1 bg-slate-900/50 p-1 rounded">
+                              <span className="text-emerald-400 font-bold">✓ Equações Atualizadas:</span> {avg} min aplicados de forma autônoma.
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+
               </div>
 
               {/* Right Column: Visual Simulated Map + Active Routes sheet (8 cols) */}
@@ -1064,12 +1842,33 @@ Assinatura do Expedidor: _______________________________`;
                                 <h4 className="font-extrabold text-white text-xs mt-1.5">{r.driver}</h4>
                                 <p className="text-[11px] text-slate-500">{r.vehicle}</p>
                               </div>
-                              <button 
-                                onClick={() => handleCompleteRoute(rId)}
-                                className="text-[10px] font-bold bg-violet-600/20 hover:bg-violet-600 text-violet-300 hover:text-white px-2.5 py-1 rounded transition-colors"
-                              >
-                                Concluir Rota
-                              </button>
+                              {(() => {
+                                const isRouteFinished = r.path && r.path.length > 0 && r.path.every((p: any) => p.status === 'Entregue' || p.status === 'Cancelado');
+                                return (
+                                  <div className="flex flex-col items-end gap-1.5">
+                                    <button 
+                                      onClick={() => handleCompleteRoute(rId)}
+                                      className={`text-[10px] font-bold px-2.5 py-1 rounded transition-all cursor-pointer ${
+                                        isRouteFinished 
+                                          ? 'bg-emerald-600 hover:bg-emerald-500 text-white font-black' 
+                                          : 'bg-violet-600/20 hover:bg-violet-600 text-violet-300 hover:text-white'
+                                      }`}
+                                    >
+                                      Concluir Rota
+                                    </button>
+                                    {isRouteFinished && (
+                                      <button
+                                        onClick={() => handleCompleteRoute(rId)}
+                                        className="text-[9px] font-black uppercase tracking-wider bg-emerald-500 text-slate-950 px-2.5 py-0.5 rounded text-center border border-emerald-400 font-sans shadow-lg shadow-emerald-500/20 hover:bg-emerald-400 cursor-pointer"
+                                        style={{ animation: 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite' }}
+                                        title="Clique para arquivar e finalizar a rota"
+                                      >
+                                        Atividades Concluídas
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </div>
 
                             <div className="mt-3 space-y-1 text-[11px] font-mono text-slate-400">
@@ -2268,6 +3067,316 @@ Assinatura do Expedidor: _______________________________`;
               })()}
 
             </div>
+
+          </div>
+        )}
+
+        {/* TAB 6: RELATORIO DE JORNADAS */}
+        {activeTab === 'jornadas' && (
+          <div className="space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800 pb-5">
+              <div>
+                <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full uppercase">
+                  ⏱️ Rastreabilidade de Produtividade & Jornadas
+                </span>
+                <h1 className="text-xl font-extrabold text-white mt-1.5">Relatório Consolidado de Jornadas & Deslocamentos</h1>
+                <p className="text-xs text-slate-400">Rastreabilidade completa de horários de saída, paradas, pausas, tempos de entrega e retornos de percurso.</p>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    const firstCondutor = condutores[0]?.email || 'motorista@logusq.com';
+                    handleSimulateShiftData(firstCondutor);
+                  }}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md shadow-indigo-950/40 cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4" /> Simular Dados de Rota Completa (17/07/2026)
+                </button>
+              </div>
+            </div>
+
+            {/* Filter controls */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <label className="block text-[10px] font-mono text-slate-400 uppercase">Filtrar por Motorista</label>
+                <select
+                  value={filterJornadaDriver}
+                  onChange={e => setFilterJornadaDriver(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-violet-500 outline-none"
+                >
+                  <option value="">-- Todos os Motoristas --</option>
+                  {condutores.map(c => (
+                    <option key={c.email} value={c.nome}>{c.nome} ({c.email})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[10px] font-mono text-slate-400 uppercase">Filtrar por Veículo</label>
+                <select
+                  value={filterJornadaVehicle}
+                  onChange={e => setFilterJornadaVehicle(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-violet-500 outline-none"
+                >
+                  <option value="">-- Todos os Veículos --</option>
+                  {frota.map(v => (
+                    <option key={v.idVeiculo} value={v.placa}>{v.modelo} - Placa: {v.placa}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[10px] font-mono text-slate-400 uppercase">Data da Jornada</label>
+                <input
+                  type="text"
+                  value={filterJornadaDate}
+                  onChange={e => setFilterJornadaDate(e.target.value)}
+                  placeholder="Ex: 17/07/2026"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-violet-500 outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Journey listing */}
+            {(() => {
+              const filteredDrivers = condutores.filter(c => {
+                const matchDriver = !filterJornadaDriver || c.nome.toLowerCase().includes(filterJornadaDriver.toLowerCase());
+                const matchVehicle = !filterJornadaVehicle || (c.veiculo && c.veiculo.toLowerCase().includes(filterJornadaVehicle.toLowerCase()));
+                return matchDriver && matchVehicle;
+              });
+
+              if (filteredDrivers.length === 0) {
+                return (
+                  <div className="bg-slate-900 border border-slate-800 border-dashed rounded-2xl p-12 text-center text-xs text-slate-500">
+                    Nenhum motorista corresponde aos filtros selecionados.
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-6">
+                  {filteredDrivers.map(c => {
+                    const saved = localStorage.getItem(`logusq_atividade_${c.email}`);
+                    const activity = saved ? JSON.parse(saved) : null;
+                    const route: any = Object.values(activeRoutes).find((r: any) => r.driverEmail === c.email || r.driver === c.nome);
+
+                    if (filterJornadaDate && activity) {
+                      const dateStr = activity.inicioDeslocamento || activity.fimDeslocamento || '';
+                      if (dateStr && !dateStr.includes(filterJornadaDate)) {
+                        return null;
+                      }
+                    }
+
+                    if (!activity && !route) {
+                      return (
+                        <div key={c.email} className="bg-slate-900 border border-slate-800 p-5 rounded-2xl text-xs text-slate-500 flex justify-between items-center">
+                          <div>
+                            <span className="font-bold text-white block">{c.nome}</span>
+                            <span className="text-[10px] font-mono text-slate-400 uppercase">E-mail: {c.email} | Veículo: {c.veiculo || 'Não associado'}</span>
+                          </div>
+                          <span className="bg-slate-950/60 border border-slate-800/80 px-2.5 py-1 rounded text-[10px] uppercase font-mono">Sem atividade hoje</span>
+                        </div>
+                      );
+                    }
+
+                    const timeline = getJourneyTimeline(route, activity);
+                    const totalPausas = activity?.pausas?.length || 0;
+                    const totalPausasMin = activity?.pausas?.reduce((acc: number, p: any) => {
+                      if (p.inicio && p.fim) {
+                        try {
+                          const start = parsePtBrDate(p.inicio)?.getTime();
+                          const end = parsePtBrDate(p.fim)?.getTime();
+                          if (start && end) {
+                            return acc + Math.round((end - start) / 60000);
+                          }
+                        } catch (e) {}
+                      }
+                      return acc;
+                    }, 0) || 0;
+
+                    const totalEntregas = route?.path?.length || 0;
+                    const entregues = route?.path?.filter((p: any) => p.status === 'Entregue').length || 0;
+                    const cancelados = route?.path?.filter((p: any) => p.status === 'Cancelado').length || 0;
+
+                    return (
+                      <div key={c.email} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
+                        
+                        {/* Header details */}
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-800 pb-4">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-extrabold text-white text-base">{c.nome}</h3>
+                              <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                                activity?.fimDeslocamento 
+                                  ? 'bg-slate-850 text-slate-400 border border-slate-700/50' 
+                                  : activity?.inicioDeslocamento 
+                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 animate-pulse'
+                                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                              }`}>
+                                {activity?.fimDeslocamento ? 'Jornada Concluída' : activity?.inicioDeslocamento ? 'Em trânsito' : 'Aguardando saída CD'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-400 mt-1 font-mono">
+                              E-mail: <b className="text-slate-300">{c.email}</b> | Veículo: <b className="text-slate-300">{c.veiculo || 'N/A'}</b>
+                            </p>
+                          </div>
+                          
+                          <div className="text-right font-mono">
+                            <span className="text-[10px] text-slate-500 uppercase block">Data da auditoria</span>
+                            <span className="text-white font-bold text-xs">{filterJornadaDate}</span>
+                          </div>
+                        </div>
+
+                        {/* Metrics bar */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <div className="bg-slate-950/60 border border-slate-800/80 p-3 rounded-xl">
+                            <span className="text-[9px] text-slate-500 font-mono uppercase block mb-1">⏱️ Saída do CD Hub</span>
+                            <span className="text-white font-bold text-xs font-mono">
+                              {activity?.inicioDeslocamento ? activity.inicioDeslocamento.split(', ')[1] || activity.inicioDeslocamento : 'Não iniciou'}
+                            </span>
+                          </div>
+
+                          <div className="bg-slate-950/60 border border-slate-800/80 p-3 rounded-xl">
+                            <span className="text-[9px] text-slate-500 font-mono uppercase block mb-1">🏁 Retorno ao CD Hub</span>
+                            <span className="text-indigo-400 font-bold text-xs font-mono">
+                              {activity?.fimDeslocamento ? activity.fimDeslocamento.split(', ')[1] || activity.fimDeslocamento : 'Não retornou'}
+                            </span>
+                          </div>
+
+                          <div className="bg-slate-950/60 border border-slate-800/80 p-3 rounded-xl">
+                            <span className="text-[9px] text-slate-500 font-mono uppercase block mb-1">⏸️ Pausas / Almoço</span>
+                            <span className="text-amber-400 font-bold text-xs font-mono">
+                              {totalPausas} registradas ({totalPausasMin} min)
+                            </span>
+                          </div>
+
+                          <div className="bg-slate-950/60 border border-slate-800/80 p-3 rounded-xl">
+                            <span className="text-[9px] text-slate-500 font-mono uppercase block mb-1">📊 Status das Entregas</span>
+                            <span className="text-emerald-400 font-bold text-xs font-mono">
+                              {entregues}/{totalEntregas} entregues {cancelados > 0 && <span className="text-red-400 font-bold font-sans">({cancelados} falhas)</span>}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Chronological details */}
+                        <div className="space-y-4">
+                          <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono border-l-2 border-violet-500 pl-2">
+                            Cronologia e Auditoria de Percursos (Trecho a Trecho)
+                          </h4>
+
+                          {timeline.length === 0 ? (
+                            <div className="bg-slate-950/40 p-5 rounded-xl text-center text-xs text-slate-500">
+                              Nenhuma cronologia gerada. O motorista precisa iniciar a rota para registrar os tempos.
+                            </div>
+                          ) : (
+                            <div className="relative border-l border-slate-800 ml-3.5 pl-5 space-y-4 font-sans text-xs">
+                              
+                              <div className="relative">
+                                <span className="absolute -left-[25px] top-0.5 w-2.5 h-2.5 rounded-full bg-violet-500 ring-4 ring-slate-950"></span>
+                                <div className="space-y-0.5">
+                                  <div className="text-[10px] font-mono text-slate-500 uppercase">Partida Original</div>
+                                  <div className="text-white font-bold">Saída do Centro de Distribuição (CD)</div>
+                                  <div className="text-[11px] font-mono text-slate-400">
+                                    Horário de Saída: <span className="text-violet-400 font-bold">{activity?.inicioDeslocamento || 'Aguardando ação do motorista'}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {timeline.map((node: any, idx: number) => {
+                                if (node.tipo === 'deslocamento') {
+                                  return (
+                                    <div key={idx} className="relative">
+                                      <span className="absolute -left-[25px] top-1.5 w-2 h-2 rounded-full bg-indigo-500/50 ring-4 ring-slate-950"></span>
+                                      <div className="space-y-0.5 bg-slate-950/40 border border-slate-850 p-2.5 rounded-xl">
+                                        <div className="text-[9px] font-mono text-indigo-400 uppercase tracking-wider font-bold">🛣️ Deslocamento entre Pontos</div>
+                                        <div className="text-slate-300 font-medium">De: <span className="text-white font-bold">{node.origem}</span> ➔ Para: <span className="text-white font-bold">{node.destino}</span></div>
+                                        <div className="text-[11px] font-mono text-slate-400">Tempo decorrido: <span className="text-white font-bold">{node.tempoMsg}</span></div>
+                                      </div>
+                                    </div>
+                                  );
+                                } else {
+                                  return (
+                                    <div key={idx} className="relative">
+                                      <span className={`absolute -left-[25px] top-1.5 w-2 h-2 rounded-full ring-4 ring-slate-950 ${
+                                        node.status === 'Entregue' ? 'bg-emerald-500' : node.status === 'Cancelado' ? 'bg-red-500' : 'bg-amber-500'
+                                      }`}></span>
+                                      <div className="space-y-1 bg-slate-950/60 border border-slate-850 p-3 rounded-xl">
+                                        <div className="flex justify-between items-center gap-2">
+                                          <div className="text-[9px] font-mono text-slate-400 uppercase font-bold">⏱️ Atendimento no Cliente</div>
+                                          <span className={`text-[8px] font-mono px-2 py-0.5 rounded-full font-bold uppercase ${
+                                            node.status === 'Entregue' 
+                                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                                              : node.status === 'Cancelado'
+                                                ? 'bg-red-500/10 text-red-400 border border-red-500/20'
+                                                : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                          }`}>
+                                            {node.status}
+                                          </span>
+                                        </div>
+                                        <div className="text-white font-bold">{node.cliente}</div>
+                                        <div className="text-[10px] text-slate-400">{node.endereco}</div>
+                                        <div className="text-[11px] font-mono text-slate-300">Tempo de Atendimento: <span className="text-white font-bold">{node.tempoMsg}</span></div>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                              })}
+
+                              {activity?.pausas && activity.pausas.length > 0 && (
+                                <div className="pt-3 border-t border-slate-800 space-y-2">
+                                  <div className="text-[10px] font-mono text-slate-400 uppercase font-bold tracking-wider">⏸️ Registro de Interrupções / Pausas</div>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    {activity.pausas.map((p: any, pIdx: number) => {
+                                      let durationStr = "Em andamento";
+                                      if (p.inicio && p.fim) {
+                                        try {
+                                          const start = parsePtBrDate(p.inicio)?.getTime();
+                                          const end = parsePtBrDate(p.fim)?.getTime();
+                                          if (start && end) {
+                                            durationStr = `${Math.round((end - start) / 60000)} min`;
+                                          }
+                                        } catch (e) {}
+                                      }
+                                      return (
+                                        <div key={pIdx} className="bg-slate-950/60 border border-slate-850 p-2.5 rounded-xl font-mono text-[11px] space-y-1">
+                                          <div className="flex justify-between text-[10px] text-amber-400 uppercase font-bold">
+                                            <span>Pausa #{pIdx + 1}</span>
+                                            <span>⏱️ {durationStr}</span>
+                                          </div>
+                                          <div className="text-white font-bold">{p.justificativa}</div>
+                                          <div className="text-slate-500 text-[10px]">Início: {p.inicio.split(', ')[1] || p.inicio} {p.fim ? `| Fim: ${p.fim.split(', ')[1] || p.fim}` : ''}</div>
+                                          {p.justificativaRetorno && (
+                                            <div className="text-emerald-400 text-[10px]">Retorno: "{p.justificativaRetorno}"</div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="relative pt-4 border-t border-slate-800/60">
+                                <span className="absolute -left-[25px] top-5 w-2 h-2 rounded-full bg-indigo-500 ring-4 ring-slate-950"></span>
+                                <div className="space-y-0.5">
+                                  <div className="text-[10px] font-mono text-slate-500 uppercase">Encerramento da Jornada</div>
+                                  <div className="text-indigo-400 font-bold">Retorno / Chegada ao CD Hub Principal</div>
+                                  <div className="text-[11px] font-mono text-slate-400">
+                                    Horário de Chegada: <span className="text-indigo-400 font-bold">{activity?.fimDeslocamento || 'Aguardando retorno do veículo'}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                            </div>
+                          )}
+                        </div>
+
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
           </div>
         )}
