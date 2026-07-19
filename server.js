@@ -18,8 +18,8 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json({ limit: '15mb' }));
 
 // Initialize Supabase Client if credentials are provided
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+const supabaseUrl = process.env.SUPABASE_URL || process.env.supabase_url_logusq_project;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.supabase_api_logusq_projetc;
 let supabase = null;
 
 if (supabaseUrl && supabaseAnonKey) {
