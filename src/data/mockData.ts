@@ -602,6 +602,25 @@ export const dbRepo = {
 
   // High-Level Helper API
   getUsuario: (email: string): Usuario | undefined => {
+    // If we have a logged-in user cache from Supabase, prioritize it to ensure no fallback mismatches
+    const cachedData = localStorage.getItem('logusq_logged_user');
+    if (cachedData) {
+      try {
+        const u = JSON.parse(cachedData);
+        if (u.email === email) {
+          return {
+            email: u.email,
+            nome: u.nome,
+            perfil: u.perfil === 'CLIENT' || u.perfil === 'CLIENTE' ? 'CLIENTE' : u.perfil,
+            empresa: u.empresa,
+            nivelAcesso: u.nivelAcesso || u.nivel_acesso || 'TOTAL',
+            veiculo: u.veiculo,
+            criadoEm: u.criadoEm || u.criado_em || '19/07/2026'
+          };
+        }
+      } catch (e) {}
+    }
+
     const list = dbRepo.getUsuarios();
     const user = list.find(u => u.email === email);
     if (user) {

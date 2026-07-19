@@ -161,31 +161,15 @@ export default function LoginCadastro({ onLoginSuccess }: LoginCadastroProps) {
       
       const data = await response.json();
       if (response.ok) {
-        if (data.mode === 'local') {
-          // Fallback Local
-          const user = dbRepo.autenticarUsuario(loginEmail, loginSenha);
-          if (user) {
-            onLoginSuccess(user.email);
-          } else {
-            setLoginError('E-mail ou senha inválidos. Tente usar as credenciais demo listadas abaixo.');
-          }
-        } else {
-          // Logged in with Supabase successfully
-          localStorage.setItem('logusq_logged_user', JSON.stringify(data.user));
-          onLoginSuccess(data.user.email);
-        }
+        // Logged in with Supabase successfully
+        localStorage.setItem('logusq_logged_user', JSON.stringify(data.user));
+        onLoginSuccess(data.user.email);
       } else {
         setLoginError(data.message || 'E-mail ou senha inválidos. Verifique suas credenciais.');
       }
     } catch (err) {
       console.error('Erro de rede ao fazer login:', err);
-      // Network/local fallback
-      const user = dbRepo.autenticarUsuario(loginEmail, loginSenha);
-      if (user) {
-        onLoginSuccess(user.email);
-      } else {
-        setLoginError('Erro ao conectar ao servidor. Caso esteja offline, tente as credenciais demo locais.');
-      }
+      setLoginError('Não foi possível se conectar ao servidor de banco de dados. Verifique sua conexão de rede ou chaves do Supabase.');
     }
   };
 

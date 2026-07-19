@@ -18,9 +18,29 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json({ limit: '15mb' }));
 
 // Initialize Supabase Client if credentials are provided
-const supabaseUrl = process.env.SUPABASE_URL || process.env.supabase_url_logusq_project;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.supabase_api_logusq_projetc;
+const supabaseUrl = process.env.SUPABASE_URL || 
+                    process.env.supabase_url_logusq_project || 
+                    process.env.SUPABASE_URL_LOGUSQ_PROJECT;
+
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || 
+                        process.env.supabase_api_logusq_projetc || 
+                        process.env.SUPABASE_API_LOGUSQ_PROJETC ||
+                        process.env.supabase_api_logusq_project ||
+                        process.env.SUPABASE_API_LOGUSQ_PROJECT;
+
 let supabase = null;
+
+console.log('--- DETECÇÃO DE AMBIENTE SUPABASE ---');
+if (process.env.SUPABASE_URL) console.log('✅ SUPABASE_URL carregada.');
+if (process.env.supabase_url_logusq_project) console.log('✅ supabase_url_logusq_project carregada.');
+if (process.env.SUPABASE_URL_LOGUSQ_PROJECT) console.log('✅ SUPABASE_URL_LOGUSQ_PROJECT carregada.');
+
+if (process.env.SUPABASE_ANON_KEY) console.log('✅ SUPABASE_ANON_KEY carregada.');
+if (process.env.supabase_api_logusq_projetc) console.log('✅ supabase_api_logusq_projetc carregada.');
+if (process.env.SUPABASE_API_LOGUSQ_PROJETC) console.log('✅ SUPABASE_API_LOGUSQ_PROJETC carregada.');
+if (process.env.supabase_api_logusq_project) console.log('✅ supabase_api_logusq_project carregada.');
+if (process.env.SUPABASE_API_LOGUSQ_PROJECT) console.log('✅ SUPABASE_API_LOGUSQ_PROJECT carregada.');
+console.log('------------------------------------');
 
 if (supabaseUrl && supabaseAnonKey) {
   try {
@@ -201,12 +221,10 @@ app.post('/api/auth/register', async (req, res) => {
     return res.status(400).json({ error: 'WEAK_PASSWORD', message: pwdErr });
   }
 
-  // Se o Supabase estiver offline, o cliente processa localmente (fallback)
   if (!supabase) {
-    return res.json({ 
-      success: true, 
-      mode: 'local',
-      message: 'Cadastro simulado localmente. Configure SUPABASE_URL para registrar no banco de dados real.' 
+    return res.status(503).json({ 
+      error: 'DATABASE_OFFLINE', 
+      message: 'Não é possível registrar novos usuários. O banco de dados em nuvem (Supabase) não está configurado.' 
     });
   }
 
@@ -293,11 +311,9 @@ app.post('/api/auth/login', async (req, res) => {
   const masterBypass = process.env.MASTER_PASSWORD;
   
   if (!supabase) {
-    // Local Fallback para demonstração sem travar o aplicativo
-    return res.json({ 
-      success: true, 
-      mode: 'local',
-      message: 'Rodando em Modo Fallback Local.' 
+    return res.status(503).json({ 
+      error: 'DATABASE_OFFLINE', 
+      message: 'Banco de dados em nuvem (Supabase) não configurado ou inacessível. O sistema está em modo de produção estrito e requer conexão direta.' 
     });
   }
 
@@ -367,7 +383,7 @@ app.post('/api/auth/change-password', async (req, res) => {
   }
 
   if (!supabase) {
-    return res.json({ success: true, mode: 'local' });
+    return res.status(503).json({ error: 'DATABASE_OFFLINE', message: 'Redefinição de senha indisponível sem conexão com o banco de dados.' });
   }
 
   try {
@@ -395,8 +411,11 @@ app.post('/api/auth/change-password', async (req, res) => {
 app.get('/api/sync/pull', async (req, res) => {
   const { email, perfil } = req.query;
 
-  if (!supabase || !email) {
-    return res.json({ mode: 'local' });
+  if (!supabase) {
+    return res.status(503).json({ error: 'DATABASE_OFFLINE', message: 'Sincronização de dados indisponível sem conexão com o banco de dados.' });
+  }
+  if (!email) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'E-mail do usuário é obrigatório.' });
   }
 
   try {
@@ -517,7 +536,7 @@ app.post('/api/sync/push', async (req, res) => {
   const { email, perfil, table, records } = req.body;
 
   if (!supabase) {
-    return res.json({ success: true, mode: 'local' });
+    return res.status(503).json({ error: 'DATABASE_OFFLINE', message: 'Envio de dados indisponível sem conexão com o banco de dados.' });
   }
 
   try {
