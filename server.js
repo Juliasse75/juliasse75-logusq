@@ -312,9 +312,11 @@ app.post('/api/auth/login', async (req, res) => {
   const masterBypass = process.env.MASTER_PASSWORD;
   
   if (!supabase) {
+    const availableKeys = Object.keys(process.env).filter(k => k.toLowerCase().includes('supabase') || k.toLowerCase().includes('logusq'));
+    console.error('❌ LOGIN ERRO: Supabase não inicializado. Chaves disponíveis:', availableKeys);
     return res.status(503).json({ 
       error: 'DATABASE_OFFLINE', 
-      message: 'Banco de dados em nuvem (Supabase) não configurado ou inacessível. O sistema está em modo de produção estrito e requer conexão direta.' 
+      message: `Banco de dados em nuvem (Supabase) não configurado ou inacessível. O sistema está em modo de produção estrito e requer conexão direta. (Chaves detectadas: ${availableKeys.join(', ') || 'nenhuma'})` 
     });
   }
 
