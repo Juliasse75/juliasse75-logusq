@@ -36,6 +36,14 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
 
   React.useEffect(() => {
     setActiveRoutes(dbRepo.getRotasAtivas(userEmail));
+    
+    const handleSyncComplete = () => {
+      triggerRefresh();
+    };
+    window.addEventListener('logusq_sync_complete', handleSyncComplete);
+    return () => {
+      window.removeEventListener('logusq_sync_complete', handleSyncComplete);
+    };
   }, [refreshKey, userEmail]);
 
   // Form selections
@@ -612,7 +620,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
         if (activeRouteEntry) {
           hasActiveRoute = true;
           routeId = activeRouteEntry[0];
-          const r = activeRouteEntry[1];
+          const r = activeRouteEntry[1] as any;
           const pending = (r.path || []).filter((p: any) => p.status === 'Pendente');
           currentWeight = pending.reduce((sum: number, p: any) => sum + (p.pesoMercadoriaKg || 0), 0);
           
@@ -788,7 +796,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       return p;
     });
 
-    const rescueStop: Entrega = {
+    const rescueStop: any = {
       id: `RESCUE-${Date.now()}`,
       chave: `RSC-${Math.floor(1000 + Math.random() * 9000)}`,
       cliente: `RESGATE DE EMERGÊNCIA (Carga de ${brokenRoute.driver})`,
@@ -1312,12 +1320,30 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     e.target.value = '';
   };
 
-  const handleAddEntrega = (e: React.FormEvent) => {
+  const handleAddEntrega = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!delChave || !delEnd) {
       alert('Chave / ID e Endereço de Entrega são obrigatórios!');
       return;
     }
+
+    let lat: number | undefined;
+    let lng: number | undefined;
+    
+    try {
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(delEnd)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.lat && data.lng) {
+          lat = data.lat;
+          lng = data.lng;
+          console.log(`🗺️ Endereço manual geocodificado com sucesso: ${data.displayName} (${lat}, ${lng})`);
+        }
+      }
+    } catch (err) {
+      console.warn('Erro ao geocodificar endereço manualmente, usando fallback de BH:', err);
+    }
+
     dbRepo.cadastrarEntrega(userEmail, {
       chave: delChave,
       cliente: delCliente || 'Cliente Final',
@@ -1328,8 +1354,11 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       whatsapp: delZap,
       pesoMercadoriaKg: delPeso,
       tipoOperacao: delTipo,
-      notaFiscal: delNotaFiscal
+      notaFiscal: delNotaFiscal,
+      latitude: lat,
+      longitude: lng
     });
+    
     setDelChave('');
     setDelCliente('');
     setDelCep('');

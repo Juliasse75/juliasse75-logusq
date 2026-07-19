@@ -50,6 +50,16 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
   );
   const selectedClient = clientes.find(c => c.email === selectedClientEmail);
 
+  React.useEffect(() => {
+    const handleSyncComplete = () => {
+      triggerRefresh();
+    };
+    window.addEventListener('logusq_sync_complete', handleSyncComplete);
+    return () => {
+      window.removeEventListener('logusq_sync_complete', handleSyncComplete);
+    };
+  }, []);
+
   // --- FORM STATES ---
   // --- FORM STATES ---
   // Modal toggle for detailed client editing

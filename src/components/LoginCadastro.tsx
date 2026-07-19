@@ -140,18 +140,56 @@ export default function LoginCadastro({ onLoginSuccess }: LoginCadastroProps) {
     }
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const validateStrongPasswordClient = (pass: string) => {
+    if (pass.length < 8) return 'A senha deve conter no mínimo 8 caracteres.';
+    if (!/[A-Z]/.test(pass)) return 'A senha deve conter pelo menos uma letra maiúscula (A-Z).';
+    if (!/[a-z]/.test(pass)) return 'A senha deve conter pelo menos uma letra minúscula (a-z).';
+    if (!/[0-9]/.test(pass)) return 'A senha deve conter pelo menos um número (0-9).';
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(pass)) return 'A senha deve conter pelo menos um caractere especial (ex: @, #, $, %).';
+    return null;
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
-    const user = dbRepo.autenticarUsuario(loginEmail, loginSenha);
-    if (user) {
-      onLoginSuccess(user.email);
-    } else {
-      setLoginError('E-mail ou senha inválidos. Tente usar as credenciais demo listadas abaixo.');
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginEmail, senha: loginSenha })
+      });
+      
+      const data = await response.json();
+      if (response.ok) {
+        if (data.mode === 'local') {
+          // Fallback Local
+          const user = dbRepo.autenticarUsuario(loginEmail, loginSenha);
+          if (user) {
+            onLoginSuccess(user.email);
+          } else {
+            setLoginError('E-mail ou senha inválidos. Tente usar as credenciais demo listadas abaixo.');
+          }
+        } else {
+          // Logged in with Supabase successfully
+          localStorage.setItem('logusq_logged_user', JSON.stringify(data.user));
+          onLoginSuccess(data.user.email);
+        }
+      } else {
+        setLoginError(data.message || 'E-mail ou senha inválidos. Verifique suas credenciais.');
+      }
+    } catch (err) {
+      console.error('Erro de rede ao fazer login:', err);
+      // Network/local fallback
+      const user = dbRepo.autenticarUsuario(loginEmail, loginSenha);
+      if (user) {
+        onLoginSuccess(user.email);
+      } else {
+        setLoginError('Erro ao conectar ao servidor. Caso esteja offline, tente as credenciais demo locais.');
+      }
     }
   };
 
-  const handleCadastro = (e: React.FormEvent) => {
+  const handleCadastro = async (e: React.FormEvent) => {
     e.preventDefault();
     setCadastroError('');
     
@@ -160,7 +198,37 @@ export default function LoginCadastro({ onLoginSuccess }: LoginCadastroProps) {
       return;
     }
 
+    const pwdErr = validateStrongPasswordClient(senhaProvisoria);
+    if (pwdErr) {
+      setCadastroError(pwdErr);
+      return;
+    }
+
     try {
+      // Call secure API to save in Supabase
+      const registerData = {
+        nome: respNome,
+        email: respEmail,
+        senha: senhaProvisoria,
+        perfil: 'CLIENTE',
+        empresa: nomeEmpresa,
+        cnpj,
+        plano: selectedPlano,
+        respNome
+      };
+
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(registerData)
+      });
+
+      const resData = await response.json();
+      if (!response.ok) {
+        throw new Error(resData.message || 'Erro ao registrar no servidor.');
+      }
+
+      // Sync local database copy as well (offline fallback)
       const resp = dbRepo.cadastrarClienteAuto({
         nomeEmpresa,
         email: respEmail,

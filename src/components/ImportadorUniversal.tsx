@@ -562,66 +562,94 @@ export default function ImportadorUniversal({
     let successCount = 0;
 
     try {
-      toImport.forEach(item => {
-        if (type === 'veiculos') {
-          // Generate an ID if missing
-          const id = item.idVeiculo || `VEIC-${item.placa?.replace(/\W/g, '') || Math.floor(Math.random() * 9000 + 1000)}`;
-          
-          dbRepo.cadastrarVeiculo(userEmail, {
-            idVeiculo: id,
-            placa: item.placa || 'AAA-0000',
-            modelo: item.modelo || 'Modelo Importado',
-            fabricante: item.fabricante || 'Outro',
-            anoFabricacao: item.anoFabricacao || '2023',
-            anoModelo: item.anoModelo || item.anoFabricacao || '2023',
-            cor: item.cor || 'Branco',
-            tipo: item.tipo || 'Van',
-            capacidadeKg: parseInt(item.capacidadeKg) || 1000,
-            renavam: item.renavam || '',
-            chassi: item.chassi || '',
-            status: item.status || 'Disponivel'
-          });
-          successCount++;
-        } else if (type === 'condutores') {
-          dbRepo.cadastrarCondutor(userEmail, {
-            nome: item.nome || 'Condutor Importado',
-            cpf: item.cpf || '000.000.000-00',
-            rg: item.rg || '',
-            nascimento: item.nascimento || '01/01/1990',
-            telefone: item.telefone || '(00) 00000-0000',
-            email: item.email || `motorista.${Math.floor(Math.random() * 1000)}@empresa.com.br`,
-            cnh: item.cnh || '00000000000',
-            categoriaCnh: item.categoriaCnh || 'B',
-            vencCnh: item.vencCnh || '01/01/2030',
-            veiculo: item.veiculo || '',
-            placaVeiculo: item.placaVeiculo || ''
-          });
-          successCount++;
-        } else if (type === 'entregas') {
-          dbRepo.cadastrarEntrega(userEmail, {
-            chave: item.chave || `ENT-${Math.floor(Math.random() * 1000000)}`,
-            cliente: item.cliente || 'Cliente Importado',
-            endereco: item.endereco || 'Endereço Indefinido',
-            enderecoColeta: item.enderecoColeta || '',
-            pontoReferencia: item.pontoReferencia || '',
-            telefone: item.telefone || '',
-            whatsapp: item.whatsapp || '',
-            pesoMercadoriaKg: parseInt(item.pesoMercadoriaKg) || 15,
-            tipoOperacao: item.tipoOperacao === 'Coleta' ? 'Coleta' : 'Entrega',
-            notaFiscal: item.notaFiscal || ''
-          });
-          successCount++;
-        }
-      });
+      // We convert this to an async loop to resolve addresses using our real geocoding proxy
+      const importProcess = async () => {
+        for (const item of toImport) {
+          if (type === 'veiculos') {
+            // Generate an ID if missing
+            const id = item.idVeiculo || `VEIC-${item.placa?.replace(/\W/g, '') || Math.floor(Math.random() * 9000 + 1000)}`;
+            
+            dbRepo.cadastrarVeiculo(userEmail, {
+              idVeiculo: id,
+              placa: item.placa || 'AAA-0000',
+              modelo: item.modelo || 'Modelo Importado',
+              fabricante: item.fabricante || 'Outro',
+              anoFabricacao: item.anoFabricacao || '2023',
+              anoModelo: item.anoModelo || item.anoFabricacao || '2023',
+              cor: item.cor || 'Branco',
+              tipo: item.tipo || 'Van',
+              capacidadeKg: parseInt(item.capacidadeKg) || 1000,
+              renavam: item.renavam || '',
+              chassi: item.chassi || '',
+              status: item.status || 'Disponivel'
+            });
+            successCount++;
+          } else if (type === 'condutores') {
+            dbRepo.cadastrarCondutor(userEmail, {
+              nome: item.nome || 'Condutor Importado',
+              cpf: item.cpf || '000.000.000-00',
+              rg: item.rg || '',
+              nascimento: item.nascimento || '01/01/1990',
+              telefone: item.telefone || '(00) 00000-0000',
+              email: item.email || `motorista.${Math.floor(Math.random() * 1000)}@empresa.com.br`,
+              cnh: item.cnh || '00000000000',
+              categoriaCnh: item.categoriaCnh || 'B',
+              vencCnh: item.vencCnh || '01/01/2030',
+              veiculo: item.veiculo || '',
+              placaVeiculo: item.placaVeiculo || ''
+            });
+            successCount++;
+          } else if (type === 'entregas') {
+            let lat: number | undefined;
+            let lng: number | undefined;
+            
+            const addressToGeocode = item.endereco || '';
+            if (addressToGeocode) {
+              try {
+                const res = await fetch(`/api/geocode?q=${encodeURIComponent(addressToGeocode)}`);
+                if (res.ok) {
+                  const data = await res.json();
+                  if (data.lat && data.lng) {
+                    lat = data.lat;
+                    lng = data.lng;
+                  }
+                }
+              } catch (e) {
+                console.warn('Fallback: geocodificação offline no importador de planilhas.', e);
+              }
+            }
 
-      alert(`Sucesso! Foram importados e validados ${successCount} registros no sistema.`);
-      onImportComplete();
-      onClose();
-      // Reset states
-      setFile(null);
-      setPastedText('');
-      setImportStep('input');
-      setParsedRecords([]);
+            dbRepo.cadastrarEntrega(userEmail, {
+              chave: item.chave || `ENT-${Math.floor(Math.random() * 1000000)}`,
+              cliente: item.cliente || 'Cliente Importado',
+              endereco: addressToGeocode || 'Endereço Indefinido',
+              enderecoColeta: item.enderecoColeta || '',
+              pontoReferencia: item.pontoReferencia || '',
+              telefone: item.telefone || '',
+              whatsapp: item.whatsapp || '',
+              pesoMercadoriaKg: parseInt(item.pesoMercadoriaKg) || 15,
+              tipoOperacao: item.tipoOperacao === 'Coleta' ? 'Coleta' : 'Entrega',
+              notaFiscal: item.notaFiscal || '',
+              latitude: lat,
+              longitude: lng
+            });
+            successCount++;
+          }
+        }
+
+        alert(`Sucesso! Foram importados e validados ${successCount} registros no sistema.`);
+        onImportComplete();
+        onClose();
+        // Reset states
+        setFile(null);
+        setPastedText('');
+        setImportStep('input');
+        setParsedRecords([]);
+      };
+
+      importProcess().catch(err => {
+        alert(`Erro na inserção de dados: ${err.message || err}`);
+      });
     } catch (err: any) {
       alert(`Erro na inserção de dados: ${err.message || err}`);
     }

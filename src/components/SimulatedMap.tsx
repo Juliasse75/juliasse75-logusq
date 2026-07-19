@@ -117,6 +117,53 @@ export default function SimulatedMap({
 
   const displayedRotas = getRoutesToDisplay();
 
+  // OSRM Street-Aligned Route Geometry state and fetch hook
+  const [realStreetRoutes, setRealStreetRoutes] = useState<Record<string, [number, number][]>>({});
+
+  useEffect(() => {
+    if (!leafletLoaded) return;
+    const displayed = getRoutesToDisplay();
+    const routeKeys = Object.keys(displayed);
+    if (routeKeys.length === 0) return;
+
+    routeKeys.forEach(clusterId => {
+      const points = displayed[clusterId as any];
+      if (!points || points.length === 0) return;
+
+      const routeCoords = [
+        [baseCoords.lng, baseCoords.lat],
+        ...points.map(p => [p.longitude || -43.93, p.latitude || -19.93]),
+        [baseCoords.lng, baseCoords.lat]
+      ];
+      
+      const coordString = routeCoords.map(c => `${c[0]},${c[1]}`).join(';');
+      const cacheKey = `${clusterId}_${coordString}`;
+
+      // Avoid redundant fetches for identical coordinate paths
+      if ((realStreetRoutes as any)[cacheKey]) return;
+
+      fetch(`/api/route?coords=${encodeURIComponent(coordString)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.routes && data.routes[0]) {
+            const geom = data.routes[0].geometry;
+            if (geom && geom.coordinates) {
+              const latLngs = geom.coordinates.map((coord: any) => [coord[1], coord[0]] as [number, number]);
+              setRealStreetRoutes(prev => ({
+                ...prev,
+                [cacheKey]: latLngs,
+                [clusterId]: latLngs
+              }));
+              console.log(`🛣️ OSRM: Rota real pelas ruas traçada para o cluster ${clusterId}.`);
+            }
+          }
+        })
+        .catch(err => {
+          console.warn('Erro ao obter rota real pelas ruas via OSRM, usando linha reta:', err);
+        });
+    });
+  }, [entregas, rotas, activeRoutes, leafletLoaded]);
+
   // Extract unique drivers and vehicles for filter select lists
   const uniqueDrivers = activeRoutes 
     ? Array.from(new Set(Object.values(activeRoutes).map(r => r.driver))).filter(Boolean)
@@ -326,7 +373,8 @@ export default function SimulatedMap({
       const color = routeColors[idx % routeColors.length];
       if (!points || points.length === 0) return;
 
-      const pathLatLngs = [
+      // Draw real OSRM street-aligned route if available, otherwise fallback to straight lines
+      const pathLatLngs = realStreetRoutes[clusterId] || [
         [baseCoords.lat, baseCoords.lng],
         ...points.map(p => [p.latitude, p.longitude]),
         [baseCoords.lat, baseCoords.lng]
@@ -432,7 +480,7 @@ export default function SimulatedMap({
     } else {
       map.setView([baseCoords.lat, baseCoords.lng], 13);
     }
-  }, [leafletLoaded, entregas, displayedRotas, baseCoords, mapStyle, selectedDriverFilter, selectedVehicleFilter, activeRoutes, emergencias]);
+  }, [leafletLoaded, entregas, displayedRotas, baseCoords, mapStyle, selectedDriverFilter, selectedVehicleFilter, activeRoutes, emergencias, realStreetRoutes]);
 
   if (!leafletLoaded) {
     return (

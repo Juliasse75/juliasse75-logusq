@@ -467,6 +467,39 @@ export const initializeDatabase = () => {
   }
 };
 
+const getLoggedUserEmail = () => {
+  return localStorage.getItem('logusq_session_email') || '';
+};
+
+const getLoggedUserPerfil = () => {
+  const email = getLoggedUserEmail();
+  if (!email) return '';
+  const data = localStorage.getItem('logusq_logged_user');
+  if (data) {
+    try {
+      const u = JSON.parse(data);
+      return u.perfil || '';
+    } catch(e) {}
+  }
+  return 'CLIENTE'; // default fallback
+};
+
+export const triggerPushSync = async (table: string, records: any[]) => {
+  const email = getLoggedUserEmail();
+  if (!email) return;
+  const perfil = getLoggedUserPerfil();
+  try {
+    const res = await fetch('/api/sync/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, perfil, table, records })
+    });
+    if (!res.ok) console.warn('Erro ao sincronizar tabela ' + table + ' com o Supabase.');
+  } catch(e) {
+    console.warn('Conexão offline: sincronizando alterações localmente.');
+  }
+};
+
 // Generic Repository Helper
 export const dbRepo = {
   getUsuarios: (): any[] => {
@@ -475,6 +508,7 @@ export const dbRepo = {
   },
   saveUsuarios: (usuarios: any[]) => {
     localStorage.setItem(KEYS.USUARIOS, JSON.stringify(usuarios));
+    triggerPushSync('usuarios', usuarios);
   },
   
   getClientes: (): Cliente[] => {
@@ -483,6 +517,7 @@ export const dbRepo = {
   },
   saveClientes: (clientes: Cliente[]) => {
     localStorage.setItem(KEYS.CLIENTES, JSON.stringify(clientes));
+    triggerPushSync('clientes', clientes);
   },
   
   getColaboradores: (): Colaborador[] => {
@@ -491,6 +526,7 @@ export const dbRepo = {
   },
   saveColaboradores: (colab: Colaborador[]) => {
     localStorage.setItem(KEYS.COLABORADORES, JSON.stringify(colab));
+    triggerPushSync('colaboradores', colab);
   },
   
   getVeiculos: (): Veiculo[] => {
@@ -499,6 +535,7 @@ export const dbRepo = {
   },
   saveVeiculos: (veiculos: Veiculo[]) => {
     localStorage.setItem(KEYS.VEICULOS, JSON.stringify(veiculos));
+    triggerPushSync('veiculos', veiculos);
   },
   
   getCondutoresRaw: (): Condutor[] => {
@@ -507,6 +544,7 @@ export const dbRepo = {
   },
   saveCondutores: (condutores: Condutor[]) => {
     localStorage.setItem(KEYS.CONDUTORES, JSON.stringify(condutores));
+    triggerPushSync('condutores', condutores);
   },
   
   getMensagens: (): MensagemSuporte[] => {
@@ -597,8 +635,7 @@ export const dbRepo = {
 
   autenticarUsuario: (email: string, senha_hash: string): Usuario | undefined => {
     const list = dbRepo.getUsuarios();
-    // Allow demo logins easily by comparing passwords or plain text for convenience
-    const matched = list.find(u => u.email === email && (u.senha_hash === senha_hash || senha_hash === 'LogusQ@Master2026' || senha_hash === 'DemoClient@123' || senha_hash === 'LogusQ@Colab2026' || senha_hash === '123456'));
+    const matched = list.find(u => u.email === email && u.senha_hash === senha_hash);
     if (matched) {
       return {
         email: matched.email,
@@ -612,7 +649,7 @@ export const dbRepo = {
 
     // Check drivers (Condutores)
     const drivers = dbRepo.getCondutoresRaw();
-    const matchedDriver = drivers.find(c => c.email === email && (c.senha === senha_hash || senha_hash === '123456' || senha_hash === 'LogusQ@Master2026' || senha_hash === 'DemoClient@123' || senha_hash === 'LogusQ@Colab2026'));
+    const matchedDriver = drivers.find(c => c.email === email && (c.senha === senha_hash || (c as any).senha_hash === senha_hash));
     if (matchedDriver) {
       const clients = dbRepo.getClientes();
       const client = clients.find(cl => cl.email === (matchedDriver as any).clienteEmail);
@@ -676,8 +713,8 @@ export const dbRepo = {
       notaFiscal: params.notaFiscal || '',
       fotoComprovante: params.fotoComprovante || '',
       dataEntregue: params.dataEntregue || '',
-      latitude: -19.93 + (Math.random() - 0.5) * 0.05, // simulated geo coordinates near BH
-      longitude: -43.93 + (Math.random() - 0.5) * 0.05,
+      latitude: params.latitude !== undefined ? params.latitude : -19.93 + (Math.random() - 0.5) * 0.05, // simulated/real coordinates near BH
+      longitude: params.longitude !== undefined ? params.longitude : -43.93 + (Math.random() - 0.5) * 0.05,
       pesoMercadoriaKg: params.pesoMercadoriaKg || 10,
       tipoOperacao: params.tipoOperacao || 'Entrega',
       status: params.status || 'Pendente',
@@ -685,12 +722,14 @@ export const dbRepo = {
     };
     list.push(nova);
     localStorage.setItem(`${KEYS.ENTREGAS}_${email}`, JSON.stringify(list));
+    triggerPushSync('entregas', list);
   },
 
   deletarEntrega: (email: string, chave: string) => {
     const list = dbRepo.getEntregas(email);
     const filtered = list.filter(e => e.chave !== chave);
     localStorage.setItem(`${KEYS.ENTREGAS}_${email}`, JSON.stringify(filtered));
+    triggerPushSync('entregas', filtered);
   },
 
   getRotasAtivas: (email: string): Record<string, any> => {
@@ -700,6 +739,7 @@ export const dbRepo = {
 
   saveRotasAtivas: (email: string, rotas: Record<string, any>) => {
     localStorage.setItem(`logusq_rotas_ativas_${email}`, JSON.stringify(rotas));
+    triggerPushSync('rotas_ativas', [rotas]);
   },
 
   atualizarEntregaStatus: (clientEmail: string, entregaId: string, status: 'Pendente' | 'Entregue' | 'Cancelado', fotoComprovante?: string, observacao?: string, motoristaNome?: string) => {
@@ -718,6 +758,7 @@ export const dbRepo = {
       return ent;
     });
     localStorage.setItem(`${KEYS.ENTREGAS}_${clientEmail}`, JSON.stringify(updated));
+    triggerPushSync('entregas', updated);
 
     // Also update this delivery in active routes so the manager dashboard updates in real-time
     const rotas = dbRepo.getRotasAtivas(clientEmail);
@@ -1280,6 +1321,7 @@ export const dbRepo = {
 
   saveLogs: (logs: AuditLog[]) => {
     localStorage.setItem(KEYS.AUDITORIA, JSON.stringify(logs));
+    triggerPushSync('auditoria_logs', logs);
   },
 
   registrarLog: (
