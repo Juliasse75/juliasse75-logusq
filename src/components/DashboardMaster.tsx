@@ -379,6 +379,21 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
       return;
     }
 
+    if (cSenha) {
+      const pwdErr = (() => {
+        if (cSenha.length < 8) return 'A senha deve conter no mínimo 8 caracteres.';
+        if (!/[A-Z]/.test(cSenha)) return 'A senha deve conter pelo menos uma letra maiúscula (A-Z).';
+        if (!/[a-z]/.test(cSenha)) return 'A senha deve conter pelo menos uma letra minúscula (a-z).';
+        if (!/[0-9]/.test(cSenha)) return 'A senha deve conter pelo menos um número (0-9).';
+        if (!/[!@#$%^&*(),.?":{}|<>]/.test(cSenha)) return 'A senha deve conter pelo menos um caractere especial (ex: @, #, $, %).';
+        return null;
+      })();
+      if (pwdErr) {
+        alert(`Senha do Colaborador Fraca: ${pwdErr}`);
+        return;
+      }
+    }
+
     if (editingColabId) {
       // Edit mode
       dbRepo.editarColaborador(editingColabId, {
@@ -529,6 +544,18 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
     e.preventDefault();
     if (!regEmpresa || !regCnpj || !regEmail || !regSenha) {
       alert('Preencha os campos obrigatórios (Razão Social, CNPJ, E-mail e Senha)!');
+      return;
+    }
+    const pwdErr = (() => {
+      if (regSenha.length < 8) return 'A senha deve conter no mínimo 8 caracteres.';
+      if (!/[A-Z]/.test(regSenha)) return 'A senha deve conter pelo menos uma letra maiúscula (A-Z).';
+      if (!/[a-z]/.test(regSenha)) return 'A senha deve conter pelo menos uma letra minúscula (a-z).';
+      if (!/[0-9]/.test(regSenha)) return 'A senha deve conter pelo menos um número (0-9).';
+      if (!/[!@#$%^&*(),.?":{}|<>]/.test(regSenha)) return 'A senha deve conter pelo menos um caractere especial (ex: @, #, $, %).';
+      return null;
+    })();
+    if (pwdErr) {
+      alert(`Senha Provisória Fraca: ${pwdErr}`);
       return;
     }
     try {
@@ -906,8 +933,16 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                         setPwdChangeError('Por favor, informe a nova senha.');
                         return;
                       }
-                      if (newPasswordValue.length < 6) {
-                        setPwdChangeError('A nova senha deve possuir pelo menos 6 caracteres.');
+                      const pwdErr = (() => {
+                        if (newPasswordValue.length < 8) return 'A senha deve conter no mínimo 8 caracteres.';
+                        if (!/[A-Z]/.test(newPasswordValue)) return 'A senha deve conter pelo menos uma letra maiúscula (A-Z).';
+                        if (!/[a-z]/.test(newPasswordValue)) return 'A senha deve conter pelo menos uma letra minúscula (a-z).';
+                        if (!/[0-9]/.test(newPasswordValue)) return 'A senha deve conter pelo menos um número (0-9).';
+                        if (!/[!@#$%^&*(),.?":{}|<>]/.test(newPasswordValue)) return 'A senha deve conter pelo menos um caractere especial (ex: @, #, $, %).';
+                        return null;
+                      })();
+                      if (pwdErr) {
+                        setPwdChangeError(`Senha fraca: ${pwdErr}`);
                         return;
                       }
                       if (newPasswordValue !== confirmPasswordValue) {

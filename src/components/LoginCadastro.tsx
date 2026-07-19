@@ -1378,6 +1378,11 @@ REPRESENTANTE DA CONTRATANTE
                               setMotError('Por favor, informe a nova senha.');
                               return;
                             }
+                            const pwdErr = validateStrongPasswordClient(motNewSenha);
+                            if (pwdErr) {
+                              setMotError(`Senha fraca: ${pwdErr}`);
+                              return;
+                            }
                             if (motNewSenha !== motConfirmSenha) {
                               setMotError('As senhas digitadas não coincidem.');
                               return;

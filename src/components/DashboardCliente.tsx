@@ -1128,6 +1128,22 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   const handleUpdateCondutor = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCondutorEdit) return;
+
+    if (edDSenha) {
+      const pwdErr = (() => {
+        if (edDSenha.length < 8) return 'A senha deve conter no mínimo 8 caracteres.';
+        if (!/[A-Z]/.test(edDSenha)) return 'A senha deve conter pelo menos uma letra maiúscula (A-Z).';
+        if (!/[a-z]/.test(edDSenha)) return 'A senha deve conter pelo menos uma letra minúscula (a-z).';
+        if (!/[0-9]/.test(edDSenha)) return 'A senha deve conter pelo menos um número (0-9).';
+        if (!/[!@#$%^&*(),.?":{}|<>]/.test(edDSenha)) return 'A senha deve conter pelo menos um caractere especial (ex: @, #, $, %).';
+        return null;
+      })();
+      if (pwdErr) {
+        alert(`Senha do Motorista Fraca: ${pwdErr}`);
+        return;
+      }
+    }
+
     dbRepo.editarCondutor(userEmail, selectedCondutorEdit, {
       nome: edDNome,
       cpf: edDCpf,

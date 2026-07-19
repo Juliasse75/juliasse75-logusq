@@ -20,13 +20,15 @@ app.use(express.json({ limit: '15mb' }));
 // Initialize Supabase Client if credentials are provided
 const supabaseUrl = process.env.SUPABASE_URL || 
                     process.env.supabase_url_logusq_project || 
-                    process.env.SUPABASE_URL_LOGUSQ_PROJECT;
+                    process.env.SUPABASE_URL_LOGUSQ_PROJECT ||
+                    'https://qybdhrbynmmjceeuqrns.supabase.co';
 
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || 
                         process.env.supabase_api_logusq_projetc || 
                         process.env.SUPABASE_API_LOGUSQ_PROJETC ||
                         process.env.supabase_api_logusq_project ||
-                        process.env.SUPABASE_API_LOGUSQ_PROJECT;
+                        process.env.SUPABASE_API_LOGUSQ_PROJECT ||
+                        'sb_publishable_Em8MHqSzsNUHu4GiH6FJwQ_vU2YPs3G';
 
 let supabase = null;
 
@@ -312,11 +314,9 @@ app.post('/api/auth/login', async (req, res) => {
   const masterBypass = process.env.MASTER_PASSWORD;
   
   if (!supabase) {
-    const availableKeys = Object.keys(process.env).filter(k => k.toLowerCase().includes('supabase') || k.toLowerCase().includes('logusq'));
-    console.error('❌ LOGIN ERRO: Supabase não inicializado. Chaves disponíveis:', availableKeys);
     return res.status(503).json({ 
       error: 'DATABASE_OFFLINE', 
-      message: `Banco de dados em nuvem (Supabase) não configurado ou inacessível. O sistema está em modo de produção estrito e requer conexão direta. (Chaves detectadas: ${availableKeys.join(', ') || 'nenhuma'})` 
+      message: 'Banco de dados em nuvem (Supabase) não configurado ou inacessível. O sistema está em modo de produção estrito e requer conexão direta.' 
     });
   }
 
