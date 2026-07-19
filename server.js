@@ -31,6 +31,7 @@ const supabaseAnonKey = process.env.SUPABASE_ANON_KEY ||
 let supabase = null;
 
 console.log('--- DETECÇÃO DE AMBIENTE SUPABASE ---');
+console.log('Todas as chaves de ambiente disponíveis:', Object.keys(process.env).filter(k => k.toLowerCase().includes('supabase') || k.toLowerCase().includes('logusq')));
 if (process.env.SUPABASE_URL) console.log('✅ SUPABASE_URL carregada.');
 if (process.env.supabase_url_logusq_project) console.log('✅ supabase_url_logusq_project carregada.');
 if (process.env.SUPABASE_URL_LOGUSQ_PROJECT) console.log('✅ SUPABASE_URL_LOGUSQ_PROJECT carregada.');
