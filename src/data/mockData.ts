@@ -649,7 +649,7 @@ export const dbRepo = {
     }
 
     const list = dbRepo.getUsuarios();
-    const user = list.find(u => u.email === email);
+    const user = list.find(u => u.email.toLowerCase() === email.toLowerCase());
     if (user) {
       return {
         email: user.email,
@@ -1347,7 +1347,7 @@ export const dbRepo = {
 
   getSenhaUsuario: (email: string): string => {
     const list = dbRepo.getUsuarios();
-    const user = list.find(u => u.email === email);
+    const user = list.find(u => u.email.toLowerCase() === email.toLowerCase());
     return user ? user.senha_hash : '';
   },
 

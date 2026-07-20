@@ -708,13 +708,15 @@ app.post('/api/sync/push', async (req, res) => {
           const salt = bcrypt.genSaltSync(10);
           finalHash = bcrypt.hashSync(finalHash, salt);
         }
+        const rawNivel = (u.nivelAcesso || u.nivel_acesso || 'PARCIAL').toUpperCase();
+        const finalNivel = ['TOTAL', 'PARCIAL'].includes(rawNivel) ? rawNivel : 'PARCIAL';
         await supabase.from('usuarios').upsert({
           email: u.email,
           nome: u.nome,
           perfil: u.perfil,
           empresa: u.empresa || null,
           veiculo: u.veiculo || null,
-          nivel_acesso: (u.nivelAcesso || 'PARCIAL').toUpperCase(),
+          nivel_acesso: finalNivel,
           senha_hash: finalHash
         });
       }
