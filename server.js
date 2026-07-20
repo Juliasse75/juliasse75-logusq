@@ -591,8 +591,7 @@ app.post('/api/sync/push', async (req, res) => {
     if (table === 'veiculos') {
       const vehiclePlatesToKeep = records.map(v => v.placa).filter(Boolean);
       if (vehiclePlatesToKeep.length > 0) {
-        const platesSql = vehiclePlatesToKeep.map(p => `'${p}'`).join(',');
-        await supabase.from('veiculos').delete().eq('cliente_email', queryEmail).not('placa', 'in', `(${platesSql})`);
+        await supabase.from('veiculos').delete().eq('cliente_email', queryEmail).not('placa', 'in', vehiclePlatesToKeep);
       } else {
         await supabase.from('veiculos').delete().eq('cliente_email', queryEmail);
       }
@@ -616,17 +615,15 @@ app.post('/api/sync/push', async (req, res) => {
     } else if (table === 'condutores') {
       const driverEmailsToKeep = records.map(c => c.email).filter(Boolean);
       if (driverEmailsToKeep.length > 0) {
-        const emailsSql = driverEmailsToKeep.map(e => `'${e}'`).join(',');
-        
         // Find driver credentials to delete from usuarios table first
-        const { data: dbDriversToDelete } = await supabase.from('condutores').select('email').eq('cliente_email', queryEmail).not('email', 'in', `(${emailsSql})`);
+        const { data: dbDriversToDelete } = await supabase.from('condutores').select('email').eq('cliente_email', queryEmail).not('email', 'in', driverEmailsToKeep);
         if (dbDriversToDelete && dbDriversToDelete.length > 0) {
           for (const d of dbDriversToDelete) {
             await supabase.from('usuarios').delete().eq('email', d.email);
           }
         }
         
-        await supabase.from('condutores').delete().eq('cliente_email', queryEmail).not('email', 'in', `(${emailsSql})`);
+        await supabase.from('condutores').delete().eq('cliente_email', queryEmail).not('email', 'in', driverEmailsToKeep);
       } else {
         const { data: dbDriversToDelete } = await supabase.from('condutores').select('email').eq('cliente_email', queryEmail);
         if (dbDriversToDelete && dbDriversToDelete.length > 0) {
@@ -727,8 +724,7 @@ app.post('/api/sync/push', async (req, res) => {
       if (perfil === 'MASTER') {
         const userEmailsToKeep = records.map(u => u.email.toLowerCase()).filter(Boolean);
         if (userEmailsToKeep.length > 0) {
-          const emailsSql = userEmailsToKeep.map(e => `'${e}'`).join(',');
-          await supabase.from('usuarios').delete().not('email', 'in', `(${emailsSql})`);
+          await supabase.from('usuarios').delete().not('email', 'in', userEmailsToKeep);
         }
       } else {
         const colabEmailsToKeep = records.filter(u => u.perfil === 'COLABORADOR').map(u => u.email.toLowerCase());
@@ -764,17 +760,34 @@ app.post('/api/sync/push', async (req, res) => {
     } else if (table === 'clientes') {
       const clientEmailsToKeep = records.map(cl => cl.email.toLowerCase()).filter(Boolean);
       if (clientEmailsToKeep.length > 0) {
-        const emailsSql = clientEmailsToKeep.map(e => `'${e}'`).join(',');
-        
         // Find clients to delete so we can also delete their corresponding user credentials from usuarios
-        const { data: dbClientsToDelete } = await supabase.from('clientes').select('email').not('email', 'in', `(${emailsSql})`);
+        const { data: dbClientsToDelete } = await supabase.from('clientes').select('email').not('email', 'in', clientEmailsToKeep);
         if (dbClientsToDelete && dbClientsToDelete.length > 0) {
           for (const clToDelete of dbClientsToDelete) {
             console.log(`🗑️ SYNC PUSH: Deletando usuário do cliente removido do Supabase: ${clToDelete.email}`);
+            
+            // Delete the main client user login
             await supabase.from('usuarios').delete().eq('email', clToDelete.email);
+            
+            // Delete all associated vehicles
+            await supabase.from('veiculos').delete().eq('cliente_email', clToDelete.email);
+            
+            // Fetch and delete all associated driver user logins first
+            const { data: driversToDelete } = await supabase.from('condutores').select('email').eq('cliente_email', clToDelete.email);
+            if (driversToDelete && driversToDelete.length > 0) {
+              const driverEmails = driversToDelete.map(d => d.email).filter(Boolean);
+              if (driverEmails.length > 0) {
+                await supabase.from('usuarios').delete().in('email', driverEmails);
+              }
+            }
+            
+            // Delete all drivers, deliveries, and active routes
+            await supabase.from('condutores').delete().eq('cliente_email', clToDelete.email);
+            await supabase.from('entregas').delete().eq('cliente_email', clToDelete.email);
+            await supabase.from('rotas_ativas').delete().eq('cliente_email', clToDelete.email);
           }
         }
-        await supabase.from('clientes').delete().not('email', 'in', `(${emailsSql})`);
+        await supabase.from('clientes').delete().not('email', 'in', clientEmailsToKeep);
       }
 
       for (const cl of records) {
