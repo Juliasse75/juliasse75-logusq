@@ -691,13 +691,21 @@ app.post('/api/sync/push', async (req, res) => {
         });
       }
     } else if (table === 'usuarios') {
-      const colabEmailsToKeep = records.filter(u => u.perfil === 'COLABORADOR').map(u => u.email.toLowerCase());
-      const { data: dbColabs } = await supabase.from('usuarios').select('email').eq('perfil', 'COLABORADOR');
-      if (dbColabs && dbColabs.length > 0) {
-        for (const dbCol of dbColabs) {
-          if (!colabEmailsToKeep.includes(dbCol.email.toLowerCase())) {
-            console.log(`🗑️ SYNC PUSH: Deletando colaborador removido do Supabase: ${dbCol.email}`);
-            await supabase.from('usuarios').delete().eq('email', dbCol.email);
+      if (perfil === 'MASTER') {
+        const userEmailsToKeep = records.map(u => u.email.toLowerCase()).filter(Boolean);
+        if (userEmailsToKeep.length > 0) {
+          const emailsSql = userEmailsToKeep.map(e => `'${e}'`).join(',');
+          await supabase.from('usuarios').delete().not('email', 'in', `(${emailsSql})`);
+        }
+      } else {
+        const colabEmailsToKeep = records.filter(u => u.perfil === 'COLABORADOR').map(u => u.email.toLowerCase());
+        const { data: dbColabs } = await supabase.from('usuarios').select('email').eq('perfil', 'COLABORADOR');
+        if (dbColabs && dbColabs.length > 0) {
+          for (const dbCol of dbColabs) {
+            if (!colabEmailsToKeep.includes(dbCol.email.toLowerCase())) {
+              console.log(`🗑️ SYNC PUSH: Deletando colaborador removido do Supabase: ${dbCol.email}`);
+              await supabase.from('usuarios').delete().eq('email', dbCol.email);
+            }
           }
         }
       }
@@ -721,6 +729,21 @@ app.post('/api/sync/push', async (req, res) => {
         });
       }
     } else if (table === 'clientes') {
+      const clientEmailsToKeep = records.map(cl => cl.email.toLowerCase()).filter(Boolean);
+      if (clientEmailsToKeep.length > 0) {
+        const emailsSql = clientEmailsToKeep.map(e => `'${e}'`).join(',');
+        
+        // Find clients to delete so we can also delete their corresponding user credentials from usuarios
+        const { data: dbClientsToDelete } = await supabase.from('clientes').select('email').not('email', 'in', `(${emailsSql})`);
+        if (dbClientsToDelete && dbClientsToDelete.length > 0) {
+          for (const clToDelete of dbClientsToDelete) {
+            console.log(`🗑️ SYNC PUSH: Deletando usuário do cliente removido do Supabase: ${clToDelete.email}`);
+            await supabase.from('usuarios').delete().eq('email', clToDelete.email);
+          }
+        }
+        await supabase.from('clientes').delete().not('email', 'in', `(${emailsSql})`);
+      }
+
       for (const cl of records) {
         // Ensure user exists in usuarios first
         const { data: existingUser } = await supabase.from('usuarios').select('email').eq('email', cl.email).maybeSingle();

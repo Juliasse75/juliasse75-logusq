@@ -529,6 +529,16 @@ export const dbRepo = {
     const colabUsers = users.filter(u => u.perfil === 'COLABORADOR');
     let updated = false;
     
+    // Filter out any local colaboradores that no longer exist in the main users list
+    const filteredColabs = colabs.filter((c: any) => 
+      colabUsers.some(u => u.email.toLowerCase() === c.email.toLowerCase())
+    );
+    if (filteredColabs.length !== colabs.length) {
+      colabs.length = 0;
+      colabs.push(...filteredColabs);
+      updated = true;
+    }
+    
     colabUsers.forEach(u => {
       if (!colabs.some((c: any) => c.email === u.email)) {
         colabs.push({
