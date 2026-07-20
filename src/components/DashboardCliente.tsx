@@ -7,7 +7,7 @@ import {
   Info, RotateCcw, Clock, Bell, Printer, UserCheck
 } from 'lucide-react';
 import SimulatedMap from './SimulatedMap';
-import { clusterAndOptimize, DEFAULT_BASE, haversineDistance, optimizeTSP } from '../utils/routingEngine';
+import { clusterAndOptimize, DEFAULT_BASE, geocodeAddress, haversineDistance, optimizeTSP } from '../utils/routingEngine';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import ImportadorUniversal from './ImportadorUniversal';
 
@@ -23,6 +23,18 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
 
   // Client info
   const clientData = dbRepo.getCliente(userEmail);
+  
+  // Resolve client's base/CD coordinates dynamically based on their address
+  const clientBaseCoords = React.useMemo(() => {
+    if (clientData) {
+      const fullAddress = `${clientData.endereco || ''}, ${clientData.numero || ''} - ${clientData.bairro || ''}, ${clientData.cidade || ''} - ${clientData.estado || ''}`.trim();
+      if (fullAddress && fullAddress.length > 10) {
+        return geocodeAddress(fullAddress);
+      }
+    }
+    return { lat: DEFAULT_BASE.latitude, lng: DEFAULT_BASE.longitude };
+  }, [clientData]);
+
   const frota = dbRepo.getFrota(userEmail);
   const condutores = dbRepo.getCondutores(userEmail);
   const todasEntregas = dbRepo.getEntregas(userEmail);
@@ -1388,29 +1400,6 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     alert('Ponto de entrega adicionado!');
   };
 
-  const handleImportEntregasBulk = () => {
-    // Generate bulk deliveries in BH
-    const BH_POINTS = [
-      { chave: 'ENT-201', cliente: 'Supermercado BH', endereco: 'Rua da Bahia, 1022 - Centro, Belo Horizonte - MG', peso: 120 },
-      { chave: 'ENT-202', cliente: 'Drogaria Araujo', endereco: 'Avenida Getúlio Vargas, 1420 - Savassi, Belo Horizonte - MG', peso: 45 },
-      { chave: 'ENT-203', cliente: 'Lojas Americanas', endereco: 'Avenida Afonso Pena, 3210 - Cruzeiro, Belo Horizonte - MG', peso: 210 },
-      { chave: 'ENT-204', cliente: 'Restaurante Dona Lucinha', endereco: 'Rua Sergipe, 811 - Funcionários, Belo Horizonte - MG', peso: 60 },
-      { chave: 'ENT-205', cliente: 'Academia Bodytech', endereco: 'Rua Pernambuco, 1055 - Savassi, Belo Horizonte - MG', peso: 15 },
-    ];
-
-    BH_POINTS.forEach(p => {
-      dbRepo.cadastrarEntrega(userEmail, {
-        chave: p.chave,
-        cliente: p.cliente,
-        endereco: p.endereco,
-        pesoMercadoriaKg: p.peso,
-        tipoOperacao: 'Entrega'
-      });
-    });
-    triggerRefresh();
-    alert('5 pontos de entrega demo BH importados com sucesso!');
-  };
-
   const handleOptimize = () => {
     const selectedVehs = frota.filter(v => {
       const hasDriver = condutores.some(c => c.veiculo === v.idVeiculo && c.status === 'Ativo');
@@ -1426,7 +1415,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     }
 
     // Call routing engine K-Means + TSP Clustering
-    const clusters = clusterAndOptimize(entregasPendentes, selectedVehs.length);
+    const clusters = clusterAndOptimize(entregasPendentes, selectedVehs.length, clientBaseCoords.lat, clientBaseCoords.lng);
 
     // Map clusters to vehicles
     const routesObj: Record<string, { driver: string; driverEmail?: string; vehicle: string; path: Entrega[]; km: number; duration: number }> = {};
@@ -1998,12 +1987,6 @@ Assinatura do Expedidor: _______________________________`;
               </div>
               <div className="flex flex-wrap gap-2.5">
                 <button
-                  onClick={handleImportEntregasBulk}
-                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-700/50 transition-colors"
-                >
-                  Importar Demo BH
-                </button>
-                <button
                   onClick={downloadModeloEntregasCsv}
                   className="bg-slate-900 hover:bg-slate-800 text-slate-300 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-800 flex items-center gap-2 transition-colors"
                 >
@@ -2347,7 +2330,16 @@ Assinatura do Expedidor: _______________________________`;
               <div className="lg:col-span-8 space-y-6">
                 
                 {/* SVG MAP */}
-                <SimulatedMap entregas={todasEntregas} rotas={mapRoutes} activeRoutes={activeRoutes} emergencias={unresolvedEmergencies} />
+                 <SimulatedMap 
+                  entregas={todasEntregas} 
+                  rotas={mapRoutes} 
+                  activeRoutes={activeRoutes} 
+                  emergencias={unresolvedEmergencies} 
+                  baseCoords={clientBaseCoords}
+                  baseName={clientData?.empresa || 'CD Hub Principal'}
+                  baseCity={clientData?.cidade || 'Belo Horizonte'}
+                  baseState={clientData?.estado || 'MG'}
+                />
 
                 {/* Active Routes list */}
                 {Object.keys(activeRoutes).length > 0 && (

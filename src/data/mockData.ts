@@ -500,6 +500,18 @@ export const triggerPushSync = async (table: string, records: any[]) => {
   }
 };
 
+function parsePtBrDateOnly(dateStr: string): Date | null {
+  if (!dateStr) return null;
+  const parts = dateStr.split('/');
+  if (parts.length === 3) {
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const year = parseInt(parts[2], 10);
+    return new Date(year, month, day);
+  }
+  return null;
+}
+
 // Generic Repository Helper
 export const dbRepo = {
   getUsuarios: (): any[] => {
@@ -513,7 +525,39 @@ export const dbRepo = {
   
   getClientes: (): Cliente[] => {
     initializeDatabase();
-    return JSON.parse(localStorage.getItem(KEYS.CLIENTES) || '[]');
+    const list = JSON.parse(localStorage.getItem(KEYS.CLIENTES) || '[]');
+    let changed = false;
+    
+    // Auto-blocking rule check
+    const updatedList = list.map((c: any) => {
+      if (c.status === 'Ativo' && !c.pagamentoConfirmado) {
+        const venc = parsePtBrDateOnly(c.vencimento);
+        if (venc) {
+          // Calculate difference in days between today and vencimento
+          const today = new Date();
+          // Reset time of today and venc to compare dates only
+          today.setHours(0,0,0,0);
+          venc.setHours(0,0,0,0);
+          
+          const diffTime = today.getTime() - venc.getTime();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          
+          if (diffDays > 3) {
+            console.log(`🔒 Auto-blocking client "${c.empresa}" because they are ${diffDays} days past due!`);
+            changed = true;
+            return { ...c, status: 'Bloqueado' };
+          }
+        }
+      }
+      return c;
+    });
+    
+    if (changed) {
+      localStorage.setItem(KEYS.CLIENTES, JSON.stringify(updatedList));
+      triggerPushSync('clientes', updatedList);
+      return updatedList;
+    }
+    return list;
   },
   saveClientes: (clientes: Cliente[]) => {
     localStorage.setItem(KEYS.CLIENTES, JSON.stringify(clientes));

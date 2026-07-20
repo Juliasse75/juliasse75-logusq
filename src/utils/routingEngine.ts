@@ -53,17 +53,28 @@ export function geocodeAddress(endereco: string): { lat: number; lng: number } {
     }
   }
 
-  // Fallback: Generate coordinates based on a simple string hash within the Belo Horizonte area
+  // Smarter Fallback: Detect correct general area based on keywords (e.g. SP, RJ, etc.)
+  let baseLat = DEFAULT_BASE.latitude;
+  let baseLng = DEFAULT_BASE.longitude;
+
+  if (clean.includes('sp') || clean.includes('são paulo') || clean.includes('sao paulo') || clean.includes('paulista')) {
+    baseLat = -23.5505;
+    baseLng = -46.6333;
+  } else if (clean.includes('rj') || clean.includes('rio de janeiro') || clean.includes('copacabana')) {
+    baseLat = -22.9068;
+    baseLng = -43.1729;
+  }
+
   let hash = 0;
   for (let i = 0; i < clean.length; i++) {
     hash = clean.charCodeAt(i) + ((hash << 5) - hash);
   }
-  const latOffset = ((hash & 0xff) / 255 - 0.5) * 0.05;
-  const lngOffset = (((hash >> 8) & 0xff) / 255 - 0.5) * 0.05;
+  const latOffset = ((hash & 0xff) / 255 - 0.5) * 0.08;
+  const lngOffset = (((hash >> 8) & 0xff) / 255 - 0.5) * 0.08;
 
   return {
-    lat: DEFAULT_BASE.latitude + latOffset,
-    lng: DEFAULT_BASE.longitude + lngOffset,
+    lat: baseLat + latOffset,
+    lng: baseLng + lngOffset,
   };
 }
 
@@ -106,7 +117,12 @@ export function optimizeTSP(baseLat: number, baseLng: number, entregas: Entrega[
  * K-Means Clustering for vehicle route assignment
  * Segments deliveries into 'k' groups, then runs TSP optimization on each.
  */
-export function clusterAndOptimize(entregas: Entrega[], numVeiculos: number): Record<number, Entrega[]> {
+export function clusterAndOptimize(
+  entregas: Entrega[], 
+  numVeiculos: number, 
+  baseLat: number = DEFAULT_BASE.latitude, 
+  baseLng: number = DEFAULT_BASE.longitude
+): Record<number, Entrega[]> {
   if (entregas.length === 0 || numVeiculos <= 0) return {};
 
   const k = Math.min(numVeiculos, entregas.length);
@@ -154,12 +170,12 @@ export function clusterAndOptimize(entregas: Entrega[], numVeiculos: number): Re
     }
   }
 
-  // 2. Map back to Entregas and optimize each cluster with TSP starting from default base
+  // 2. Map back to Entregas and optimize each cluster with TSP starting from custom or default base
   const result: Record<number, Entrega[]> = {};
   Object.entries(clusters).forEach(([cId, idxs]) => {
     if (idxs.length === 0) return;
     const subList = idxs.map(idx => entregas[idx]);
-    const optimized = optimizeTSP(DEFAULT_BASE.latitude, DEFAULT_BASE.longitude, subList);
+    const optimized = optimizeTSP(baseLat, baseLng, subList);
     result[Number(cId)] = optimized;
   });
 

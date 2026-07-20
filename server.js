@@ -88,6 +88,18 @@ function validateStrongPassword(password) {
   return null;
 }
 
+function parsePtBrDateServer(dateStr) {
+  if (!dateStr) return null;
+  const parts = dateStr.split('/');
+  if (parts.length === 3) {
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const year = parseInt(parts[2], 10);
+    return new Date(year, month, day);
+  }
+  return null;
+}
+
 // Automatic Block/Subscription Check (Item 5)
 async function checkClientBlocked(email) {
   if (!supabase) return false; // offline bypass
@@ -102,19 +114,48 @@ async function checkClientBlocked(email) {
 
     if (!userRecord) return false;
 
-    // If the user is a client, check their status directly
-    if (userRecord.perfil === 'CLIENTE') {
+    // Helper to evaluate if a client needs to be blocked
+    const evaluateAndBlock = async (clientEmail) => {
       const { data: clientRecord } = await supabase
         .from('clientes')
-        .select('status, pagamento_confirmado')
-        .eq('email', email)
+        .select('status, pagamento_confirmado, vencimento, empresa')
+        .eq('email', clientEmail)
         .single();
         
-      if (clientRecord) {
-        if (clientRecord.status === 'Bloqueado' || !clientRecord.pagamento_confirmado) {
-          return true; // blocked!
+      if (!clientRecord) return false;
+
+      if (clientRecord.status === 'Bloqueado') {
+        return true;
+      }
+
+      // If payment is not confirmed, check if today is > vencimento + 3 days
+      if (!clientRecord.pagamento_confirmado && clientRecord.vencimento) {
+        const venc = parsePtBrDateServer(clientRecord.vencimento);
+        if (venc) {
+          const today = new Date();
+          today.setHours(0,0,0,0);
+          venc.setHours(0,0,0,0);
+          
+          const diffTime = today.getTime() - venc.getTime();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          
+          if (diffDays > 3) {
+            console.log(`🔒 SERVER AUTO-BLOCK: Client "${clientRecord.empresa}" (${clientEmail}) is ${diffDays} days past due! Setting status to "Bloqueado"`);
+            // Automatically update status in Supabase database to 'Bloqueado'
+            await supabase
+              .from('clientes')
+              .update({ status: 'Bloqueado' })
+              .eq('email', clientEmail);
+            return true;
+          }
         }
       }
+      return false;
+    };
+
+    // If the user is a client, check their status directly
+    if (userRecord.perfil === 'CLIENTE') {
+      return await evaluateAndBlock(email);
     }
     
     // If the user is a motorista, find their associated client's status
@@ -126,15 +167,7 @@ async function checkClientBlocked(email) {
         .single();
 
       if (driverRecord && driverRecord.cliente_email) {
-        const { data: clientRecord } = await supabase
-          .from('clientes')
-          .select('status, pagamento_confirmado')
-          .eq('email', driverRecord.cliente_email)
-          .single();
-          
-        if (clientRecord && (clientRecord.status === 'Bloqueado' || !clientRecord.pagamento_confirmado)) {
-          return true; // blocked!
-        }
+        return await evaluateAndBlock(driverRecord.cliente_email);
       }
     }
   } catch (err) {

@@ -18,6 +18,9 @@ function calculateHaversineDistance(lat1: number, lon1: number, lat2: number, lo
 
 interface SimulatedMapProps {
   baseCoords?: { lat: number; lng: number };
+  baseName?: string;
+  baseCity?: string;
+  baseState?: string;
   entregas: Entrega[];
   rotas?: Record<number, Entrega[]>; // clusterId -> ordered entregas
   veiculosSelecionados?: Veiculo[];
@@ -28,6 +31,9 @@ interface SimulatedMapProps {
 
 export default function SimulatedMap({
   baseCoords = { lat: DEFAULT_BASE.latitude, lng: DEFAULT_BASE.longitude },
+  baseName = DEFAULT_BASE.nome,
+  baseCity = DEFAULT_BASE.cidade,
+  baseState = DEFAULT_BASE.estado,
   entregas,
   rotas = {},
   veiculosSelecionados = [],
@@ -235,8 +241,8 @@ export default function SimulatedMap({
       .bindPopup(`
         <div class="p-1" style="font-family: sans-serif; font-size: 11px;">
           <b style="font-size: 12px; color: #7c3aed;">CD Hub Principal</b><br/>
-          ${DEFAULT_BASE.nome}<br/>
-          ${DEFAULT_BASE.cidade} - ${DEFAULT_BASE.estado}
+          ${baseName}<br/>
+          ${baseCity} - ${baseState}
         </div>
       `);
     markersRef.current.push(baseMarker);
@@ -669,7 +675,7 @@ export default function SimulatedMap({
               </div>
             </div>
             <div className="space-y-0.5 text-slate-400 font-sans">
-              <div><b>CD Central:</b> <span className="text-white font-semibold">{DEFAULT_BASE.cidade} - {DEFAULT_BASE.estado}</span></div>
+              <div><b>CD Central:</b> <span className="text-white font-semibold">{baseCity} - {baseState}</span></div>
               <div><b>Pontos Totais:</b> <span className="text-white font-bold">{entregas.length}</span></div>
             </div>
 

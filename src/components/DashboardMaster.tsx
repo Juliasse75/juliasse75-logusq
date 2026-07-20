@@ -368,7 +368,11 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
     const cli = clientes.find(c => c.email === email);
     if (!cli) return;
     const novoStatus = cli.status === 'Ativo' ? 'Bloqueado' : 'Ativo';
-    dbRepo.editarCliente(email, { status: novoStatus });
+    const updateObj: any = { status: novoStatus };
+    if (novoStatus === 'Ativo') {
+      updateObj.pagamentoConfirmado = true;
+    }
+    dbRepo.editarCliente(email, updateObj);
     triggerRefresh();
   };
 
