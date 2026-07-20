@@ -137,7 +137,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
       setUpRespEstado((selectedClient as any).respEstado || selectedClient.estado || '');
 
       setUpEmail(selectedClient.email || '');
-      setUpSenha(dbRepo.getSenhaUsuario(selectedClient.email));
+      setUpSenha('');
       setUpPlano(selectedClient.plano as keyof PlanosSaaS);
       setUpStatus(selectedClient.status as any);
       setUpVencimento(selectedClient.vencimento || '');
@@ -485,7 +485,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
     setCEmail(col.email);
     setCCargo(col.cargo);
     setCAccess(col.nivelAcesso as any);
-    setCSenha(dbRepo.getSenhaUsuario(col.email));
+    setCSenha('');
     setCCep(col.cep || '');
     setCEndereco(col.endereco || '');
     setCNumero(col.numero || '');
@@ -1767,11 +1767,13 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Senha de Acesso *</label>
+                    <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">
+                      {editingColabId ? 'Senha de Acesso (Editável)' : 'Senha de Acesso *'}
+                    </label>
                     <input
                       type="text"
-                      required
-                      placeholder="Defina a senha"
+                      required={!editingColabId}
+                      placeholder={editingColabId ? "•••••••• (Deixe em branco para manter a atual)" : "Defina a senha"}
                       value={cSenha}
                       onChange={e => setCSenha(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-1.5 text-xs text-white font-mono"
@@ -1928,7 +1930,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                                   setCRg(col.rg || '');
                                   setCCargo(col.cargo);
                                   setCEmail(col.email);
-                                  setCSenha(colSenha || 'AlfaLogQ@2026');
+                                  setCSenha('');
                                   setCRegime(col.regime);
                                   setCTel(col.telefone);
                                   setCAccess(col.nivelAcesso);
@@ -1960,7 +1962,12 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                             <div>Telefone: <span className="text-slate-200">{col.telefone}</span></div>
                             <div>CPF: <span className="text-slate-300">{col.cpf}</span></div>
                             {col.rg && <div>RG: <span className="text-slate-300">{col.rg}</span></div>}
-                            <div>Senha: <span className="text-yellow-400/80 font-bold">{colSenha || 'N/A'}</span></div>
+                            <div>
+                              Senha:{" "}
+                              <span className="text-yellow-400/80 font-bold">
+                                {colSenha && colSenha.startsWith('$2') ? '••••••••' : (colSenha || 'N/A')}
+                              </span>
+                            </div>
                           </div>
 
                           {/* Address block inside card */}
@@ -2961,13 +2968,12 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Senha de Acesso (Editável) *</label>
+                      <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Senha de Acesso (Editável)</label>
                       <input
                         type="text"
-                        required
                         value={upSenha}
                         onChange={e => setUpSenha(e.target.value)}
-                        placeholder="Digite a nova senha"
+                        placeholder="•••••••• (Deixe em branco para manter a atual)"
                         className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white font-mono"
                       />
                     </div>
