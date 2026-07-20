@@ -379,7 +379,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
       return;
     }
 
-    if (cSenha) {
+    if (cSenha && !cSenha.startsWith('$2')) {
       const pwdErr = (() => {
         if (cSenha.length < 8) return 'A senha deve conter no mínimo 8 caracteres.';
         if (!/[A-Z]/.test(cSenha)) return 'A senha deve conter pelo menos uma letra maiúscula (A-Z).';
@@ -428,28 +428,21 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
       dbRepo.cadastrarColaborador({
         nome: cNome,
         cpf: cCpf,
+        rg: cRg,
         telefone: cTel,
         regime: cRegime,
         cargo: cCargo,
         email: cEmail,
         senhaProvisoria: cSenha,
-        nivelAcesso: cAccess
+        nivelAcesso: cAccess,
+        cep: cCep,
+        endereco: cEndereco,
+        numero: cNumero,
+        complemento: cComplemento,
+        bairro: cBairro,
+        cidade: cCidade,
+        estado: cEstado
       });
-      // Update collaborator address/additional info immediately
-      const list = dbRepo.getColaboradores();
-      const newlyAdded = list.find(c => c.email === cEmail);
-      if (newlyAdded) {
-        dbRepo.editarColaborador(newlyAdded.idColaborador, {
-          rg: cRg,
-          cep: cCep,
-          endereco: cEndereco,
-          numero: cNumero,
-          complemento: cComplemento,
-          bairro: cBairro,
-          cidade: cCidade,
-          estado: cEstado
-        });
-      }
       dbRepo.registrarLog(
         userEmail,
         activeOperator.nome,

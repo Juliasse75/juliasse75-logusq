@@ -556,6 +556,14 @@ app.post('/api/sync/push', async (req, res) => {
     }
 
     if (table === 'veiculos') {
+      const vehiclePlatesToKeep = records.map(v => v.placa).filter(Boolean);
+      if (vehiclePlatesToKeep.length > 0) {
+        const platesSql = vehiclePlatesToKeep.map(p => `'${p}'`).join(',');
+        await supabase.from('veiculos').delete().eq('cliente_email', queryEmail).not('placa', 'in', `(${platesSql})`);
+      } else {
+        await supabase.from('veiculos').delete().eq('cliente_email', queryEmail);
+      }
+
       for (const v of records) {
         await supabase.from('veiculos').upsert({
           id_veiculo: v.idVeiculo,
@@ -573,6 +581,29 @@ app.post('/api/sync/push', async (req, res) => {
         });
       }
     } else if (table === 'condutores') {
+      const driverEmailsToKeep = records.map(c => c.email).filter(Boolean);
+      if (driverEmailsToKeep.length > 0) {
+        const emailsSql = driverEmailsToKeep.map(e => `'${e}'`).join(',');
+        
+        // Find driver credentials to delete from usuarios table first
+        const { data: dbDriversToDelete } = await supabase.from('condutores').select('email').eq('cliente_email', queryEmail).not('email', 'in', `(${emailsSql})`);
+        if (dbDriversToDelete && dbDriversToDelete.length > 0) {
+          for (const d of dbDriversToDelete) {
+            await supabase.from('usuarios').delete().eq('email', d.email);
+          }
+        }
+        
+        await supabase.from('condutores').delete().eq('cliente_email', queryEmail).not('email', 'in', `(${emailsSql})`);
+      } else {
+        const { data: dbDriversToDelete } = await supabase.from('condutores').select('email').eq('cliente_email', queryEmail);
+        if (dbDriversToDelete && dbDriversToDelete.length > 0) {
+          for (const d of dbDriversToDelete) {
+            await supabase.from('usuarios').delete().eq('email', d.email);
+          }
+        }
+        await supabase.from('condutores').delete().eq('cliente_email', queryEmail);
+      }
+
       for (const c of records) {
         // Ensure user exists in usuarios first due to foreign key references
         const { data: existingUser } = await supabase.from('usuarios').select('email').eq('email', c.email).maybeSingle();
@@ -660,6 +691,17 @@ app.post('/api/sync/push', async (req, res) => {
         });
       }
     } else if (table === 'usuarios') {
+      const colabEmailsToKeep = records.filter(u => u.perfil === 'COLABORADOR').map(u => u.email.toLowerCase());
+      const { data: dbColabs } = await supabase.from('usuarios').select('email').eq('perfil', 'COLABORADOR');
+      if (dbColabs && dbColabs.length > 0) {
+        for (const dbCol of dbColabs) {
+          if (!colabEmailsToKeep.includes(dbCol.email.toLowerCase())) {
+            console.log(`🗑️ SYNC PUSH: Deletando colaborador removido do Supabase: ${dbCol.email}`);
+            await supabase.from('usuarios').delete().eq('email', dbCol.email);
+          }
+        }
+      }
+
       for (const u of records) {
         let finalHash = u.senha_hash || u.senha || 'LogusQ@123';
         if (finalHash && !finalHash.startsWith('$2')) {

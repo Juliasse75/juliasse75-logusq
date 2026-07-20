@@ -1270,6 +1270,16 @@ export const dbRepo = {
       cargo: params.cargo || 'Analista LogusQ',
       telefone: params.telefone,
       email: params.email,
+      cpf: params.cpf || '',
+      rg: params.rg || '',
+      regime: params.regime || 'CLT',
+      cep: params.cep || '',
+      endereco: params.endereco || '',
+      numero: params.numero || '',
+      complemento: params.complemento || '',
+      bairro: params.bairro || '',
+      cidade: params.cidade || '',
+      estado: params.estado || '',
       dataAdmissao: new Date().toLocaleDateString('pt-BR'),
       status: 'Ativo',
       nivelAcesso: params.nivelAcesso || 'Total',
@@ -1294,12 +1304,24 @@ export const dbRepo = {
 
   deletarColaborador: (id: string) => {
     const colaboradores = dbRepo.getColaboradores();
+    const target = colaboradores.find(c => c.idColaborador === id);
     const filtered = colaboradores.filter(c => c.idColaborador !== id);
     dbRepo.saveColaboradores(filtered);
+
+    if (target) {
+      const usuarios = dbRepo.getUsuarios();
+      const filteredUsers = usuarios.filter(u => u.email.toLowerCase() !== target.email.toLowerCase());
+      dbRepo.saveUsuarios(filteredUsers);
+    }
   },
 
   editarColaborador: (idColaborador: string, params: Partial<Colaborador>, novaSenha?: string) => {
     const list = dbRepo.getColaboradores();
+    const oldCol = list.find(c => c.idColaborador === idColaborador);
+    if (!oldCol) return;
+
+    const oldEmail = oldCol.email;
+
     const updated = list.map(c => {
       if (c.idColaborador === idColaborador) {
         return { ...c, ...params };
@@ -1308,22 +1330,19 @@ export const dbRepo = {
     });
     dbRepo.saveColaboradores(updated);
 
-    const updatedCol = updated.find(c => c.idColaborador === idColaborador);
-    if (updatedCol) {
-      const usuarios = dbRepo.getUsuarios();
-      const userUpdated = usuarios.map(u => {
-        if (u.email === updatedCol.email) {
-          const uCopy = { ...u };
-          if (params.email) uCopy.email = params.email;
-          if (novaSenha) uCopy.senha_hash = novaSenha;
-          if (params.nome) uCopy.nome = params.nome;
-          if (params.nivelAcesso) uCopy.nivelAcesso = params.nivelAcesso;
-          return uCopy;
-        }
-        return u;
-      });
-      dbRepo.saveUsuarios(userUpdated);
-    }
+    const usuarios = dbRepo.getUsuarios();
+    const userUpdated = usuarios.map(u => {
+      if (u.email.toLowerCase() === oldEmail.toLowerCase()) {
+        const uCopy = { ...u };
+        if (params.email) uCopy.email = params.email;
+        if (novaSenha) uCopy.senha_hash = novaSenha;
+        if (params.nome) uCopy.nome = params.nome;
+        if (params.nivelAcesso) uCopy.nivelAcesso = params.nivelAcesso;
+        return uCopy;
+      }
+      return u;
+    });
+    dbRepo.saveUsuarios(userUpdated);
   },
 
   getSenhaUsuario: (email: string): string => {
