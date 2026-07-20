@@ -2416,7 +2416,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500"
                   >
                     <option value="">Todos os Operadores</option>
-                    {Array.from(new Set(dbRepo.getLogs().map(l => l.operadorEmail))).map(email => {
+                    {Array.from(new Set(dbRepo.getLogs().map(l => l.operadorEmail).filter(Boolean))).map(email => {
                       const name = dbRepo.getLogs().find(l => l.operadorEmail === email)?.operadorNome || email;
                       return (
                         <option key={email} value={email}>
@@ -2452,10 +2452,10 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                   const rawLogs = dbRepo.getLogs();
                   const filteredLogs = rawLogs.filter(log => {
                     const matchSearch = 
-                      log.acao.toLowerCase().includes(searchTermAuditoria.toLowerCase()) ||
-                      log.descricao.toLowerCase().includes(searchTermAuditoria.toLowerCase()) ||
-                      log.operadorNome.toLowerCase().includes(searchTermAuditoria.toLowerCase()) ||
-                      log.operadorEmail.toLowerCase().includes(searchTermAuditoria.toLowerCase());
+                      (log.acao || '').toLowerCase().includes(searchTermAuditoria.toLowerCase()) ||
+                      (log.descricao || '').toLowerCase().includes(searchTermAuditoria.toLowerCase()) ||
+                      (log.operadorNome || '').toLowerCase().includes(searchTermAuditoria.toLowerCase()) ||
+                      (log.operadorEmail || '').toLowerCase().includes(searchTermAuditoria.toLowerCase());
                     const matchOperator = !filterOperator || log.operadorEmail === filterOperator;
                     const matchModule = !filterModule || log.modulo === filterModule;
                     return matchSearch && matchOperator && matchModule;
@@ -2588,13 +2588,23 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                       {/* Raw Details / JSON payload payload */}
                       <div className="space-y-1.5">
                         <span className="text-[10px] font-mono text-slate-500 uppercase block font-bold">Dados Técnicos Estruturados (JSON):</span>
-                        {selectedAuditLog.detalhes ? (
-                          <div className="bg-slate-950 border border-slate-800 rounded-lg p-3.5 font-mono text-[10px] text-violet-300 overflow-x-auto max-h-[160px]">
-                            <pre className="whitespace-pre-wrap">
-                              {JSON.stringify(JSON.parse(selectedAuditLog.detalhes), null, 2)}
-                            </pre>
-                          </div>
-                        ) : (
+                        {selectedAuditLog.detalhes ? (() => {
+                          let displayStr = '';
+                          try {
+                            if (typeof selectedAuditLog.detalhes === 'object') {
+                              displayStr = JSON.stringify(selectedAuditLog.detalhes, null, 2);
+                            } else {
+                              displayStr = JSON.stringify(JSON.parse(selectedAuditLog.detalhes), null, 2);
+                            }
+                          } catch (e) {
+                            displayStr = String(selectedAuditLog.detalhes);
+                          }
+                          return (
+                            <div className="bg-slate-950 border border-slate-800 rounded-lg p-3.5 font-mono text-[10px] text-violet-300 overflow-x-auto max-h-[160px]">
+                              <pre className="whitespace-pre-wrap">{displayStr}</pre>
+                            </div>
+                          );
+                        })() : (
                           <div className="bg-slate-950 border border-slate-800 rounded-lg p-3.5 text-center font-mono text-[10px] text-slate-600">
                             Nenhum payload adicional anexado a este registro.
                           </div>
