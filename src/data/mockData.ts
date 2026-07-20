@@ -522,7 +522,34 @@ export const dbRepo = {
   
   getColaboradores: (): Colaborador[] => {
     initializeDatabase();
-    return JSON.parse(localStorage.getItem(KEYS.COLABORADORES) || '[]');
+    const colabs = JSON.parse(localStorage.getItem(KEYS.COLABORADORES) || '[]');
+    const users = dbRepo.getUsuarios();
+    
+    // Merge any 'COLABORADOR' user from users that is missing from colabs
+    const colabUsers = users.filter(u => u.perfil === 'COLABORADOR');
+    let updated = false;
+    
+    colabUsers.forEach(u => {
+      if (!colabs.some((c: any) => c.email === u.email)) {
+        colabs.push({
+          idColaborador: `LOGUS-RH-${Date.now().toString().slice(-4)}`,
+          nome: u.nome,
+          cargo: 'Analista LogusQ',
+          email: u.email,
+          telefone: '',
+          dataAdmissao: new Date().toLocaleDateString('pt-BR'),
+          status: 'Ativo',
+          nivelAcesso: u.nivelAcesso || 'PARCIAL',
+          acessoSistema: true,
+        });
+        updated = true;
+      }
+    });
+    
+    if (updated) {
+      localStorage.setItem(KEYS.COLABORADORES, JSON.stringify(colabs));
+    }
+    return colabs;
   },
   saveColaboradores: (colab: Colaborador[]) => {
     localStorage.setItem(KEYS.COLABORADORES, JSON.stringify(colab));

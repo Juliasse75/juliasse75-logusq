@@ -574,6 +574,23 @@ app.post('/api/sync/push', async (req, res) => {
       }
     } else if (table === 'condutores') {
       for (const c of records) {
+        // Ensure user exists in usuarios first due to foreign key references
+        const { data: existingUser } = await supabase.from('usuarios').select('email').eq('email', c.email).maybeSingle();
+        if (!existingUser) {
+          let finalHash = c.senha || 'MotoristaLog@123';
+          if (finalHash && !finalHash.startsWith('$2')) {
+            const salt = bcrypt.genSaltSync(10);
+            finalHash = bcrypt.hashSync(finalHash, salt);
+          }
+          await supabase.from('usuarios').insert({
+            email: c.email,
+            nome: c.nome,
+            perfil: 'MOTORISTA',
+            veiculo: c.veiculo || null,
+            nivel_acesso: 'PARCIAL',
+            senha_hash: finalHash
+          });
+        }
         await supabase.from('condutores').upsert({
           id: c.id,
           nome: c.nome,
@@ -642,8 +659,39 @@ app.post('/api/sync/push', async (req, res) => {
           data_envio: msg.dataEnvio
         });
       }
+    } else if (table === 'usuarios') {
+      for (const u of records) {
+        let finalHash = u.senha_hash || u.senha || 'LogusQ@123';
+        if (finalHash && !finalHash.startsWith('$2')) {
+          const salt = bcrypt.genSaltSync(10);
+          finalHash = bcrypt.hashSync(finalHash, salt);
+        }
+        await supabase.from('usuarios').upsert({
+          email: u.email,
+          nome: u.nome,
+          perfil: u.perfil,
+          empresa: u.empresa || null,
+          veiculo: u.veiculo || null,
+          nivel_acesso: (u.nivelAcesso || 'PARCIAL').toUpperCase(),
+          senha_hash: finalHash
+        });
+      }
     } else if (table === 'clientes') {
       for (const cl of records) {
+        // Ensure user exists in usuarios first
+        const { data: existingUser } = await supabase.from('usuarios').select('email').eq('email', cl.email).maybeSingle();
+        if (!existingUser) {
+          const salt = bcrypt.genSaltSync(10);
+          const defaultHash = bcrypt.hashSync('LogusQ@123', salt);
+          await supabase.from('usuarios').insert({
+            email: cl.email,
+            nome: cl.respNome || cl.empresa || 'Gestor',
+            perfil: 'CLIENTE',
+            empresa: cl.empresa,
+            nivel_acesso: 'TOTAL',
+            senha_hash: defaultHash
+          });
+        }
         await supabase.from('clientes').upsert({
           id_cliente: cl.idCliente,
           email: cl.email,
