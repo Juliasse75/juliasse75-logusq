@@ -28,7 +28,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   // Resolve client's base/CD coordinates dynamically based on their address
   const clientBaseCoords = React.useMemo(() => {
     if (clientData) {
-      const fullAddress = `${clientData.endereco || ''}, ${clientData.numero || ''} - ${clientData.bairro || ''}, ${clientData.cidade || ''} - ${clientData.estado || ''}`.trim();
+      const fullAddress = `${clientData.endereco || ''}, ${clientData.numero || ''} - ${clientData.bairro || ''}, ${clientData.cidade || ''} - ${clientData.estado || ''} CEP: ${clientData.cep || ''}`.trim();
       if (fullAddress && fullAddress.length > 10) {
         return geocodeAddress(fullAddress);
       }
@@ -891,6 +891,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   const [vId, setVId] = useState('');
   const [vPlaca, setVPlaca] = useState('');
   const [vTipo, setVTipo] = useState<TipoVeiculo>('Van');
+  const [vTipoCombustivel, setVTipoCombustivel] = useState<TipoCombustivel>('Flex');
   const [vFab, setVFab] = useState('');
   const [vMod, setVMod] = useState('');
   const [vCor, setVCor] = useState('Branco');
@@ -909,6 +910,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   const [evModelo, setEvModelo] = useState('');
   const [evFabricante, setEvFabricante] = useState('');
   const [evTipo, setEvTipo] = useState<TipoVeiculo>('Carro Leve');
+  const [evTipoCombustivel, setEvTipoCombustivel] = useState<TipoCombustivel>('Flex');
   const [evAnoFabricacao, setEvAnoFabricacao] = useState('');
   const [evAnoModelo, setEvAnoModelo] = useState('');
   const [evCor, setEvCor] = useState('');
@@ -926,6 +928,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       setEvModelo(veicSel.modelo || '');
       setEvFabricante(veicSel.fabricante || '');
       setEvTipo((veicSel.tipo || 'Carro Leve') as TipoVeiculo);
+      setEvTipoCombustivel((veicSel.tipoCombustivel || 'Flex') as TipoCombustivel);
       setEvAnoFabricacao(veicSel.anoFabricacao || '');
       setEvAnoModelo(veicSel.anoModelo || '');
       setEvCor(veicSel.cor || '');
@@ -1075,6 +1078,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       anoModelo: vAnoModelo,
       cor: vCor,
       tipo: vTipo,
+      tipoCombustivel: vTipoCombustivel,
       capacidadeKg: vCap,
       renavam: vRenavam,
       chassi: vChassi,
@@ -1101,6 +1105,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       modelo: evModelo,
       fabricante: evFabricante,
       tipo: evTipo,
+      tipoCombustivel: evTipoCombustivel,
       anoFabricacao: evAnoFabricacao,
       anoModelo: evAnoModelo,
       cor: evCor,
@@ -1187,9 +1192,9 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
 
   // --- CSV BULK EXCEL IMPORTS & SPREADSHEETS ---
   const downloadModeloVeiculosCsv = () => {
-    const csvContent = "ID Interno,Placa,Fabricante,Modelo,Tipo Veiculo,Capacidade (KG),Ano Fabricacao,Ano Modelo,Cor,Renavam,Chassi\n" +
-      "VEIC-101,ABC-1234,Volvo,FH 540,Caminhão Pesado,25000,2021,2022,Branco,12345678901,9ASDFGHJKL1234567\n" +
-      "VEIC-102,XYZ-9876,Fiat,Fiorino Endurance,Van,650,2020,2021,Prata,98765432109,8ZXCVBNMQWERTYUIO";
+    const csvContent = "ID Interno,Placa,Fabricante,Modelo,Tipo Veiculo,Tipo Combustivel,Capacidade (KG),Ano Fabricacao,Ano Modelo,Cor,Renavam,Chassi\n" +
+      "VEIC-101,ABC-1234,Volvo,FH 540,Caminhão Pesado,Diesel,25000,2021,2022,Branco,12345678901,9ASDFGHJKL1234567\n" +
+      "VEIC-102,XYZ-9876,Fiat,Fiorino Endurance,Van,Flex,650,2020,2021,Prata,98765432109,8ZXCVBNMQWERTYUIO";
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -2483,7 +2488,7 @@ Assinatura do Expedidor: _______________________________`;
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2.5">
+                    <div className="grid grid-cols-3 gap-2">
                       <div>
                         <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Tipo Modal</label>
                         <select
@@ -2495,6 +2500,20 @@ Assinatura do Expedidor: _______________________________`;
                           <option value="Picape 4x4">Picape 4x4</option>
                           <option value="Carro Leve">Carro Leve</option>
                           <option value="Motocicleta">Motocicleta</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Combustível</label>
+                        <select
+                          value={vTipoCombustivel} onChange={e => setVTipoCombustivel(e.target.value as TipoCombustivel)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-white"
+                        >
+                          <option value="Flex">Flex (Gas/Eta)</option>
+                          <option value="Gasolina">Gasolina</option>
+                          <option value="Etanol">Etanol</option>
+                          <option value="Diesel">Diesel</option>
+                          <option value="Elétrico">Elétrico</option>
+                          <option value="GNV">GNV</option>
                         </select>
                       </div>
                       <div>
@@ -2627,13 +2646,27 @@ Assinatura do Expedidor: _______________________________`;
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-3 gap-2">
                           <div>
                             <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Capacidade (KG)</label>
                             <input
                               type="number" value={evCap} onChange={e => setEvCap(parseInt(e.target.value) || 0)}
                               className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
                             />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Combustível</label>
+                            <select
+                              value={evTipoCombustivel} onChange={e => setEvTipoCombustivel(e.target.value as TipoCombustivel)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                            >
+                              <option value="Flex">Flex (Gas/Eta)</option>
+                              <option value="Gasolina">Gasolina</option>
+                              <option value="Etanol">Etanol</option>
+                              <option value="Diesel">Diesel</option>
+                              <option value="Elétrico">Elétrico</option>
+                              <option value="GNV">GNV</option>
+                            </select>
                           </div>
                           <div>
                             <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Cor</label>
@@ -2774,7 +2807,7 @@ Assinatura do Expedidor: _______________________________`;
                                 </td>
                                 <td className="px-4 py-3">
                                   <div className="text-slate-300">{v.tipo}</div>
-                                  <div className="text-[10px] font-mono text-slate-500 mt-0.5">{v.capacidadeKg.toLocaleString('pt-BR')} kg úteis</div>
+                                  <div className="text-[10px] font-mono text-slate-500 mt-0.5">{v.capacidadeKg.toLocaleString('pt-BR')} kg úteis • <span className="text-amber-400/90 font-semibold">{v.tipoCombustivel || 'Flex'}</span></div>
                                 </td>
                                 <td className="px-4 py-3 text-center">
                                   <span className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase ${

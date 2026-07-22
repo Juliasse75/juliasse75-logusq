@@ -1157,6 +1157,7 @@ export const dbRepo = {
       anoModelo: params.anoFabricacao || '',
       cor: params.cor || 'Branco',
       tipo: params.tipo || 'Carro Leve',
+      tipoCombustivel: params.tipoCombustivel || 'Flex',
       capacidadeKg: params.capacidadeKg || 500,
       status: 'Disponivel',
       dataCadastro: new Date().toLocaleDateString('pt-BR'),

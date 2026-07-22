@@ -11,11 +11,31 @@ export const DEFAULT_BASE = {
 
 // Simple Geocoder Database for high-fidelity offline lookup
 const GEOCODE_DB: Record<string, { lat: number; lng: number }> = {
+  // Rio de Janeiro - High specificity Bonsucesso / Av. Brasil Hub
+  '21040-360': { lat: -22.8610, lng: -43.2535 },
+  '21040': { lat: -22.8610, lng: -43.2535 },
+  'avenida brasil, 7500': { lat: -22.8610, lng: -43.2535 },
+  'avenida brasil 7500': { lat: -22.8610, lng: -43.2535 },
+  'av brasil 7500': { lat: -22.8610, lng: -43.2535 },
+  'av. brasil 7500': { lat: -22.8610, lng: -43.2535 },
+  'galpão b - setor de cargas': { lat: -22.8610, lng: -43.2535 },
+  'setor de cargas': { lat: -22.8610, lng: -43.2535 },
+  'bonsucesso': { lat: -22.8610, lng: -43.2535 },
+  'avenida brasil': { lat: -22.8650, lng: -43.2500 },
+  'av. brasil': { lat: -22.8650, lng: -43.2500 },
+  'av brasil': { lat: -22.8650, lng: -43.2500 },
+  'ramos': { lat: -22.8520, lng: -43.2580 },
+  'penha': { lat: -22.8420, lng: -43.2780 },
+  'caju': { lat: -22.8850, lng: -43.2180 },
+  'copacabana': { lat: -22.9714, lng: -43.1826 },
+  'centro rj': { lat: -22.9068, lng: -43.1729 },
+  'barra da tijuca': { lat: -23.0016, lng: -43.3444 },
+  'rio de janeiro': { lat: -22.9068, lng: -43.1729 },
   // Belo Horizonte
   'savassi': { lat: -19.9388, lng: -43.9386 },
   'funcionários': { lat: -19.9322, lng: -43.9298 },
   'lourdes': { lat: -19.9285, lng: -43.9442 },
-  'centro': { lat: -19.9191, lng: -43.9386 },
+  'centro bh': { lat: -19.9191, lng: -43.9386 },
   'pampulha': { lat: -19.8519, lng: -43.9749 },
   'belo horizonte': { lat: -19.9167, lng: -43.9345 },
   // São Paulo
@@ -24,11 +44,6 @@ const GEOCODE_DB: Record<string, { lat: number; lng: number }> = {
   'pinheiros': { lat: -23.5668, lng: -46.7032 },
   'centro sp': { lat: -23.5489, lng: -46.6388 },
   'são paulo': { lat: -23.5505, lng: -46.6333 },
-  // Rio de Janeiro
-  'copacabana': { lat: -22.9714, lng: -43.1826 },
-  'centro rj': { lat: -22.9068, lng: -43.1729 },
-  'barra da tijuca': { lat: -23.0016, lng: -43.3444 },
-  'rio de janeiro': { lat: -22.9068, lng: -43.1729 },
 };
 
 /**
@@ -42,13 +57,16 @@ export function geocodeAddress(endereco: string): { lat: number; lng: number } {
     return { lat: DEFAULT_BASE.latitude, lng: DEFAULT_BASE.longitude };
   }
 
+  // Sort entries by key length descending so longer/more specific keys match first!
+  const sortedEntries = Object.entries(GEOCODE_DB).sort((a, b) => b[0].length - a[0].length);
+
   // Exact or partial lookup
-  for (const [key, coords] of Object.entries(GEOCODE_DB)) {
+  for (const [key, coords] of sortedEntries) {
     if (clean.includes(key)) {
       // Add a tiny random jitter so multiple deliveries in the same area don't stack exactly
       return {
-        lat: coords.lat + (Math.random() - 0.5) * 0.005,
-        lng: coords.lng + (Math.random() - 0.5) * 0.005,
+        lat: coords.lat + (Math.random() - 0.5) * 0.003,
+        lng: coords.lng + (Math.random() - 0.5) * 0.003,
       };
     }
   }

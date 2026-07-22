@@ -518,7 +518,18 @@ app.get('/api/sync/pull', async (req, res) => {
       
       payload.usuarios = users || [];
       payload.clientes = clients || [];
-      payload.auditoriaLogs = logs || [];
+      payload.auditoriaLogs = (logs || []).map(l => ({
+        id: l.id,
+        dataHora: l.data_hora || l.dataHora || new Date().toISOString(),
+        operadorEmail: l.operador_email || l.operadorEmail || '',
+        operadorNome: l.operador_nome || l.operadorNome || l.operador_email || 'Operador LogusQ',
+        operadorCargo: l.operador_cargo || l.operadorCargo || 'Operador',
+        acao: l.acao || 'Ação do Sistema',
+        descricao: l.descricao || '',
+        modulo: l.modulo || 'Geral',
+        status: l.status || 'Sucesso',
+        detalhes: l.detalhes || null
+      }));
       payload.mensagensSuporte = msgs || [];
     }
 
@@ -545,7 +556,8 @@ app.get('/api/sync/pull', async (req, res) => {
       tipo: v.tipo,
       capacidadeKg: v.capacidade_kg,
       status: v.status,
-      defeito: v.defeito
+      defeito: v.defeito,
+      tipoCombustivel: v.tipo_combustivel || v.tipoCombustivel || 'Flex'
     }));
 
     // Carrega condutores do cliente
@@ -656,6 +668,7 @@ app.post('/api/sync/push', async (req, res) => {
           capacidade_kg: v.capacidadeKg,
           status: v.status || 'Disponivel',
           defeito: v.defeito || null,
+          tipo_combustivel: v.tipoCombustivel || 'Flex',
           cliente_email: queryEmail
         });
       }
@@ -752,11 +765,15 @@ app.post('/api/sync/push', async (req, res) => {
       for (const log of records) {
         await supabase.from('auditoria_logs').upsert({
           id: log.id,
+          data_hora: log.dataHora || new Date().toISOString(),
           operador_email: log.operadorEmail || email,
+          operador_nome: log.operadorNome || 'Operador LogusQ',
+          operador_cargo: log.operadorCargo || 'Operador',
           acao: log.acao,
           descricao: log.descricao || '',
           modulo: log.modulo || 'Geral',
-          status: log.status || 'Sucesso'
+          status: log.status || 'Sucesso',
+          detalhes: log.detalhes || null
         });
       }
     } else if (table === 'mensagens_suporte') {

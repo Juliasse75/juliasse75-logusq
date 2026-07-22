@@ -348,24 +348,55 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
   const handleConfirmPayment = (email: string) => {
     const cli = clientes.find(c => c.email === email);
     if (!cli) return;
+
+    const currentVenc = cli.vencimento || new Date().toLocaleDateString('pt-BR');
+    const todayStr = new Date().toLocaleDateString('pt-BR');
+    const parts = currentVenc.split('/');
     
-    // Increment vencimento by 30 days
-    const parts = cli.vencimento.split('/');
     if (parts.length === 3) {
-      const day = parseInt(parts[0]);
-      const month = parseInt(parts[1]) - 1;
-      const year = parseInt(parts[2]);
+      const day = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const year = parseInt(parts[2], 10);
+      
       const date = new Date(year, month, day);
       date.setDate(date.getDate() + 30);
-      
       const nextVenc = date.toLocaleDateString('pt-BR');
+
+      const refStr = `${String(month + 1).padStart(2, '0')}/${year}`;
+
+      const newPaymentRecord: RegistroPagamento = {
+        id: `PAY-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        mesReferencia: refStr,
+        vencimento: currentVenc,
+        dataPagamento: todayStr,
+        valor: cli.valorPlano,
+        plano: cli.plano,
+        status: 'Pago',
+        metodo: 'Baixa Manual Master'
+      };
+
+      const existingHistory = cli.historicoPagamentos || [];
+      const updatedHistory = [...existingHistory.filter(h => h.vencimento !== currentVenc), newPaymentRecord];
+
       dbRepo.editarCliente(email, {
         pagamentoConfirmado: true,
+        dataUltimoPagamento: todayStr,
         vencimento: nextVenc,
-        status: 'Ativo'
+        status: 'Ativo',
+        historicoPagamentos: updatedHistory
       });
+
+      dbRepo.registrarLog(
+        userEmail,
+        activeOperator.nome,
+        'Baixa Financeira',
+        `Confirmou pagamento da mensalidade de R$ ${cli.valorPlano} para "${cli.empresa}". Próximo vencimento: ${nextVenc}`,
+        'Financeiro',
+        'Sucesso'
+      );
+
       triggerRefresh();
-      alert(`Baixa financeira realizada! Novo vencimento: ${nextVenc}`);
+      alert(`Baixa financeira realizada! Pagamento registrado em ${todayStr}. Novo vencimento: ${nextVenc}`);
     }
   };
 
@@ -674,58 +705,72 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
 
   // Compute monthly payment history dynamically for the selected client
   const getClientPaymentHistory = (client: Cliente) => {
-    const history: {
-      mesReferencia: string;
-      vencimento: string;
-      valor: number;
-      plano: string;
-      status: 'Pago' | 'Pendente';
-      dataPagamento?: string;
-    }[] = [];
+    if (!client) return [];
 
-    if (!client) return history;
+    const recorded = client.historicoPagamentos || [];
+    const result: RegistroPagamento[] = [...recorded];
 
-    const [dayStr, monthStr, yearStr] = (client.clienteDesde || '14/05/2026').split('/');
-    const startDay = parseInt(dayStr) || 14;
-    const startMonth = parseInt(monthStr) || 5;
-    const startYear = parseInt(yearStr) || 2026;
+    // Ensure the current active/due installment is listed if not already confirmed
+    if (client.vencimento) {
+      const parts = client.vencimento.split('/');
+      if (parts.length === 3) {
+        const month = parseInt(parts[1], 10);
+        const year = parseInt(parts[2], 10);
+        const refStr = `${String(month).padStart(2, '0')}/${year}`;
 
-    const currentYear = 2026;
-    const currentMonth = 7;
-
-    let tempMonth = startMonth;
-    let tempYear = startYear;
-
-    while (tempYear < currentYear || (tempYear === currentYear && tempMonth <= currentMonth)) {
-      const isCurrentMonth = tempMonth === currentMonth && tempYear === currentYear;
-      const refStr = `${String(tempMonth).padStart(2, '0')}/${tempYear}`;
-      const dueStr = `${String(startDay).padStart(2, '0')}/${String(tempMonth).padStart(2, '0')}/${tempYear}`;
-      
-      let payStatus: 'Pago' | 'Pendente' = 'Pago';
-      let payDate: string | undefined = `${String(startDay).padStart(2, '0')}/${String(tempMonth).padStart(2, '0')}/${tempYear}`;
-
-      if (isCurrentMonth) {
-        payStatus = client.pagamentoConfirmado ? 'Pago' : 'Pendente';
-        payDate = client.pagamentoConfirmado ? (client.dataUltimoPagamento || dueStr) : undefined;
-      }
-
-      history.push({
-        mesReferencia: refStr,
-        vencimento: dueStr,
-        valor: client.valorPlano,
-        plano: client.plano,
-        status: payStatus,
-        dataPagamento: payDate
-      });
-
-      tempMonth++;
-      if (tempMonth > 12) {
-        tempMonth = 1;
-        tempYear++;
+        const alreadyRecorded = result.some(h => h.vencimento === client.vencimento);
+        if (!alreadyRecorded) {
+          result.push({
+            id: `PEND-${client.vencimento}`,
+            mesReferencia: refStr,
+            vencimento: client.vencimento,
+            valor: client.valorPlano,
+            plano: client.plano,
+            status: client.pagamentoConfirmado ? 'Pago' : 'Pendente',
+            dataPagamento: client.pagamentoConfirmado ? (client.dataUltimoPagamento || client.vencimento) : undefined,
+            metodo: 'Fatura Agendada'
+          });
+        }
       }
     }
 
-    return history.reverse();
+    // Fallback seed history if no past manual payments recorded yet
+    if (result.length === 0) {
+      const [dayStr, monthStr, yearStr] = (client.clienteDesde || '14/05/2026').split('/');
+      const startDay = parseInt(dayStr, 10) || 14;
+      const startMonth = parseInt(monthStr, 10) || 5;
+      const startYear = parseInt(yearStr, 10) || 2026;
+
+      let tempMonth = startMonth;
+      let tempYear = startYear;
+      const currentYear = 2026;
+      const currentMonth = 7;
+
+      while (tempYear < currentYear || (tempYear === currentYear && tempMonth <= currentMonth)) {
+        const isCurrentMonth = tempMonth === currentMonth && tempYear === currentYear;
+        const refStr = `${String(tempMonth).padStart(2, '0')}/${tempYear}`;
+        const dueStr = `${String(startDay).padStart(2, '0')}/${String(tempMonth).padStart(2, '0')}/${tempYear}`;
+        
+        result.push({
+          id: `GEN-${refStr}`,
+          mesReferencia: refStr,
+          vencimento: dueStr,
+          valor: client.valorPlano,
+          plano: client.plano,
+          status: isCurrentMonth ? (client.pagamentoConfirmado ? 'Pago' : 'Pendente') : 'Pago',
+          dataPagamento: isCurrentMonth ? (client.pagamentoConfirmado ? (client.dataUltimoPagamento || dueStr) : undefined) : dueStr,
+          metodo: 'Baixa Automática'
+        });
+
+        tempMonth++;
+        if (tempMonth > 12) {
+          tempMonth = 1;
+          tempYear++;
+        }
+      }
+    }
+
+    return [...result].reverse();
   };
 
   // Filter clients based on search
@@ -3252,7 +3297,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                       <strong>LICENCIANTE:</strong> LOGUSQ TECNOLOGIA LTDA, pessoa jurídica de direito privado, com CNPJ (Aguardando CNPJ definitivo), com sede na Avenida do Contorno, nº 4500, Savassi, Belo Horizonte - MG, neste ato representada na forma de seus atos constitutivos; e
                     </p>
                     <p className="mt-2 pl-4 border-l-2 border-slate-300">
-                      <strong>LICENCIADA:</strong> {selectedClient.empresa}, inscrita no CNPJ sob o nº {selectedClient.cnpj || 'CONTRATO-GERADO'}, sediada em {selectedClient.endereco}, nº {selectedClient.numero} {selectedClient.complemento && `(${selectedClient.complemento})`}, {selectedClient.bairro}, {selectedClient.cidade}/{selectedClient.estado}, representada neste ato por seu gestor responsável legal, <strong>{selectedClient.respNome}</strong>, portador do CPF nº {selectedClient.respCpf || 'Sob consulta'}.
+                      <strong>LICENCIADA:</strong> {selectedClient.empresa}, inscrita no CNPJ sob o nº {selectedClient.cnpj || 'CONTRATO-GERADO'}{selectedClient.inscricaoEstadual ? `, Inscrição Estadual nº ${selectedClient.inscricaoEstadual}` : ''}, sediada em {selectedClient.endereco}, nº {selectedClient.numero} {selectedClient.complemento && `(${selectedClient.complemento})`}, {selectedClient.bairro}, {selectedClient.cidade}/{selectedClient.estado}, representada neste ato por seu gestor responsável legal, <strong>{selectedClient.respNome}</strong>, portador do CPF nº {selectedClient.respCpf || 'Sob consulta'}.
                     </p>
                     <p className="mt-2">As partes acima qualificadas têm, entre si, justo e contratado o quanto segue nas seguintes cláusulas e condições:</p>
                   </div>

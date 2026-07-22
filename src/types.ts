@@ -10,6 +10,17 @@ export interface Usuario {
   criadoEm: string;
 }
 
+export interface RegistroPagamento {
+  id: string;
+  mesReferencia: string;
+  vencimento: string;
+  valor: number;
+  plano: string;
+  status: 'Pago' | 'Pendente';
+  dataPagamento?: string;
+  metodo?: string;
+}
+
 export interface Cliente {
   idCliente: string;
   email: string;
@@ -48,6 +59,7 @@ export interface Cliente {
   respEstado?: string;
   pagamentoConfirmado: boolean;
   dataUltimoPagamento?: string;
+  historicoPagamentos?: RegistroPagamento[];
 }
 
 export interface Colaborador {
@@ -94,6 +106,7 @@ export interface Plano {
 }
 
 export type TipoVeiculo = 'Carro Leve' | 'Picape 4x4' | 'Van' | 'Caminhão Pesado' | 'Motocicleta';
+export type TipoCombustivel = 'Gasolina' | 'Etanol' | 'Flex' | 'Diesel' | 'Elétrico' | 'GNV';
 
 export interface Veiculo {
   id: string;
@@ -107,6 +120,7 @@ export interface Veiculo {
   renavam?: string;
   chassi?: string;
   tipo: TipoVeiculo;
+  tipoCombustivel?: TipoCombustivel;
   capacidadeKg: number;
   status: 'Disponivel' | 'Manutencao' | 'Inativo';
   defeito?: string;
