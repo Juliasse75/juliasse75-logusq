@@ -83,6 +83,7 @@ export interface Colaborador {
   nivelAcesso: 'Sem Acesso' | 'Visualizar' | 'Total' | 'TOTAL' | 'RH' | 'Financeiro';
   acessoSistema: boolean;
   regime?: 'CLT' | 'PJ' | 'Jovem Aprendiz' | 'Estágio' | 'Trainee' | 'Temporário';
+  salarioBase?: number;
 }
 
 export interface AuditLog {

@@ -173,6 +173,7 @@ const SEED_COLABORADORES: Colaborador[] = [
     status: 'Ativo',
     nivelAcesso: 'Total',
     acessoSistema: true,
+    salarioBase: 6500,
   },
   {
     idColaborador: 'LOGUS-RH-2502',
@@ -185,6 +186,7 @@ const SEED_COLABORADORES: Colaborador[] = [
     status: 'Ativo',
     nivelAcesso: 'Visualizar',
     acessoSistema: true,
+    salarioBase: 4800,
   },
   {
     idColaborador: 'LOGUS-RH-2503',
@@ -198,6 +200,7 @@ const SEED_COLABORADORES: Colaborador[] = [
     nivelAcesso: 'Total',
     acessoSistema: true,
     regime: 'CLT',
+    salarioBase: 9200,
   }
 ];
 
@@ -1346,6 +1349,7 @@ export const dbRepo = {
       bairro: params.bairro || '',
       cidade: params.cidade || '',
       estado: params.estado || '',
+      salarioBase: params.salarioBase ? Number(params.salarioBase) : undefined,
       dataAdmissao: new Date().toLocaleDateString('pt-BR'),
       status: 'Ativo',
       nivelAcesso: params.nivelAcesso || 'Total',

@@ -158,6 +158,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
   const [cEmail, setCEmail] = useState('');
   const [cSenha, setCSenha] = useState('ColabLogusQ@123');
   const [cAccess, setCAccess] = useState<'TOTAL' | 'RH' | 'Financeiro'>('RH');
+  const [cSalarioBase, setCSalarioBase] = useState<string | number>('');
   
   // Auditoria States
   const [searchTermAuditoria, setSearchTermAuditoria] = useState('');
@@ -444,6 +445,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
         email: cEmail,
         cargo: cCargo,
         nivelAcesso: cAccess as any,
+        salarioBase: cSalarioBase !== '' ? Number(cSalarioBase) : undefined,
         cep: cCep,
         endereco: cEndereco,
         numero: cNumero,
@@ -459,7 +461,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
         `Atualizou as informações cadastrais e permissões do colaborador "${cNome}" (${cEmail}).`,
         'RH',
         'Sucesso',
-        JSON.stringify({ idColaborador: editingColabId, nome: cNome, cargo: cCargo, nivelAcesso: cAccess })
+        JSON.stringify({ idColaborador: editingColabId, nome: cNome, cargo: cCargo, nivelAcesso: cAccess, salarioBase: cSalarioBase })
       );
       setEditingColabId(null);
       alert('Cadastro do colaborador atualizado com sucesso!');
@@ -472,6 +474,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
         telefone: cTel,
         regime: cRegime,
         cargo: cCargo,
+        salarioBase: cSalarioBase !== '' ? Number(cSalarioBase) : undefined,
         email: cEmail,
         senhaProvisoria: cSenha,
         nivelAcesso: cAccess,
@@ -490,7 +493,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
         `Cadastrou o novo colaborador interno "${cNome}" (${cEmail}) sob o regime ${cRegime}.`,
         'RH',
         'Sucesso',
-        JSON.stringify({ nome: cNome, cargo: cCargo, nivelAcesso: cAccess, regime: cRegime })
+        JSON.stringify({ nome: cNome, cargo: cCargo, nivelAcesso: cAccess, regime: cRegime, salarioBase: cSalarioBase })
       );
       alert('Colaborador cadastrado com sucesso!');
     }
@@ -504,6 +507,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
     setCSenha('ColabLogusQ@123');
     setCCargo('Analista de CS');
     setCAccess('RH');
+    setCSalarioBase('');
     setCCep('');
     setCEndereco('');
     setCNumero('');
@@ -525,6 +529,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
     setCEmail(col.email);
     setCCargo(col.cargo);
     setCAccess(col.nivelAcesso as any);
+    setCSalarioBase(col.salarioBase !== undefined && col.salarioBase !== null ? col.salarioBase : '');
     setCSenha('');
     setCCep(col.cep || '');
     setCEndereco(col.endereco || '');
@@ -545,6 +550,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
     setCSenha('ColabLogusQ@123');
     setCCargo('Analista de CS');
     setCAccess('RH');
+    setCSalarioBase('');
     setCCep('');
     setCEndereco('');
     setCNumero('');
@@ -1809,17 +1815,29 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Nível de Acesso *</label>
-                      <select
-                        value={cAccess}
-                        onChange={e => setCAccess(e.target.value as any)}
-                        className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-lg px-2 py-1.5 text-xs text-white"
-                      >
-                        <option value="TOTAL">Acesso Total</option>
-                        <option value="RH">Painel RH Apenas</option>
-                        <option value="Financeiro">Painel Financeiro Apenas</option>
-                      </select>
+                      <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Salário Base (R$)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="R$ 3.500,00"
+                        value={cSalarioBase}
+                        onChange={e => setCSalarioBase(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-1.5 text-xs text-white font-mono"
+                      />
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Nível de Acesso *</label>
+                    <select
+                      value={cAccess}
+                      onChange={e => setCAccess(e.target.value as any)}
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-lg px-2 py-1.5 text-xs text-white"
+                    >
+                      <option value="TOTAL">Acesso Total</option>
+                      <option value="RH">Painel RH Apenas</option>
+                      <option value="Financeiro">Painel Financeiro Apenas</option>
+                    </select>
                   </div>
 
                   <div>
@@ -1947,6 +1965,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                           setCRegime('CLT');
                           setCTel('');
                           setCAccess('TOTAL');
+                          setCSalarioBase('');
                           setCCep('');
                           setCEndereco('');
                           setCNumero('');
@@ -2002,6 +2021,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                                   setCRegime(col.regime);
                                   setCTel(col.telefone);
                                   setCAccess(col.nivelAcesso);
+                                  setCSalarioBase(col.salarioBase !== undefined && col.salarioBase !== null ? col.salarioBase : '');
                                   setCCep(col.cep || '');
                                   setCEndereco(col.endereco || '');
                                   setCNumero(col.numero || '');
@@ -2030,6 +2050,14 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                             <div>Telefone: <span className="text-slate-200">{col.telefone}</span></div>
                             <div>CPF: <span className="text-slate-300">{col.cpf}</span></div>
                             {col.rg && <div>RG: <span className="text-slate-300">{col.rg}</span></div>}
+                            <div>
+                              Salário Base:{" "}
+                              <span className="text-emerald-400 font-bold">
+                                {col.salarioBase !== undefined && col.salarioBase !== null && Number(col.salarioBase) > 0
+                                  ? Number(col.salarioBase).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                                  : 'Não informado'}
+                              </span>
+                            </div>
                             <div>
                               Senha:{" "}
                               <span className="text-yellow-400/80 font-bold">
