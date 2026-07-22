@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { dbRepo } from '../data/mockData';
 import { PlanosSaaS, PLANOS_PADRAO } from '../types';
+import LogusQLogo, { LogusQLogoImage } from './LogusQLogo';
 import { Shield, Key, Truck, Building, FileText, CheckCircle, Download, HelpCircle, Smartphone, ArrowLeft, AlertCircle, User, Check, Lock, Info, Zap, Send, MessageSquare, Globe, Briefcase, DollarSign, Users, Mail, Phone, Settings, ShieldCheck, Heart } from 'lucide-react';
 
 interface LoginCadastroProps {
@@ -347,15 +348,10 @@ REPRESENTANTE DA CONTRATANTE
         <div className="absolute bottom-1/3 right-1/4 w-[500px] h-[500px] bg-emerald-600/5 rounded-full blur-[150px] pointer-events-none z-0" />
 
         {/* Global Navbar */}
-        <header className="border-b border-slate-900 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50 px-6 py-4">
+        <header className="border-b border-slate-900 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50 px-6 py-3.5">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="bg-gradient-to-br from-violet-600 to-indigo-600 p-2 rounded-xl shadow-lg border border-violet-500/20 flex items-center justify-center">
-                <Truck className="w-5 h-5 text-white animate-pulse" />
-              </div>
-              <span className="text-xl font-black tracking-tight text-white font-sans">
-                LOGUS<span className="text-violet-400 font-mono animate-pulse">Q</span>
-              </span>
+              <LogusQLogo variant="badge" size="sm" />
             </div>
 
             <nav className="hidden md:flex items-center gap-8 text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -375,12 +371,18 @@ REPRESENTANTE DA CONTRATANTE
         </header>
 
         {/* Hero Section */}
-        <section id="inicio" className="relative pt-16 pb-12 px-6 max-w-7xl mx-auto w-full z-10 flex-1">
-          <div className="text-center max-w-3xl mx-auto space-y-6">
+        <section id="inicio" className="relative pt-12 pb-12 px-6 max-w-7xl mx-auto w-full z-10 flex-1">
+          <div className="text-center max-w-4xl mx-auto space-y-6">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-400 font-mono text-[10px] font-bold uppercase tracking-widest">
               <Zap className="w-3 h-3 text-violet-400 animate-pulse" /> Tecnologia Logística de Última Geração
             </span>
-            <h1 className="text-4xl md:text-6xl font-black tracking-tight text-white leading-tight">
+
+            {/* High Impact 3D Logo Showcase */}
+            <div className="my-4 flex justify-center">
+              <LogusQLogo variant="hero" showTagline />
+            </div>
+
+            <h1 className="text-3xl md:text-5xl font-black tracking-tight text-white leading-tight">
               Logística Inteligente na Velocidade do <span className="bg-gradient-to-r from-violet-400 via-fuchsia-400 to-indigo-400 bg-clip-text text-transparent">Qubito</span>
             </h1>
             <p className="text-sm md:text-base text-slate-400 leading-relaxed max-w-2xl mx-auto">
@@ -1003,13 +1005,8 @@ REPRESENTANTE DA CONTRATANTE
 
         {/* Header Branding */}
         <div className="flex flex-col items-center mb-8 text-center">
-          <div className="bg-gradient-to-br from-violet-600 to-indigo-600 p-3.5 rounded-2xl shadow-xl shadow-violet-900/20 mb-3 border border-violet-500/30">
-            <Truck className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent font-sans">
-            LOGUS<span className="text-violet-400 font-mono">Q</span>
-          </h1>
-          <p className="text-sm text-slate-400 mt-1.5 max-w-md">
+          <LogusQLogo variant="full" size="xl" showTagline />
+          <p className="text-sm text-slate-400 mt-2.5 max-w-md">
             SaaS de Gestão de Frotas, RH e Roteirização Científica Inteligente de Alta Precisão.
           </p>
         </div>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { dbRepo } from '../data/mockData';
 import { Cliente, Colaborador, PlanosSaaS, PLANOS_PADRAO } from '../types';
+import LogusQLogo from './LogusQLogo';
 import { 
   Users, UserPlus, Layers, DollarSign, Award, Settings, 
   Trash2, UserCheck, Edit3, Check, Search, Download, Plus, Play, Info, FileText,
@@ -735,11 +736,9 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
       <aside className="w-full md:w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between shrink-0">
         <div>
           {/* Logo */}
-          <div className="p-6 border-b border-slate-800">
-            <h2 className="text-xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-              LOGUS<span className="text-violet-400 font-mono">Q</span>
-            </h2>
-            <p className="text-[10px] text-slate-500 mt-1 font-mono uppercase tracking-wider">
+          <div className="p-5 border-b border-slate-800">
+            <LogusQLogo variant="badge" size="sm" />
+            <p className="text-[10px] text-slate-400 mt-2.5 font-mono uppercase tracking-wider font-semibold truncate">
               {isColab ? `Colaborador: ${colabAccessLevel}` : 'Administrador Master'}
             </p>
           </div>

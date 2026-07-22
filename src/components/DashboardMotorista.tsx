@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { dbRepo } from '../data/mockData';
 import { Entrega } from '../types';
+import LogusQLogo from './LogusQLogo';
 import { 
   Truck, 
   MapPin, 
@@ -537,15 +538,12 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       {/* Mobile Top Header */}
-      <header className="bg-slate-900 border-b border-slate-800 px-5 py-4 sticky top-0 z-40 shadow-md flex justify-between items-center">
+      <header className="bg-slate-900 border-b border-slate-800 px-5 py-3 sticky top-0 z-40 shadow-md flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <div className="bg-emerald-500/10 p-2 rounded-xl border border-emerald-500/20">
-            <Truck className="w-5 h-5 text-emerald-400" />
-          </div>
-          <div>
-            <h1 className="text-sm font-extrabold text-white tracking-tight">LogusQ Motorista</h1>
-            <p className="text-[10px] text-slate-400 flex items-center gap-1">
-              <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full inline-block animate-pulse"></span>
+          <LogusQLogo variant="badge" size="sm" />
+          <div className="hidden sm:block border-l border-slate-800 pl-3">
+            <p className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+              <span className="w-2 h-2 bg-emerald-500 rounded-full inline-block animate-pulse"></span>
               Em trânsito • {assignedVehicle.modelo} ({assignedVehicle.placa})
             </p>
           </div>
