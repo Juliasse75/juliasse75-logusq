@@ -109,7 +109,7 @@ export default function App() {
       {/* Subtle Connection Status Badge */}
       <div className="fixed bottom-4 right-4 z-50 flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900/90 px-3 py-1 text-[10px] font-medium text-white shadow-lg backdrop-blur-xs select-none">
         <span className={`h-2 w-2 rounded-full ${dbMode === 'supabase' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
-        <span>DB: {dbMode === 'supabase' ? 'Supabase Nuvem' : 'Supabase (Desconectado)'}</span>
+        <span>{dbMode === 'supabase' ? 'Banco de Dados On-Line' : 'Banco de Dados Off-Line'}</span>
       </div>
     </div>
   );

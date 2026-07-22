@@ -1020,6 +1020,7 @@ export const dbRepo = {
       email: params.email,
       empresa: params.nomeEmpresa,
       cnpj: params.cnpj,
+      inscricaoEstadual: params.inscricaoEstadual,
       telefoneFixo: params.telFixo,
       whatsapp: params.whatsapp,
       cep: params.cep,

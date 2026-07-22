@@ -65,6 +65,7 @@ export default function LoginCadastro({ onLoginSuccess }: LoginCadastroProps) {
   const [selectedPlano, setSelectedPlano] = useState<keyof PlanosSaaS>('Start');
   const [nomeEmpresa, setNomeEmpresa] = useState('');
   const [cnpj, setCnpj] = useState('');
+  const [inscricaoEstadual, setInscricaoEstadual] = useState('');
   const [telFixo, setTelFixo] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
   const [cep, setCep] = useState('');
@@ -216,19 +217,27 @@ export default function LoginCadastro({ onLoginSuccess }: LoginCadastroProps) {
         perfil: 'CLIENTE',
         empresa: nomeEmpresa,
         cnpj,
+        inscricaoEstadual,
         plano: selectedPlano,
         respNome
       };
 
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(registerData)
-      });
+      try {
+        const response = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(registerData)
+        });
 
-      const resData = await response.json();
-      if (!response.ok) {
-        throw new Error(resData.message || 'Erro ao registrar no servidor.');
+        const resData = await response.json();
+        if (!response.ok && resData.error === 'EMAIL_ALREADY_EXISTS') {
+          throw new Error(resData.message || 'Este e-mail de acesso já está cadastrado no sistema.');
+        }
+      } catch (srvErr: any) {
+        if (srvErr.message && srvErr.message.includes('cadastrado')) {
+          throw srvErr;
+        }
+        console.warn('⚠️ Nota sobre servidor remoto durante cadastro (o cadastro local será ativado):', srvErr);
       }
 
       // Sync local database copy as well (offline fallback)
@@ -236,6 +245,7 @@ export default function LoginCadastro({ onLoginSuccess }: LoginCadastroProps) {
         nomeEmpresa,
         email: respEmail,
         cnpj,
+        inscricaoEstadual,
         telFixo,
         whatsapp,
         cep,
@@ -278,6 +288,7 @@ export default function LoginCadastro({ onLoginSuccess }: LoginCadastroProps) {
       // Clear form
       setNomeEmpresa('');
       setCnpj('');
+      setInscricaoEstadual('');
       setRespEmail('');
     } catch (err: any) {
       setCadastroError(err.message || 'Erro ao realizar o cadastro.');
@@ -1692,6 +1703,16 @@ REPRESENTANTE DA CONTRATANTE
                             placeholder="45.678.901/0001-23"
                             value={cnpj}
                             onChange={e => setCnpj(e.target.value)}
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Inscrição Estadual (Opcional)</label>
+                          <input
+                            type="text"
+                            placeholder="Isento ou ex: 001234567.00-89"
+                            value={inscricaoEstadual}
+                            onChange={e => setInscricaoEstadual(e.target.value)}
                             className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
                           />
                         </div>

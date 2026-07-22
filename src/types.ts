@@ -15,6 +15,7 @@ export interface Cliente {
   email: string;
   empresa: string;
   cnpj?: string;
+  inscricaoEstadual?: string;
   telefoneFixo?: string;
   whatsapp?: string;
   cep?: string;

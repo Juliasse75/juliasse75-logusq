@@ -69,6 +69,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
   // Client Edit Form detailed states
   const [upEmpresa, setUpEmpresa] = useState('');
   const [upCnpj, setUpCnpj] = useState('');
+  const [upInscricaoEstadual, setUpInscricaoEstadual] = useState('');
   const [upTelFixo, setUpTelFixo] = useState('');
   const [upWhatsapp, setUpWhatsapp] = useState('');
   const [upTipoUnidade, setUpTipoUnidade] = useState<'Matriz' | 'Filial'>('Matriz');
@@ -109,6 +110,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
     if (selectedClient) {
       setUpEmpresa(selectedClient.empresa || '');
       setUpCnpj(selectedClient.cnpj || '');
+      setUpInscricaoEstadual(selectedClient.inscricaoEstadual || '');
       setUpTelFixo(selectedClient.telefoneFixo || '');
       setUpWhatsapp(selectedClient.whatsapp || '');
       setUpTipoUnidade(selectedClient.tipoUnidade || 'Matriz');
@@ -182,6 +184,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
   // Client Manual Registration Form (SaaS Direct) detailed states
   const [regEmpresa, setRegEmpresa] = useState('');
   const [regCnpj, setRegCnpj] = useState('');
+  const [regInscricaoEstadual, setRegInscricaoEstadual] = useState('');
   const [regTelFixo, setRegTelFixo] = useState('');
   const [regWhatsapp, setRegWhatsapp] = useState('');
   const [regTipoUnidade, setRegTipoUnidade] = useState<'Matriz' | 'Filial'>('Matriz');
@@ -300,6 +303,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
     dbRepo.editarCliente(selectedClient.email, {
       empresa: upEmpresa,
       cnpj: upCnpj,
+      inscricaoEstadual: upInscricaoEstadual,
       telefoneFixo: upTelFixo,
       whatsapp: upWhatsapp,
       tipoUnidade: upTipoUnidade,
@@ -560,6 +564,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
       dbRepo.cadastrarClienteAuto({
         nomeEmpresa: regEmpresa,
         cnpj: regCnpj,
+        inscricaoEstadual: regInscricaoEstadual,
         email: regEmail,
         telFixo: regTelFixo,
         whatsapp: regWhatsapp,
@@ -607,6 +612,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
       // Clear states
       setRegEmpresa('');
       setRegCnpj('');
+      setRegInscricaoEstadual('');
       setRegTelFixo('');
       setRegWhatsapp('');
       setRegCep('');
@@ -1129,10 +1135,14 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                     </div>
 
                     <div className="space-y-3 text-xs">
-                      <div className="grid grid-cols-2 gap-2 text-[11px] border-b border-slate-850 pb-2">
+                      <div className="grid grid-cols-3 gap-2 text-[11px] border-b border-slate-850 pb-2">
                         <div>
                           <span className="text-slate-500 block">CNPJ:</span>
                           <span className="text-white font-mono">{selectedClient.cnpj || 'Não cadastrado'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block">Inscr. Estadual:</span>
+                          <span className="text-white font-mono">{selectedClient.inscricaoEstadual || 'Isento / Não informada'}</span>
                         </div>
                         <div>
                           <span className="text-slate-500 block">Telefone:</span>
@@ -1255,6 +1265,16 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                       placeholder="45.678.901/0001-23"
                       value={regCnpj}
                       onChange={e => setRegCnpj(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-700"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Inscrição Estadual (Opcional)</label>
+                    <input
+                      type="text"
+                      placeholder="Isento ou ex: 001234567.00-89"
+                      value={regInscricaoEstadual}
+                      onChange={e => setRegInscricaoEstadual(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-700"
                     />
                   </div>
@@ -2672,6 +2692,16 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                       />
                     </div>
                     <div>
+                      <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Inscrição Estadual (Opcional)</label>
+                      <input
+                        type="text"
+                        placeholder="Isento ou ex: 001234567.00-89"
+                        value={upInscricaoEstadual}
+                        onChange={e => setUpInscricaoEstadual(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white"
+                      />
+                    </div>
+                    <div>
                       <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">Tipo de Unidade *</label>
                       <select
                         value={upTipoUnidade}
@@ -2972,12 +3002,13 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">E-mail de Login (Apenas Visualização)</label>
+                      <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">E-mail de Login * (Editável)</label>
                       <input
                         type="email"
-                        disabled
+                        required
                         value={upEmail}
-                        className="w-full bg-slate-950 border border-slate-850 rounded-lg px-3 py-2 text-xs text-slate-500 cursor-not-allowed font-mono"
+                        onChange={e => setUpEmail(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-lg px-3 py-2 text-xs text-white font-mono"
                       />
                     </div>
                     <div>
