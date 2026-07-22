@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { dbRepo } from '../data/mockData';
-import { Veiculo, Condutor, Entrega, PlanosSaaS, TipoVeiculo } from '../types';
+import { Veiculo, Condutor, Entrega, PlanosSaaS, TipoVeiculo, TipoCombustivel } from '../types';
 import LogusQLogo from './LogusQLogo';
 import { 
   Truck, Users, MapPin, Calculator, Plus, Upload, Download, Play, 

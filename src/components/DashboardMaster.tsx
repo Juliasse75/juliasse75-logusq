@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { dbRepo } from '../data/mockData';
-import { Cliente, Colaborador, PlanosSaaS, PLANOS_PADRAO } from '../types';
+import { Cliente, Colaborador, PlanosSaaS, PLANOS_PADRAO, RegistroPagamento } from '../types';
 import LogusQLogo from './LogusQLogo';
 import { 
   Users, UserPlus, Layers, DollarSign, Award, Settings, 
