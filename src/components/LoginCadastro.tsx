@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { dbRepo } from '../data/mockData';
 import { PlanosSaaS, PLANOS_PADRAO } from '../types';
-import LogusQLogo, { LogusQLogoImage } from './LogusQLogo';
+import LogusQLogo from './LogusQLogo';
 import { Shield, Key, Truck, Building, FileText, CheckCircle, Download, HelpCircle, Smartphone, ArrowLeft, AlertCircle, User, Check, Lock, Info, Zap, Send, MessageSquare, Globe, Briefcase, DollarSign, Users, Mail, Phone, Settings, ShieldCheck, Heart } from 'lucide-react';
 
 interface LoginCadastroProps {
@@ -972,8 +972,8 @@ REPRESENTANTE DA CONTRATANTE
 
         {/* Global Footer */}
         <footer className="border-t border-slate-900 bg-slate-950 text-slate-500 text-xs py-10 px-6 text-center z-10 space-y-3">
-          <div className="flex justify-center items-center gap-2 text-slate-400 font-bold">
-            <Truck className="w-4 h-4 text-violet-400" /> LOGUS<span className="text-violet-400 font-mono">Q</span>
+          <div className="flex justify-center items-center">
+            <LogusQLogo size="sm" showTagline />
           </div>
           <p className="max-w-md mx-auto text-[11px] leading-relaxed">
             Plataforma Corporativa de Logística Inteligente e Roteirização Científica com DNA Quântico. 
