@@ -11,6 +11,30 @@ export const DEFAULT_BASE = {
 
 // Simple Geocoder Database for high-fidelity offline lookup
 const GEOCODE_DB: Record<string, { lat: number; lng: number }> = {
+  // Espírito Santo (ES)
+  'vitoria': { lat: -20.3155, lng: -40.3128 },
+  'vitória': { lat: -20.3155, lng: -40.3128 },
+  'enseada do suá': { lat: -20.3142, lng: -40.2922 },
+  'praia do canto': { lat: -20.3015, lng: -40.2911 },
+  'jardim da penha': { lat: -20.2882, lng: -40.2988 },
+  'jardim camburi': { lat: -20.2685, lng: -40.2721 },
+  'vila velha': { lat: -20.3297, lng: -40.2925 },
+  'praia da costa': { lat: -20.3340, lng: -40.2850 },
+  'itaparica': { lat: -20.3550, lng: -40.3020 },
+  'serra': { lat: -20.1288, lng: -40.3078 },
+  'laranjeiras': { lat: -20.1980, lng: -40.2520 },
+  'carapina': { lat: -20.2220, lng: -40.2750 },
+  'cariacica': { lat: -20.2639, lng: -40.4165 },
+  'campo grande es': { lat: -20.2910, lng: -40.3850 },
+  'linhares': { lat: -19.3911, lng: -40.0722 },
+  'cachoeiro de itapemirim': { lat: -20.8489, lng: -41.1128 },
+  'colatina': { lat: -19.5389, lng: -40.6300 },
+  'guarapari': { lat: -20.6667, lng: -40.4975 },
+  'são mateus': { lat: -18.7161, lng: -39.8589 },
+  'aracruz': { lat: -19.8203, lng: -40.2733 },
+  'espírito santo': { lat: -20.3155, lng: -40.3128 },
+  'espirito santo': { lat: -20.3155, lng: -40.3128 },
+
   // Rio de Janeiro - High specificity Bonsucesso / Av. Brasil Hub
   '21040-360': { lat: -22.8610, lng: -43.2535 },
   '21040': { lat: -22.8610, lng: -43.2535 },
@@ -31,19 +55,37 @@ const GEOCODE_DB: Record<string, { lat: number; lng: number }> = {
   'centro rj': { lat: -22.9068, lng: -43.1729 },
   'barra da tijuca': { lat: -23.0016, lng: -43.3444 },
   'rio de janeiro': { lat: -22.9068, lng: -43.1729 },
-  // Belo Horizonte
+
+  // Minas Gerais
   'savassi': { lat: -19.9388, lng: -43.9386 },
   'funcionários': { lat: -19.9322, lng: -43.9298 },
   'lourdes': { lat: -19.9285, lng: -43.9442 },
   'centro bh': { lat: -19.9191, lng: -43.9386 },
   'pampulha': { lat: -19.8519, lng: -43.9749 },
   'belo horizonte': { lat: -19.9167, lng: -43.9345 },
+  'uberlândia': { lat: -18.9186, lng: -48.2772 },
+  'juiz de fora': { lat: -21.7642, lng: -43.3496 },
+
   // São Paulo
   'paulista': { lat: -23.5614, lng: -46.6559 },
   'bela vista': { lat: -23.5619, lng: -46.6433 },
   'pinheiros': { lat: -23.5668, lng: -46.7032 },
   'centro sp': { lat: -23.5489, lng: -46.6388 },
   'são paulo': { lat: -23.5505, lng: -46.6333 },
+  'campinas': { lat: -22.9099, lng: -47.0626 },
+  'santos': { lat: -23.9608, lng: -46.3331 },
+
+  // Outros Estados / Capitais
+  'curitiba': { lat: -25.4284, lng: -49.2733 },
+  'florianópolis': { lat: -27.5954, lng: -48.5480 },
+  'porto alegre': { lat: -30.0346, lng: -51.2177 },
+  'brasília': { lat: -15.7975, lng: -47.8919 },
+  'goiânia': { lat: -16.6869, lng: -49.2648 },
+  'salvador': { lat: -12.9777, lng: -38.5016 },
+  'recife': { lat: -8.0476, lng: -34.8770 },
+  'fortaleza': { lat: -3.7319, lng: -38.5267 },
+  'manaus': { lat: -3.1190, lng: -60.0217 },
+  'belém': { lat: -1.4558, lng: -48.4902 },
 };
 
 /**
@@ -71,16 +113,48 @@ export function geocodeAddress(endereco: string): { lat: number; lng: number } {
     }
   }
 
-  // Smarter Fallback: Detect correct general area based on keywords (e.g. SP, RJ, etc.)
+  // Smarter Fallback: Detect correct general region based on state codes or city keywords
   let baseLat = DEFAULT_BASE.latitude;
   let baseLng = DEFAULT_BASE.longitude;
 
-  if (clean.includes('sp') || clean.includes('são paulo') || clean.includes('sao paulo') || clean.includes('paulista')) {
+  if (
+    clean.includes('es') || clean.includes('espírito santo') || clean.includes('espirito santo') ||
+    clean.includes('vitória') || clean.includes('vitoria') || clean.includes('vila velha') ||
+    clean.includes('serra') || clean.includes('cariacica') || clean.includes('linhares') ||
+    clean.includes('colatina') || clean.includes('guarapari') || clean.includes('cachoeiro')
+  ) {
+    baseLat = -20.3155;
+    baseLng = -40.3128; // Vitória / ES
+  } else if (clean.includes('sp') || clean.includes('são paulo') || clean.includes('sao paulo') || clean.includes('paulista') || clean.includes('campinas')) {
     baseLat = -23.5505;
-    baseLng = -46.6333;
-  } else if (clean.includes('rj') || clean.includes('rio de janeiro') || clean.includes('copacabana')) {
+    baseLng = -46.6333; // São Paulo / SP
+  } else if (clean.includes('rj') || clean.includes('rio de janeiro') || clean.includes('copacabana') || clean.includes('niterói')) {
     baseLat = -22.9068;
-    baseLng = -43.1729;
+    baseLng = -43.1729; // Rio de Janeiro / RJ
+  } else if (clean.includes('pr') || clean.includes('paraná') || clean.includes('curitiba')) {
+    baseLat = -25.4284;
+    baseLng = -49.2733; // Curitiba / PR
+  } else if (clean.includes('sc') || clean.includes('santa catarina') || clean.includes('florianópolis')) {
+    baseLat = -27.5954;
+    baseLng = -48.5480; // Florianópolis / SC
+  } else if (clean.includes('rs') || clean.includes('rio grande do sul') || clean.includes('porto alegre')) {
+    baseLat = -30.0346;
+    baseLng = -51.2177; // Porto Alegre / RS
+  } else if (clean.includes('go') || clean.includes('df') || clean.includes('brasília') || clean.includes('goiânia')) {
+    baseLat = -15.7975;
+    baseLng = -47.8919; // DF / GO
+  } else if (clean.includes('ba') || clean.includes('bahia') || clean.includes('salvador')) {
+    baseLat = -12.9777;
+    baseLng = -38.5016; // Salvador / BA
+  } else if (clean.includes('pe') || clean.includes('pernambuco') || clean.includes('recife')) {
+    baseLat = -8.0476;
+    baseLng = -34.8770; // Recife / PE
+  } else if (clean.includes('ce') || clean.includes('ceará') || clean.includes('fortaleza')) {
+    baseLat = -3.7319;
+    baseLng = -38.5267; // Fortaleza / CE
+  } else if (clean.includes('mg') || clean.includes('minas gerais') || clean.includes('belo horizonte')) {
+    baseLat = -19.9167;
+    baseLng = -43.9345; // Belo Horizonte / MG
   }
 
   let hash = 0;

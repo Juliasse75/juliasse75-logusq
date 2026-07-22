@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { 
   X, Upload, FileText, Clipboard, Sparkles, Check, 
-  AlertTriangle, Play, HelpCircle, ArrowRight, Table, ListPlus
+  AlertTriangle, Play, HelpCircle, ArrowRight, Table, ListPlus, Loader2
 } from 'lucide-react';
+import { geocodeAddress } from '../utils/routingEngine';
 
 interface ImportadorUniversalProps {
   isOpen: boolean;
@@ -36,6 +37,8 @@ export default function ImportadorUniversal({
   const [localHeaderCols, setLocalHeaderCols] = useState<string[]>([]);
   const [isLocalImport, setIsLocalImport] = useState(false);
   const [localRows, setLocalRows] = useState<string[][]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveProgressMsg, setSaveProgressMsg] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -537,7 +540,7 @@ export default function ImportadorUniversal({
   };
 
   // Perform saving action
-  const handleConfirmImport = () => {
+  const handleConfirmImport = async () => {
     const toImport = parsedRecords.filter((_, idx) => selectedIndices[idx]);
     
     if (toImport.length === 0) {
@@ -560,100 +563,112 @@ export default function ImportadorUniversal({
       if (!proceed) return;
     }
 
+    setIsSaving(true);
     let successCount = 0;
 
     try {
-      // We convert this to an async loop to resolve addresses using our real geocoding proxy
-      const importProcess = async () => {
-        for (const item of toImport) {
-          if (type === 'veiculos') {
-            // Generate an ID if missing
-            const id = item.idVeiculo || `VEIC-${item.placa?.replace(/\W/g, '') || Math.floor(Math.random() * 9000 + 1000)}`;
-            
-            dbRepo.cadastrarVeiculo(userEmail, {
-              idVeiculo: id,
-              placa: item.placa || 'AAA-0000',
-              modelo: item.modelo || 'Modelo Importado',
-              fabricante: item.fabricante || 'Outro',
-              anoFabricacao: item.anoFabricacao || '2023',
-              anoModelo: item.anoModelo || item.anoFabricacao || '2023',
-              cor: item.cor || 'Branco',
-              tipo: item.tipo || 'Van',
-              tipoCombustivel: item.tipoCombustivel || 'Flex',
-              capacidadeKg: parseInt(item.capacidadeKg) || 1000,
-              renavam: item.renavam || '',
-              chassi: item.chassi || '',
-              status: item.status || 'Disponivel'
-            });
-            successCount++;
-          } else if (type === 'condutores') {
-            dbRepo.cadastrarCondutor(userEmail, {
-              nome: item.nome || 'Condutor Importado',
-              cpf: item.cpf || '000.000.000-00',
-              rg: item.rg || '',
-              nascimento: item.nascimento || '01/01/1990',
-              telefone: item.telefone || '(00) 00000-0000',
-              email: item.email || `motorista.${Math.floor(Math.random() * 1000)}@empresa.com.br`,
-              cnh: item.cnh || '00000000000',
-              categoriaCnh: item.categoriaCnh || 'B',
-              vencCnh: item.vencCnh || '01/01/2030',
-              veiculo: item.veiculo || '',
-              placaVeiculo: item.placaVeiculo || ''
-            });
-            successCount++;
-          } else if (type === 'entregas') {
-            let lat: number | undefined;
-            let lng: number | undefined;
-            
-            const addressToGeocode = item.endereco || '';
-            if (addressToGeocode) {
-              try {
-                const res = await fetch(`/api/geocode?q=${encodeURIComponent(addressToGeocode)}`);
-                if (res.ok) {
-                  const data = await res.json();
-                  if (data.lat && data.lng) {
-                    lat = data.lat;
-                    lng = data.lng;
-                  }
+      const total = toImport.length;
+      
+      for (let i = 0; i < total; i++) {
+        const item = toImport[i];
+        setSaveProgressMsg(`Processando e salvando registro ${i + 1} de ${total}...`);
+
+        if (type === 'veiculos') {
+          const id = item.idVeiculo || `VEIC-${item.placa?.replace(/\W/g, '') || Math.floor(Math.random() * 9000 + 1000)}`;
+          
+          dbRepo.cadastrarVeiculo(userEmail, {
+            idVeiculo: id,
+            placa: item.placa || 'AAA-0000',
+            modelo: item.modelo || 'Modelo Importado',
+            fabricante: item.fabricante || 'Outro',
+            anoFabricacao: item.anoFabricacao || '2023',
+            anoModelo: item.anoModelo || item.anoFabricacao || '2023',
+            cor: item.cor || 'Branco',
+            tipo: item.tipo || 'Van',
+            tipoCombustivel: item.tipoCombustivel || 'Flex',
+            capacidadeKg: parseInt(item.capacidadeKg) || 1000,
+            renavam: item.renavam || '',
+            chassi: item.chassi || '',
+            status: item.status || 'Disponivel'
+          });
+          successCount++;
+        } else if (type === 'condutores') {
+          dbRepo.cadastrarCondutor(userEmail, {
+            nome: item.nome || 'Condutor Importado',
+            cpf: item.cpf || '000.000.000-00',
+            rg: item.rg || '',
+            nascimento: item.nascimento || '01/01/1990',
+            telefone: item.telefone || '(00) 00000-0000',
+            email: item.email || `motorista.${Math.floor(Math.random() * 1000)}@empresa.com.br`,
+            cnh: item.cnh || '00000000000',
+            categoriaCnh: item.categoriaCnh || 'B',
+            vencCnh: item.vencCnh || '01/01/2030',
+            veiculo: item.veiculo || '',
+            placaVeiculo: item.placaVeiculo || ''
+          });
+          successCount++;
+        } else if (type === 'entregas') {
+          const addressToGeocode = item.endereco || '';
+          
+          // 1. Calculate offline coordinates immediately using enhanced routingEngine geocoder
+          const offlineCoords = geocodeAddress(addressToGeocode);
+          let lat: number = offlineCoords.lat;
+          let lng: number = offlineCoords.lng;
+
+          // 2. Try fast Nominatim lookup if network is fast
+          if (addressToGeocode && addressToGeocode.length > 3) {
+            try {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 900); // 900ms fast timeout
+              
+              const res = await fetch(`/api/geocode?q=${encodeURIComponent(addressToGeocode)}`, {
+                signal: controller.signal
+              });
+              clearTimeout(timeoutId);
+
+              if (res.ok) {
+                const data = await res.json();
+                if (data.lat && data.lng) {
+                  lat = data.lat;
+                  lng = data.lng;
                 }
-              } catch (e) {
-                console.warn('Fallback: geocodificação offline no importador de planilhas.', e);
               }
+            } catch (e) {
+              // Gracefully fall back to offline coordinates
             }
-
-            dbRepo.cadastrarEntrega(userEmail, {
-              chave: item.chave || `ENT-${Math.floor(Math.random() * 1000000)}`,
-              cliente: item.cliente || 'Cliente Importado',
-              endereco: addressToGeocode || 'Endereço Indefinido',
-              enderecoColeta: item.enderecoColeta || '',
-              pontoReferencia: item.pontoReferencia || '',
-              telefone: item.telefone || '',
-              whatsapp: item.whatsapp || '',
-              pesoMercadoriaKg: parseInt(item.pesoMercadoriaKg) || 15,
-              tipoOperacao: item.tipoOperacao === 'Coleta' ? 'Coleta' : 'Entrega',
-              notaFiscal: item.notaFiscal || '',
-              latitude: lat,
-              longitude: lng
-            });
-            successCount++;
           }
+
+          dbRepo.cadastrarEntrega(userEmail, {
+            chave: item.chave || `ENT-${Math.floor(Math.random() * 1000000)}`,
+            cliente: item.cliente || 'Cliente Importado',
+            endereco: addressToGeocode || 'Endereço Indefinido',
+            enderecoColeta: item.enderecoColeta || '',
+            pontoReferencia: item.pontoReferencia || '',
+            telefone: item.telefone || '',
+            whatsapp: item.whatsapp || '',
+            pesoMercadoriaKg: parseInt(item.pesoMercadoriaKg) || 15,
+            tipoOperacao: item.tipoOperacao === 'Coleta' ? 'Coleta' : 'Entrega',
+            notaFiscal: item.notaFiscal || '',
+            latitude: lat,
+            longitude: lng
+          });
+          successCount++;
         }
+      }
 
-        alert(`Sucesso! Foram importados e validados ${successCount} registros no sistema.`);
-        onImportComplete();
-        onClose();
-        // Reset states
-        setFile(null);
-        setPastedText('');
-        setImportStep('input');
-        setParsedRecords([]);
-      };
-
-      importProcess().catch(err => {
-        alert(`Erro na inserção de dados: ${err.message || err}`);
-      });
+      alert(`✅ Sucesso! Foram importados e validados ${successCount} registros no sistema com sucesso.`);
+      onImportComplete();
+      onClose();
+      // Reset states
+      setFile(null);
+      setPastedText('');
+      setImportStep('input');
+      setParsedRecords([]);
     } catch (err: any) {
       alert(`Erro na inserção de dados: ${err.message || err}`);
+    } finally {
+      setIsSaving(false);
+      setSaveProgressMsg('');
     }
   };
 
@@ -1011,18 +1026,28 @@ export default function ImportadorUniversal({
                   </div>
                 </div>
 
-                <div className="flex gap-2.5 w-full sm:w-auto">
+                <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+                  {isSaving && (
+                    <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-3.5 py-1.5 rounded-xl animate-pulse">
+                      <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+                      <span>{saveProgressMsg || 'Importando e geocodificando registros...'}</span>
+                    </div>
+                  )}
+
                   <button
                     onClick={handleReset}
-                    className="w-full sm:w-auto bg-slate-800 hover:bg-slate-750 text-slate-300 px-4 py-2 rounded-xl text-xs font-semibold border border-slate-700/60 transition-colors"
+                    disabled={isSaving}
+                    className="w-full sm:w-auto bg-slate-800 hover:bg-slate-750 text-slate-300 disabled:opacity-50 px-4 py-2 rounded-xl text-xs font-semibold border border-slate-700/60 transition-colors"
                   >
                     Descartar e Voltar
                   </button>
                   <button
                     onClick={handleConfirmImport}
-                    className="w-full sm:w-auto bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-5 py-2 rounded-xl text-xs font-bold shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2 transition-all"
+                    disabled={isSaving}
+                    className="w-full sm:w-auto bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white px-5 py-2 rounded-xl text-xs font-bold shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2 transition-all"
                   >
-                    <Check className="w-4 h-4" /> Importar Registros no Sistema
+                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    <span>{isSaving ? 'Importando...' : 'Importar Registros no Sistema'}</span>
                   </button>
                 </div>
               </div>

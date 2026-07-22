@@ -1550,9 +1550,9 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                       setRegRespCidade(regCidade);
                       setRegRespEstado(regEstado);
                     }}
-                    className="bg-slate-850 hover:bg-slate-800 text-[10px] text-violet-400 font-semibold px-2.5 py-1 rounded mb-3 transition-colors"
+                    className="bg-violet-950/60 hover:bg-violet-900/80 text-violet-200 border border-violet-700/50 text-xs font-bold px-3.5 py-1.5 rounded-lg mb-3 shadow-sm transition-colors flex items-center gap-2"
                   >
-                    Copiar Endereço da Sede
+                    <span>📋</span> Copiar Endereço da Sede
                   </button>
 
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -2995,9 +2995,9 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                         setUpRespCidade(upCidade);
                         setUpRespEstado(upEstado);
                       }}
-                      className="bg-slate-800 hover:bg-slate-700 text-[10px] text-violet-400 font-semibold px-2.5 py-1 rounded mb-3 transition-colors"
+                      className="bg-violet-950/60 hover:bg-violet-900/80 text-violet-200 border border-violet-700/50 text-xs font-bold px-3.5 py-1.5 rounded-lg mb-3 shadow-sm transition-colors flex items-center gap-2"
                     >
-                      Copiar Endereço da Empresa
+                      <span>📋</span> Copiar Endereço da Empresa
                     </button>
 
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -3370,7 +3370,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                       2.1 Pelo licenciamento e serviços prestados, a LICENCIADA pagará à LICENCIANTE o valor mensal do plano contratado, vencendo todo dia <strong>{selectedClient.vencimento?.split('/')[0] || '10'}</strong> de cada mês, através de boleto bancário ou transferência PIX homologada.
                     </p>
                     <p className="mt-1">
-                      2.2 O atraso superior a 10 (dez) dias ensejará o bloqueio temporário do acesso aos servidores de roteirização LogusQ, sem prejuízo da incidência de juros de mora de 1% ao mês e multa compensatória de 2%.
+                      2.2 O atraso superior a 05 (cinco) dias no pagamento da mensalidade ensejará a suspensão do acesso aos servidores de roteirização LogusQ, incidindo sobre o valor devido multa moratória de 2% (dois por cento) e juros de 1% (um por cento) ao mês.
                     </p>
                     <p className="mt-1">
                       2.3 Os valores pactuados serão reajustados anualmente com base na variação positiva do IPCA/IBGE acumulado no período, ou outro indexador oficial que venha a substituí-lo.
@@ -3378,19 +3378,59 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                   </div>
 
                   <div>
-                    <h2 className="font-sans font-bold text-[11px] text-slate-800 uppercase mt-4">CLÁUSULA TERCEIRA – DA SEGURANÇA DA INFORMAÇÃO E LGPD</h2>
+                    <h2 className="font-sans font-bold text-[11px] text-slate-800 uppercase mt-4">CLÁUSULA TERCEIRA – DA VIGÊNCIA E CANCELAMENTO</h2>
                     <p className="mt-1">
-                      3.1 A LICENCIANTE compromete-se a manter em sigilo absoluto todos os dados de frota, coordenadas de clientes de entrega, faturamento e informações pessoais inseridas pela LICENCIADA no software, em estrita conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018 - LGPD).
+                      3.1 O presente contrato vigora por prazo indeterminado a partir da data de assinatura/aceite e possui ciclo de renovação mensal automática mediante a quitação das faturas do período.
                     </p>
                     <p className="mt-1">
-                      3.2 Todas as conexões de tráfego de dados com as APIs de otimização LogusQ utilizam criptografia SSL SHA-256 bits de padrão militar, sendo as bases hospedadas em datacenters redundantes com conformidade de segurança Tier III.
+                      3.2 O cancelamento pode ser solicitado pela LICENCIADA a qualquer momento através do painel do sistema ou suporte oficial, com antecedência mínima de 15 (quinze) dias do próximo ciclo faturamento, sem multa rescisória, não havendo devolução de valores do ciclo em andamento.
                     </p>
                   </div>
 
                   <div>
-                    <h2 className="font-sans font-bold text-[11px] text-slate-800 uppercase mt-4">CLÁUSULA QUARTA – DA RESCISÃO E VIGÊNCIA</h2>
+                    <h2 className="font-sans font-bold text-[11px] text-slate-800 uppercase mt-4">CLÁUSULA QUARTA – DO NÍVEL DE SERVIÇO (SLA) E SUPORTE TÉCNICO</h2>
                     <p className="mt-1">
-                      4.1 O presente contrato vigora por prazo indeterminado. Qualquer das partes poderá rescindir a prestação de serviços a qualquer momento, mediante envio de notificação por escrito com antecedência mínima de 30 (trinta) dias, desde que não existam débitos pendentes de pagamento.
+                      4.1 A LICENCIANTE envidará seus melhores esforços técnicos e operacionais para manter a plataforma LogusQ disponível durante 99% (noventa e nove por cento) do tempo em cada mês civil.
+                    </p>
+                    <p className="mt-1">
+                      4.2 Não se computam no cálculo de SLA as interrupções decorrentes de manutenções preventivas ou emergenciais devidamente comunicadas, falhas em provedores de infraestrutura e conexão da LICENCIADA, ou eventos fortuitos e de força maior.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h2 className="font-sans font-bold text-[11px] text-slate-800 uppercase mt-4">CLÁUSULA QUINTA – DA PRIVACIDADE, SEGURANÇA E LGPD</h2>
+                    <p className="mt-1">
+                      5.1 Em estrita conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018 - LGPD), a LICENCIADA atua como Controladora dos dados pessoais de seus motoristas e clientes finais inseridos na plataforma.
+                    </p>
+                    <p className="mt-1">
+                      5.2 A LICENCIANTE atua exclusivamente como Operadora de Dados, comprometendo-se a manter sigilo absoluto e implementar medidas rígidas de criptografia SSL SHA-256 bits e armazenamento em datacenters redundantes com nível de segurança Tier III.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h2 className="font-sans font-bold text-[11px] text-slate-800 uppercase mt-4">CLÁUSULA SEXTA – DA PROPRIEDADE INTELECTUAL</h2>
+                    <p className="mt-1">
+                      6.1 Todos os direitos de propriedade intelectual sobre o software LogusQ, incluindo código-fonte, marcas, algoritmos de roteirização K-Means / TSP, documentações e bancos de dados, pertencem exclusivamente à LICENCIANTE.
+                    </p>
+                    <p className="mt-1">
+                      6.2 É expressamente vedado à LICENCIADA copiar, modificar, distribuir, realizar engenharia reversa ou sublicenciar a plataforma sem autorização prévia por escrito.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h2 className="font-sans font-bold text-[11px] text-slate-800 uppercase mt-4">CLÁUSULA SÉTIMA – DA LIMITAÇÃO DE RESPONSABILIDADE</h2>
+                    <p className="mt-1">
+                      7.1 A responsabilidade civil total da LICENCIANTE por eventuais falhas sistêmicas comprovadas fica estritamente limitada ao valor equivalente à última mensalidade paga pela LICENCIADA.
+                    </p>
+                    <p className="mt-1">
+                      7.2 A LICENCIANTE não responderá, em nenhuma hipótese, por lucros cessantes, perdas de negócios, avarias em cargas, multas de trânsito ou quaisquer danos indiretos sofridos pela LICENCIADA durante a execução das rotas.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h2 className="font-sans font-bold text-[11px] text-slate-800 uppercase mt-4">CLÁUSULA OITAVA – DAS DISPOSIÇÕES GERAIS E FORO ELEITO</h2>
+                    <p className="mt-1">
+                      8.1 As partes elegem o foro da Comarca de Belo Horizonte/MG, com renúncia expressa a qualquer outro, por mais privilegiado que seja, para dirimir quaisquer dúvidas ou controvérsias oriundas do presente contrato.
                     </p>
                   </div>
 

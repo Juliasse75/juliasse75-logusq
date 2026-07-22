@@ -24,9 +24,11 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
 
   // Client info
   const clientData = dbRepo.getCliente(userEmail);
+  const [asyncBaseCoords, setAsyncBaseCoords] = useState<{ lat: number; lng: number } | null>(null);
   
   // Resolve client's base/CD coordinates dynamically based on their address
   const clientBaseCoords = React.useMemo(() => {
+    if (asyncBaseCoords) return asyncBaseCoords;
     if (clientData) {
       const fullAddress = `${clientData.endereco || ''}, ${clientData.numero || ''} - ${clientData.bairro || ''}, ${clientData.cidade || ''} - ${clientData.estado || ''} CEP: ${clientData.cep || ''}`.trim();
       if (fullAddress && fullAddress.length > 10) {
@@ -34,7 +36,27 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       }
     }
     return { lat: DEFAULT_BASE.latitude, lng: DEFAULT_BASE.longitude };
-  }, [clientData]);
+  }, [asyncBaseCoords, clientData]);
+
+  // Query OpenStreetMap Nominatim proxy for exact street coordinates of client CD Hub
+  React.useEffect(() => {
+    if (!clientData) return;
+    const searchString = `${clientData.endereco || ''}, ${clientData.cidade || ''} - ${clientData.estado || ''}`.trim();
+    if (!searchString || searchString.length < 5) return;
+
+    let isMounted = true;
+    fetch(`/api/geocode?q=${encodeURIComponent(searchString)}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (isMounted && data && data.lat && data.lng) {
+          setAsyncBaseCoords({ lat: data.lat, lng: data.lng });
+          console.log(`🗺️ CD Hub geocodificado com precisão para: ${data.displayName} (${data.lat}, ${data.lng})`);
+        }
+      })
+      .catch(err => console.warn('Nominatim fallback para geocodificador local:', err));
+
+    return () => { isMounted = false; };
+  }, [clientData?.endereco, clientData?.cidade, clientData?.estado]);
 
   const frota = dbRepo.getFrota(userEmail);
   const condutores = dbRepo.getCondutores(userEmail);
@@ -1475,12 +1497,12 @@ Duração Estimada: ${Math.floor(r.duration / 60)}h ${r.duration % 60}min
 Total de Paradas: ${r.path.length} clientes
 ------------------------------------------------------------
 SELO DO CENTRO DE DISTRIBUIÇÃO:
-Origem: Hub Savassi (Av. do Contorno, Belo Horizonte)
+Origem: ${clientData?.empresa || 'CD Hub Central'} (${clientData?.endereco || 'Sede Operacional'}, ${clientData?.cidade || 'Base Logística'}/${clientData?.estado || 'BR'})
 ------------------------------------------------------------
 
 INSTRUÇÕES DE NAVEGAÇÃO SEQUENCIADA:
 
-[PARTIDA] CD Hub Savassi (Avenida do Contorno)
+[PARTIDA] ${clientData?.empresa || 'CD Hub Central'} (${clientData?.cidade || 'Base Central'})
   -> Carregamento total da carga consolidada.
 
 `;
@@ -1496,7 +1518,7 @@ INSTRUÇÕES DE NAVEGAÇÃO SEQUENCIADA:
 `;
     });
 
-    content += `[RETORNO] CD Hub Savassi (Avenida do Contorno)
+    content += `[RETORNO] ${clientData?.empresa || 'CD Hub Central'} (${clientData?.cidade || 'Base Central'})
   -> Descarregamento de canhotos, devoluções e prestação de contas.
 
 ------------------------------------------------------------

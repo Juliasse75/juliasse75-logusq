@@ -21,7 +21,10 @@ import {
   Info,
   Play,
   Pause,
-  AlertTriangle
+  AlertTriangle,
+  Navigation,
+  Compass,
+  ExternalLink
 } from 'lucide-react';
 
 interface DashboardMotoristaProps {
@@ -965,16 +968,48 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
               <div key={route.routeId} className="space-y-3">
                 
                 {/* Route Header */}
-                <div className="flex justify-between items-center bg-slate-900/80 border border-slate-800/80 px-4 py-2.5 rounded-xl">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded uppercase">
-                      {route.routeId}
-                    </span>
-                    <span className="text-xs text-slate-300 font-semibold">{route.vehicle}</span>
+                <div className="bg-slate-900/90 border border-slate-800 p-3.5 rounded-xl space-y-2">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded uppercase">
+                        {route.routeId}
+                      </span>
+                      <span className="text-xs text-slate-300 font-semibold">{route.vehicle}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-500 font-mono">
+                      {route.km} km • Est. {route.duration} min
+                    </div>
                   </div>
-                  <div className="text-[10px] text-slate-500 font-mono">
-                    {route.km} km • Est. {route.duration} min
-                  </div>
+
+                  {/* Direct Route GPS Navigation Bar */}
+                  {(() => {
+                    const routeClient = dbRepo.getCliente(route.clientEmail);
+                    const originAddress = routeClient ? `${routeClient.endereco || ''}, ${routeClient.cidade || ''} - ${routeClient.estado || ''}` : '';
+                    const firstPending = route.path.find(p => p.status === 'Pendente');
+                    const targetEnd = firstPending ? (firstPending.tipoOperacao === 'Coleta' && firstPending.enderecoColeta ? firstPending.enderecoColeta : firstPending.endereco) : '';
+                    
+                    const googleRouteUrl = targetEnd 
+                      ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originAddress)}&destination=${encodeURIComponent(targetEnd)}`
+                      : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(originAddress)}`;
+
+                    return (
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/60">
+                        <span className="text-[10px] font-mono text-slate-400 font-bold uppercase flex items-center gap-1">
+                          <Navigation className="w-3 h-3 text-sky-400 animate-pulse" /> GPS Saída do CD:
+                        </span>
+                        <a
+                          href={googleRouteUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-sky-950/80 hover:bg-sky-900 text-sky-300 border border-sky-600/50 text-[11px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors shadow-sm"
+                        >
+                          <Compass className="w-3.5 h-3.5 text-sky-400" />
+                          <span>Abrir Rota do CD para {firstPending ? firstPending.cliente : 'Destino'}</span>
+                          <ExternalLink className="w-3 h-3 opacity-70" />
+                        </a>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Stops nested inside this route */}
@@ -1063,8 +1098,39 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
                           )}
                         </div>
 
+                        {/* GPS Direct Navigation Action Bar */}
+                        <div className="flex items-center gap-1.5 bg-slate-950/80 p-2 rounded-xl border border-slate-800">
+                          <span className="text-[10px] text-slate-400 font-mono font-bold uppercase flex items-center gap-1 px-1">
+                            <Navigation className="w-3.5 h-3.5 text-sky-400" /> GPS:
+                          </span>
+                          <a
+                            href={entrega.latitude && entrega.longitude
+                              ? `https://www.google.com/maps/dir/?api=1&destination=${entrega.latitude},${entrega.longitude}`
+                              : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent((entrega.tipoOperacao === 'Coleta' && entrega.enderecoColeta) ? entrega.enderecoColeta : entrega.endereco)}`
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1 bg-indigo-950/80 hover:bg-indigo-900 text-indigo-200 border border-indigo-700/50 py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                          >
+                            <span>🗺️ Google Maps</span>
+                            <ExternalLink className="w-3 h-3 text-indigo-400" />
+                          </a>
+                          <a
+                            href={entrega.latitude && entrega.longitude
+                              ? `https://waze.com/ul?ll=${entrega.latitude},${entrega.longitude}&navigate=yes`
+                              : `https://waze.com/ul?q=${encodeURIComponent((entrega.tipoOperacao === 'Coleta' && entrega.enderecoColeta) ? entrega.enderecoColeta : entrega.endereco)}&navigate=yes`
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1 bg-cyan-950/80 hover:bg-cyan-900 text-cyan-200 border border-cyan-700/50 py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                          >
+                            <span>🚙 Waze</span>
+                            <ExternalLink className="w-3 h-3 text-cyan-400" />
+                          </a>
+                        </div>
+
                         {/* Actions block */}
-                        <div className="flex flex-col sm:flex-row gap-2 pt-2 w-full">
+                        <div className="flex flex-col sm:flex-row gap-2 pt-1 w-full">
                           {/* Contact via WhatsApp trigger if number is available */}
                           {entrega.whatsapp && (
                             <a 
