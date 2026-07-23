@@ -1712,7 +1712,7 @@ Assinatura do Expedidor: _______________________________`;
     
     // Mark entregas inside route as completed in localStorage
     r.path.forEach(p => {
-      dbRepo.atualizarEntregaStatus(userEmail, p.chave, 'Entregue');
+      dbRepo.atualizarEntregaStatus(userEmail, p.chave || p.id, 'Entregue');
     });
 
     const updated = { ...activeRoutes };
@@ -1720,17 +1720,17 @@ Assinatura do Expedidor: _______________________________`;
     setActiveRoutes(updated);
     dbRepo.saveRotasAtivas(userEmail, updated);
     
-    // also remove from map
-    const newMapRoutes = { ...mapRoutes };
-    // Find index of route
-    const index = Object.keys(activeRoutes).indexOf(routeId);
-    if (index !== -1) {
-      delete newMapRoutes[index];
-    }
+    // Rebuild mapRoutes indexing matching remaining active routes
+    const newMapRoutes: Record<number, Entrega[]> = {};
+    Object.values(updated).forEach((route: any, idx: number) => {
+      if (route && route.path) {
+        newMapRoutes[idx] = route.path;
+      }
+    });
     setMapRoutes(newMapRoutes);
 
     triggerRefresh();
-    alert(`Rota ${routeId} concluída! Baixa realizada no sistema.`);
+    alert(`Rota ${routeId} concluída! Baixa realizada no sistema e pontos removidos do mapa de rotas ativas.`);
   };
 
   const handleSimulateShiftData = (driverEmail: string) => {
@@ -2371,15 +2371,17 @@ Assinatura do Expedidor: _______________________________`;
                     {entregasPendentes.length > 0 && (
                       <button 
                         onClick={() => {
-                          entregasPendentes.forEach(p => dbRepo.deletarEntrega(userEmail, p.chave));
-                          dbRepo.saveRotasAtivas(userEmail, {});
-                          setActiveRoutes({});
-                          setMapRoutes({});
-                          triggerRefresh();
+                          if (confirm('Deseja realmente apagar todas as entregas e coletas do sistema?')) {
+                            dbRepo.saveEntregas(userEmail, []);
+                            dbRepo.saveRotasAtivas(userEmail, {});
+                            setActiveRoutes({});
+                            setMapRoutes({});
+                            triggerRefresh();
+                          }
                         }}
-                        className="text-[10px] text-red-400 hover:underline animate-pulse"
+                        className="text-[10px] text-red-400 hover:underline animate-pulse cursor-pointer"
                       >
-                        Limpar todos
+                        Limpar todos os pontos
                       </button>
                     )}
                   </div>

@@ -590,6 +590,11 @@ export default function ImportadorUniversal({
         // Fallback default
       }
 
+      // If importing entregas, reset old pending deliveries so new spreadsheet equals exact count (e.g. 80 points)
+      if (type === 'entregas') {
+        dbRepo.saveEntregas(userEmail, []);
+      }
+
       for (let i = 0; i < total; i++) {
         const item = toImport[i];
         setSaveProgressMsg(`Processando e salvando registro ${i + 1} de ${total}...`);

@@ -323,8 +323,9 @@ export function optimizeTSP(baseLat: number, baseLng: number, entregas: Entrega[
 }
 
 /**
- * K-Means Clustering for vehicle route assignment
- * Segments deliveries into 'k' groups, then runs TSP optimization on each.
+ * Balanced Capacity-Constrained K-Means Clustering for vehicle route assignment
+ * Ensures workload (number of stops) is balanced equally across available vehicles (k),
+ * preventing 1 driver from getting 60+ stops while others get only 4.
  */
 export function clusterAndOptimize(
   entregas: Entrega[], 
@@ -335,30 +336,63 @@ export function clusterAndOptimize(
   if (entregas.length === 0 || numVeiculos <= 0) return {};
 
   const k = Math.min(numVeiculos, entregas.length);
-  
-  // 1. Initialize centroids (K-Means++ style or simply select first k spaced nodes)
-  const centroids = unrepeatedCentroids(entregas, k);
+  const targetPerVehicle = Math.ceil(entregas.length / k);
+  // Cap capacity per vehicle so no single driver gets overloaded
+  const maxStopsPerVehicle = Math.max(1, Math.ceil(targetPerVehicle * 1.15));
+
+  // 1. Initialize centroids using K-Means++ style spatial dispersion
+  const centroids = initializeKMeansPlusPlus(entregas, k);
   
   let clusters: Record<number, number[]> = {};
-  
-  // Max 10 iterations (extremely fast client-side converge)
-  for (let iter = 0; iter < 10; iter++) {
+
+  // Iterative Capitated K-Means
+  for (let iter = 0; iter < 15; iter++) {
     clusters = {};
     for (let i = 0; i < k; i++) clusters[i] = [];
 
-    // Assign points to nearest centroid
-    entregas.forEach((p, index) => {
-      let nearestCluster = 0;
-      let minDistSq = Infinity;
+    // Calculate distances from every point to every centroid
+    const pointPreferences: { pointIdx: number; distances: { clusterId: number; distSq: number }[] }[] = [];
 
+    entregas.forEach((p, pIdx) => {
+      const dists: { clusterId: number; distSq: number }[] = [];
       centroids.forEach((c, cId) => {
         const d = Math.pow(p.latitude - c.lat, 2) + Math.pow(p.longitude - c.lng, 2);
-        if (d < minDistSq) {
-          minDistSq = d;
-          nearestCluster = cId;
-        }
+        dists.push({ clusterId: cId, distSq: d });
       });
-      clusters[nearestCluster].push(index);
+      // Sort clusters by ascending distance to this point
+      dists.sort((a, b) => a.distSq - b.distSq);
+      pointPreferences.push({ pointIdx: pIdx, distances: dists });
+    });
+
+    // Sort point assignments to prioritize points with strong preferences
+    pointPreferences.sort((a, b) => {
+      const diffA = a.distances.length > 1 ? a.distances[1].distSq - a.distances[0].distSq : 0;
+      const diffB = b.distances.length > 1 ? b.distances[1].distSq - b.distances[0].distSq : 0;
+      return diffB - diffA; // Points with highest penalty for missing nearest centroid go first
+    });
+
+    // Assign points respecting capacity limits
+    pointPreferences.forEach(({ pointIdx, distances }) => {
+      let assigned = false;
+      for (const pref of distances) {
+        if (clusters[pref.clusterId].length < maxStopsPerVehicle) {
+          clusters[pref.clusterId].push(pointIdx);
+          assigned = true;
+          break;
+        }
+      }
+      // Overflow fallback: if all centroids reached soft max, assign to cluster with fewest items
+      if (!assigned) {
+        let minCluster = 0;
+        let minLen = Infinity;
+        for (let i = 0; i < k; i++) {
+          if (clusters[i].length < minLen) {
+            minLen = clusters[i].length;
+            minCluster = i;
+          }
+        }
+        clusters[minCluster].push(pointIdx);
+      }
     });
 
     // Update centroids
@@ -379,7 +413,10 @@ export function clusterAndOptimize(
     }
   }
 
-  // 2. Map back to Entregas and optimize each cluster with TSP starting from custom or default base
+  // 2. Final Balancing Sweep: Equalize cluster counts tightly if discrepancy exists
+  equalizeClusterSizes(clusters, entregas, k, targetPerVehicle);
+
+  // 3. Map back to Entregas and optimize each cluster with TSP starting from base
   const result: Record<number, Entrega[]> = {};
   Object.entries(clusters).forEach(([cId, idxs]) => {
     if (idxs.length === 0) return;
@@ -391,14 +428,109 @@ export function clusterAndOptimize(
   return result;
 }
 
-function unrepeatedCentroids(entregas: Entrega[], k: number): { lat: number; lng: number }[] {
-  const result: { lat: number; lng: number }[] = [];
-  const step = Math.floor(entregas.length / k) || 1;
-  for (let i = 0; i < k; i++) {
-    const node = entregas[Math.min(i * step, entregas.length - 1)];
-    result.push({ lat: node.latitude, lng: node.longitude });
+/**
+ * Spatially dispersed K-Means++ initialization
+ */
+function initializeKMeansPlusPlus(entregas: Entrega[], k: number): { lat: number; lng: number }[] {
+  if (entregas.length === 0) return [];
+  const centroids: { lat: number; lng: number }[] = [];
+  
+  // Pick first centroid arbitrarily
+  centroids.push({ lat: entregas[0].latitude, lng: entregas[0].longitude });
+
+  while (centroids.length < k) {
+    let farthestIdx = 0;
+    let maxMinDist = -1;
+
+    for (let i = 0; i < entregas.length; i++) {
+      const p = entregas[i];
+      let minDist = Infinity;
+
+      for (const c of centroids) {
+        const d = Math.pow(p.latitude - c.lat, 2) + Math.pow(p.longitude - c.lng, 2);
+        if (d < minDist) minDist = d;
+      }
+
+      if (minDist > maxMinDist) {
+        maxMinDist = minDist;
+        farthestIdx = i;
+      }
+    }
+
+    centroids.push({ lat: entregas[farthestIdx].latitude, lng: entregas[farthestIdx].longitude });
   }
-  return result;
+
+  return centroids;
+}
+
+/**
+ * Post-processing step to rebalance any remaining cluster size discrepancies
+ */
+function equalizeClusterSizes(
+  clusters: Record<number, number[]>,
+  entregas: Entrega[],
+  k: number,
+  targetSize: number
+) {
+  let changed = true;
+  let passes = 0;
+
+  while (changed && passes < 10) {
+    changed = false;
+    passes++;
+
+    let maxClusterId = -1;
+    let maxLen = -1;
+    let minClusterId = -1;
+    let minLen = Infinity;
+
+    for (let i = 0; i < k; i++) {
+      const len = clusters[i].length;
+      if (len > maxLen) {
+        maxLen = len;
+        maxClusterId = i;
+      }
+      if (len < minLen) {
+        minLen = len;
+        minClusterId = i;
+      }
+    }
+
+    // Transfer item if imbalance is > 2
+    if (maxLen - minLen > 2 && maxClusterId !== -1 && minClusterId !== -1) {
+      const maxCluster = clusters[maxClusterId];
+      // Compute center of minCluster
+      let minCenterLat = 0;
+      let minCenterLng = 0;
+      clusters[minClusterId].forEach(idx => {
+        minCenterLat += entregas[idx].latitude;
+        minCenterLng += entregas[idx].longitude;
+      });
+      if (clusters[minClusterId].length > 0) {
+        minCenterLat /= clusters[minClusterId].length;
+        minCenterLng /= clusters[minClusterId].length;
+      }
+
+      // Find the point in maxCluster that is closest to minCluster's center
+      let bestPointInMaxIdx = -1;
+      let minDistanceToTarget = Infinity;
+
+      maxCluster.forEach((pointIdx, arrIdx) => {
+        const p = entregas[pointIdx];
+        const dist = Math.pow(p.latitude - minCenterLat, 2) + Math.pow(p.longitude - minCenterLng, 2);
+        if (dist < minDistanceToTarget) {
+          minDistanceToTarget = dist;
+          bestPointInMaxIdx = arrIdx;
+        }
+      });
+
+      if (bestPointInMaxIdx !== -1) {
+        const [transferredPoint] = maxCluster.splice(bestPointInMaxIdx, 1);
+        clusters[minClusterId].push(transferredPoint);
+        changed = true;
+      }
+    }
+  }
 }
 
 /**

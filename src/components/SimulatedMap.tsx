@@ -52,6 +52,7 @@ export default function SimulatedMap({
   const [selectedVehicleFilter, setSelectedVehicleFilter] = useState<string>('all');
   const [mapStyle, setMapStyle] = useState<'dark' | 'osm' | 'voyager'>('dark');
   const [showRoutesPanel, setShowRoutesPanel] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
 
   // Distinct bright colors for routes to maximize contrast on both dark and light tiles
   const routeColors = [
@@ -251,6 +252,11 @@ export default function SimulatedMap({
     const isFilterActive = selectedDriverFilter !== 'all' || selectedVehicleFilter !== 'all';
 
     entregas.forEach((ent) => {
+      // Hide completed delivery points when route is finished or showCompleted is off
+      if (!showCompleted && ent.status === 'Entregue') {
+        return;
+      }
+
       // Find color and route label for this delivery point
       let pointColor = '#64748b'; // slate-500 default
       let routeLabel = 'Não Roteada';
@@ -656,6 +662,20 @@ export default function SimulatedMap({
                 Claro
               </button>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setShowCompleted(!showCompleted)}
+              className={`px-2.5 py-1 rounded text-[10px] font-mono font-bold transition-all cursor-pointer flex items-center gap-1 border ${
+                showCompleted 
+                  ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500/50' 
+                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+              }`}
+              title="Exibir ou ocultar do mapa os pontos cujas rotas já foram concluídas"
+            >
+              {showCompleted ? <Eye className="w-3 h-3 text-emerald-400" /> : <EyeOff className="w-3 h-3 text-slate-500" />}
+              {showCompleted ? 'Pontos Concluídos: Exibindo' : 'Pontos Concluídos: Ocultos'}
+            </button>
           </div>
         </div>
       </div>
