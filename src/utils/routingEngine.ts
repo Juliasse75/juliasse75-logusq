@@ -11,7 +11,18 @@ export const DEFAULT_BASE = {
 
 // Simple Geocoder Database for high-fidelity offline lookup
 const GEOCODE_DB: Record<string, { lat: number; lng: number }> = {
-  // Espírito Santo (ES)
+  // Espírito Santo (ES) - Sede / Hub Serra (Civit II / BR-101)
+  '29168-000': { lat: -20.1385, lng: -40.2920 },
+  '29168': { lat: -20.1385, lng: -40.2920 },
+  'civit ii': { lat: -20.1385, lng: -40.2920 },
+  'civit 2': { lat: -20.1385, lng: -40.2920 },
+  'civit': { lat: -20.1385, lng: -40.2920 },
+  'rodovia br-101 norte, 1250': { lat: -20.1385, lng: -40.2920 },
+  'br-101 norte, 1250': { lat: -20.1385, lng: -40.2920 },
+  'rodovia br-101 norte': { lat: -20.1385, lng: -40.2920 },
+  'br-101 norte': { lat: -20.1385, lng: -40.2920 },
+  'galpão logístico 3': { lat: -20.1385, lng: -40.2920 },
+  'parque industrial, civit': { lat: -20.1385, lng: -40.2920 },
   'vitoria': { lat: -20.3155, lng: -40.3128 },
   'vitória': { lat: -20.3155, lng: -40.3128 },
   'enseada do suá': { lat: -20.3142, lng: -40.2922 },
@@ -21,7 +32,7 @@ const GEOCODE_DB: Record<string, { lat: number; lng: number }> = {
   'vila velha': { lat: -20.3297, lng: -40.2925 },
   'praia da costa': { lat: -20.3340, lng: -40.2850 },
   'itaparica': { lat: -20.3550, lng: -40.3020 },
-  'serra': { lat: -20.1288, lng: -40.3078 },
+  'serra': { lat: -20.1385, lng: -40.2920 },
   'laranjeiras': { lat: -20.1980, lng: -40.2520 },
   'carapina': { lat: -20.2220, lng: -40.2750 },
   'cariacica': { lat: -20.2639, lng: -40.4165 },
@@ -32,8 +43,8 @@ const GEOCODE_DB: Record<string, { lat: number; lng: number }> = {
   'guarapari': { lat: -20.6667, lng: -40.4975 },
   'são mateus': { lat: -18.7161, lng: -39.8589 },
   'aracruz': { lat: -19.8203, lng: -40.2733 },
-  'espírito santo': { lat: -20.3155, lng: -40.3128 },
-  'espirito santo': { lat: -20.3155, lng: -40.3128 },
+  'espírito santo': { lat: -20.1385, lng: -40.2920 },
+  'espirito santo': { lat: -20.1385, lng: -40.2920 },
 
   // Rio de Janeiro - High specificity Bonsucesso / Av. Brasil Hub
   '21040-360': { lat: -22.8610, lng: -43.2535 },

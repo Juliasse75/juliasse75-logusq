@@ -5,7 +5,7 @@ import LogusQLogo from './LogusQLogo';
 import { 
   Truck, Users, MapPin, Calculator, Plus, Upload, Download, Play, 
   Map, CheckCircle, Trash2, Calendar, FileText, Clipboard, Settings, ShieldAlert, Sparkles,
-  Info, RotateCcw, Clock, Bell, Printer, UserCheck
+  Info, RotateCcw, Clock, Bell, Printer, UserCheck, Building2, Save, Phone, Mail, User, Search, Edit3
 } from 'lucide-react';
 import SimulatedMap from './SimulatedMap';
 import { clusterAndOptimize, DEFAULT_BASE, geocodeAddress, haversineDistance, optimizeTSP } from '../utils/routingEngine';
@@ -18,13 +18,122 @@ interface DashboardClienteProps {
 }
 
 export default function DashboardCliente({ userEmail, onLogout }: DashboardClienteProps) {
-  const [activeTab, setActiveTab] = useState<'roteiro' | 'frota' | 'condutores' | 'custos' | 'comprovantes' | 'jornadas'>('roteiro');
+  const [activeTab, setActiveTab] = useState<'roteiro' | 'frota' | 'condutores' | 'custos' | 'comprovantes' | 'jornadas' | 'meus_dados'>('roteiro');
   const [refreshKey, setRefreshKey] = useState(0);
   const triggerRefresh = () => setRefreshKey(prev => prev + 1);
 
   // Client info
   const clientData = dbRepo.getCliente(userEmail);
   const [asyncBaseCoords, setAsyncBaseCoords] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Meus Dados Form State
+  const [dadosEmpresa, setDadosEmpresa] = useState({
+    empresa: clientData?.empresa || '',
+    cnpj: clientData?.cnpj || '',
+    inscricaoEstadual: clientData?.inscricaoEstadual || '',
+    tipoUnidade: clientData?.tipoUnidade || 'Matriz',
+    cep: clientData?.cep || '',
+    endereco: clientData?.endereco || '',
+    numero: clientData?.numero || '',
+    complemento: clientData?.complemento || '',
+    bairro: clientData?.bairro || '',
+    cidade: clientData?.cidade || '',
+    estado: clientData?.estado || '',
+    telefoneFixo: clientData?.telefoneFixo || '',
+    whatsapp: clientData?.whatsapp || '',
+    respNome: clientData?.respNome || '',
+    respCargo: clientData?.respCargo || '',
+    respEmail: clientData?.respEmail || '',
+    respWhatsapp: clientData?.respWhatsapp || '',
+  });
+
+  const [savingDados, setSavingDados] = useState(false);
+  const [dadosSuccessMsg, setDadosSuccessMsg] = useState('');
+  const [loadingCepDados, setLoadingCepDados] = useState(false);
+
+  // Sync form state if clientData updates
+  React.useEffect(() => {
+    if (clientData) {
+      setDadosEmpresa(prev => ({
+        ...prev,
+        empresa: clientData.empresa || prev.empresa,
+        cnpj: clientData.cnpj || prev.cnpj,
+        inscricaoEstadual: clientData.inscricaoEstadual || prev.inscricaoEstadual,
+        tipoUnidade: clientData.tipoUnidade || prev.tipoUnidade,
+        cep: clientData.cep || prev.cep,
+        endereco: clientData.endereco || prev.endereco,
+        numero: clientData.numero || prev.numero,
+        complemento: clientData.complemento || prev.complemento,
+        bairro: clientData.bairro || prev.bairro,
+        cidade: clientData.cidade || prev.cidade,
+        estado: clientData.estado || prev.estado,
+        telefoneFixo: clientData.telefoneFixo || prev.telefoneFixo,
+        whatsapp: clientData.whatsapp || prev.whatsapp,
+        respNome: clientData.respNome || prev.respNome,
+        respCargo: clientData.respCargo || prev.respCargo,
+        respEmail: clientData.respEmail || prev.respEmail,
+        respWhatsapp: clientData.respWhatsapp || prev.respWhatsapp,
+      }));
+    }
+  }, [clientData?.email, refreshKey]);
+
+  const handleCepDadosLookup = async (cepVal: string) => {
+    const cleanCep = cepVal.replace(/\D/g, '');
+    if (cleanCep.length !== 8) return;
+    setLoadingCepDados(true);
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+      const data = await response.json();
+      if (!data.erro) {
+        setDadosEmpresa(prev => ({
+          ...prev,
+          endereco: data.logradouro || prev.endereco,
+          bairro: data.bairro || prev.bairro,
+          cidade: data.localidade || prev.cidade,
+          estado: data.uf || prev.estado,
+        }));
+      }
+    } catch (err) {
+      console.warn('Erro ao buscar CEP:', err);
+    } finally {
+      setLoadingCepDados(false);
+    }
+  };
+
+  const handleSaveDadosEmpresa = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingDados(true);
+    try {
+      dbRepo.editarCliente(userEmail, {
+        empresa: dadosEmpresa.empresa,
+        cnpj: dadosEmpresa.cnpj,
+        inscricaoEstadual: dadosEmpresa.inscricaoEstadual,
+        tipoUnidade: dadosEmpresa.tipoUnidade as any,
+        cep: dadosEmpresa.cep,
+        endereco: dadosEmpresa.endereco,
+        numero: dadosEmpresa.numero,
+        complemento: dadosEmpresa.complemento,
+        bairro: dadosEmpresa.bairro,
+        cidade: dadosEmpresa.cidade,
+        estado: dadosEmpresa.estado,
+        telefoneFixo: dadosEmpresa.telefoneFixo,
+        whatsapp: dadosEmpresa.whatsapp,
+        respNome: dadosEmpresa.respNome,
+        respCargo: dadosEmpresa.respCargo,
+        respEmail: dadosEmpresa.respEmail,
+        respWhatsapp: dadosEmpresa.respWhatsapp,
+      });
+
+      setAsyncBaseCoords(null);
+      triggerRefresh();
+      setDadosSuccessMsg('✓ Endereço e Dados da Empresa salvos com sucesso! O CD Hub no mapa foi atualizado.');
+      setTimeout(() => setDadosSuccessMsg(''), 6000);
+    } catch (err) {
+      alert('Erro ao salvar os dados da empresa. Tente novamente.');
+    } finally {
+      setSavingDados(false);
+    }
+  };
   
   // Resolve client's base/CD coordinates dynamically based on their address
   const clientBaseCoords = React.useMemo(() => {
@@ -49,8 +158,29 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (isMounted && data && data.lat && data.lng) {
-          setAsyncBaseCoords({ lat: data.lat, lng: data.lng });
-          console.log(`🗺️ CD Hub geocodificado com precisão para: ${data.displayName} (${data.lat}, ${data.lng})`);
+          const stateUpper = (clientData.estado || '').toUpperCase().trim();
+          let isValidForState = true;
+
+          // State bounding box safety checks to prevent erroneous matches in other states
+          if (stateUpper === 'ES' || stateUpper === 'ESPÍRITO SANTO' || stateUpper === 'ESPIRITO SANTO') {
+            if (data.lat > -17.5 || data.lat < -21.5 || data.lng < -42.5 || data.lng > -39.0) {
+              console.warn(`⚠️ Nominatim retornou coordenadas fora do Espírito Santo (${data.lat}, ${data.lng}). Usando geocodificador local confiável de Serra/ES.`);
+              isValidForState = false;
+            }
+          } else if (stateUpper === 'RJ' || stateUpper === 'RIO DE JANEIRO') {
+            if (data.lat > -20.5 || data.lat < -23.5 || data.lng < -45.0 || data.lng > -40.8) {
+              isValidForState = false;
+            }
+          } else if (stateUpper === 'SP' || stateUpper === 'SÃO PAULO' || stateUpper === 'SAO PAULO') {
+            if (data.lat > -19.5 || data.lat < -25.5 || data.lng < -53.5 || data.lng > -44.0) {
+              isValidForState = false;
+            }
+          }
+
+          if (isValidForState) {
+            setAsyncBaseCoords({ lat: data.lat, lng: data.lng });
+            console.log(`🗺️ CD Hub geocodificado com precisão para: ${data.displayName} (${data.lat}, ${data.lng})`);
+          }
         }
       })
       .catch(err => console.warn('Nominatim fallback para geocodificador local:', err));
@@ -63,12 +193,13 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   const todasEntregas = dbRepo.getEntregas(userEmail);
   const entregasPendentes = todasEntregas.filter(e => e.status === 'Pendente');
 
-  // Active Routes State (persist in memory or local storage, or generated after optimize)
+  // Active Routes State
   const [activeRoutes, setActiveRoutes] = useState<Record<string, { driver: string; driverEmail?: string; vehicle: string; path: Entrega[]; km: number; duration: number }>>(() => {
     return dbRepo.getRotasAtivas(userEmail);
   });
   const [mapRoutes, setMapRoutes] = useState<Record<number, Entrega[]>>({});
 
+  // Auto-refresh when sync finishes or when data changes
   React.useEffect(() => {
     setActiveRoutes(dbRepo.getRotasAtivas(userEmail));
     
@@ -80,31 +211,6 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       window.removeEventListener('logusq_sync_complete', handleSyncComplete);
     };
   }, [refreshKey, userEmail]);
-
-  // Auto-repair delivery coordinates if legacy geocoder incorrectly placed them in another state (e.g. Vitória/ES due to substring 'es')
-  React.useEffect(() => {
-    if (!todasEntregas || todasEntregas.length === 0) return;
-    let needsUpdate = false;
-    const repaired = todasEntregas.map(ent => {
-      if (!ent.endereco) return ent;
-      const dist = haversineDistance(ent.latitude, ent.longitude, clientBaseCoords.lat, clientBaseCoords.lng);
-      if (dist > 150) {
-        const newCoords = geocodeAddress(ent.endereco, clientBaseCoords);
-        const newDist = haversineDistance(newCoords.lat, newCoords.lng, clientBaseCoords.lat, clientBaseCoords.lng);
-        if (newDist < dist) {
-          needsUpdate = true;
-          return { ...ent, latitude: newCoords.lat, longitude: newCoords.lng };
-        }
-      }
-      return ent;
-    });
-
-    if (needsUpdate) {
-      console.log('🔧 Auto-correção cartográfica: Coordenadas de entregas ajustadas para a região do CD Hub.');
-      localStorage.setItem(`logusq_entregas_${userEmail}`, JSON.stringify(repaired));
-      triggerRefresh();
-    }
-  }, [userEmail, clientBaseCoords.lat, clientBaseCoords.lng]);
 
   // Form selections
   const [selectedVeiculoEdit, setSelectedVeiculoEdit] = useState<string>(frota[0]?.idVeiculo || '');
@@ -1716,6 +1822,14 @@ Assinatura do Expedidor: _______________________________`;
             >
               <Clock className="w-4 h-4 text-emerald-400" /> Relatório de Jornadas
             </button>
+            <button
+              onClick={() => setActiveTab('meus_dados')}
+              className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-3 transition-colors border-t border-slate-800/60 pt-3 mt-2 ${
+                activeTab === 'meus_dados' ? 'bg-violet-600 text-white shadow-lg shadow-violet-900/20' : 'text-violet-300 hover:bg-slate-800/50 hover:text-white'
+              }`}
+            >
+              <Building2 className="w-4 h-4 text-violet-400" /> Meus Dados & CD Hub
+            </button>
           </nav>
         </div>
 
@@ -2037,6 +2151,12 @@ Assinatura do Expedidor: _______________________________`;
                 <p className="text-xs text-slate-400">Adicione pontos de entrega, agrupe em veículos via K-Means e otimize caminhos com TSP.</p>
               </div>
               <div className="flex flex-wrap gap-2.5">
+                <button
+                  onClick={() => setActiveTab('meus_dados')}
+                  className="bg-slate-900 hover:bg-slate-800 text-slate-200 px-3.5 py-2 rounded-xl text-xs font-bold border border-slate-800 flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Building2 className="w-3.5 h-3.5 text-emerald-400" /> Meus Dados & CD Hub
+                </button>
                 <button
                   onClick={downloadModeloEntregasCsv}
                   className="bg-slate-900 hover:bg-slate-800 text-slate-300 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-800 flex items-center gap-2 transition-colors"
@@ -3997,6 +4117,296 @@ Assinatura do Expedidor: _______________________________`;
               );
             })()}
 
+          </div>
+        )}
+
+        {/* TAB 7: MEUS DADOS (EMPRESA & CD HUB) */}
+        {activeTab === 'meus_dados' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900 border border-slate-800 p-5 rounded-2xl">
+              <div>
+                <span className="text-[10px] font-mono font-bold text-violet-400 bg-violet-500/10 px-2.5 py-1 rounded-full uppercase tracking-wider">
+                  Sede & CD Hub de Origem
+                </span>
+                <h1 className="text-xl font-extrabold text-white mt-1.5 flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-violet-400" /> Meus Dados & Localização do CD Hub
+                </h1>
+                <p className="text-xs text-slate-400 mt-1">
+                  Mantenha atualizadas as informações da empresa e o endereço do seu Centro de Distribuição (CD Hub). O mapa de roteirização utilizará este endereço automaticamente como ponto central de expedição.
+                </p>
+              </div>
+
+              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80 text-xs font-mono text-slate-300 flex items-center gap-3">
+                <MapPin className="w-5 h-5 text-emerald-400 shrink-0" />
+                <div>
+                  <span className="text-[10px] text-slate-500 uppercase block font-bold">CD Hub Cadastrado</span>
+                  <span className="font-bold text-white text-xs">{clientData?.cidade || 'Não informado'} - {clientData?.estado || ''}</span>
+                  <p className="text-[10px] text-slate-400 truncate max-w-[200px]">{clientData?.endereco}, {clientData?.numero} - {clientData?.bairro}</p>
+                </div>
+              </div>
+            </div>
+
+            {dadosSuccessMsg && (
+              <div className="bg-emerald-950/80 border border-emerald-500/50 text-emerald-200 p-4 rounded-xl text-xs font-bold flex items-center justify-between shadow-lg animate-fade-in">
+                <span>{dadosSuccessMsg}</span>
+                <button onClick={() => setDadosSuccessMsg('')} className="text-emerald-400 hover:text-white font-bold">✕</button>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveDadosEmpresa} className="space-y-6">
+              {/* Card 1: Informações Gerais da Empresa */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+                <h2 className="text-sm font-black text-white uppercase tracking-wider border-b border-slate-800 pb-3 flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-violet-400" /> 1. Dados Jurídicos e Corporativos
+                </h2>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-medium">Razão Social / Nome da Empresa *</label>
+                    <input
+                      type="text"
+                      required
+                      value={dadosEmpresa.empresa}
+                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, empresa: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
+                      placeholder="Ex: Logística Brasil S.A."
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-medium">CNPJ *</label>
+                    <input
+                      type="text"
+                      required
+                      value={dadosEmpresa.cnpj}
+                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, cnpj: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500 font-mono"
+                      placeholder="00.000.000/0001-00"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-medium">Inscrição Estadual</label>
+                    <input
+                      type="text"
+                      value={dadosEmpresa.inscricaoEstadual}
+                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, inscricaoEstadual: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500 font-mono"
+                      placeholder="Ex: 123.456.789.110 ou Isento"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-medium">Tipo de Unidade</label>
+                    <select
+                      value={dadosEmpresa.tipoUnidade}
+                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, tipoUnidade: e.target.value as any })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
+                    >
+                      <option value="Matriz">Matriz</option>
+                      <option value="Filial">Filial / CD Regional</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-medium">Telefone Fixo Corporativo</label>
+                    <input
+                      type="text"
+                      value={dadosEmpresa.telefoneFixo}
+                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, telefoneFixo: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
+                      placeholder="(00) 0000-0000"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-medium">WhatsApp da Operação / SAC</label>
+                    <input
+                      type="text"
+                      value={dadosEmpresa.whatsapp}
+                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, whatsapp: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
+                      placeholder="(00) 90000-0000"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 2: Endereço do CD Hub (Ponto de Origem para Roteirização) */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+                <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                  <h2 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-emerald-400" /> 2. Endereço Completo do CD HUB (Origem da Frota)
+                  </h2>
+                  <span className="text-[10px] text-emerald-400 font-mono font-bold bg-emerald-500/10 px-2.5 py-0.5 rounded-full">
+                    Origem de Roteirização Ativa
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-medium">CEP *</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        required
+                        value={dadosEmpresa.cep}
+                        onChange={e => setDadosEmpresa({ ...dadosEmpresa, cep: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500 font-mono"
+                        placeholder="00000-000"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleCepDadosLookup(dadosEmpresa.cep)}
+                        disabled={loadingCepDados}
+                        className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-2 rounded-xl text-xs font-bold transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
+                      >
+                        {loadingCepDados ? 'Buscando...' : 'Buscar CEP'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-slate-400 mb-1 font-medium">Logradouro / Avenida / Rua *</label>
+                    <input
+                      type="text"
+                      required
+                      value={dadosEmpresa.endereco}
+                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, endereco: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
+                      placeholder="Ex: Av. Brasil, Rodovia BR-101 Norte"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-medium">Número *</label>
+                    <input
+                      type="text"
+                      required
+                      value={dadosEmpresa.numero}
+                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, numero: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
+                      placeholder="Ex: 1250"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-medium">Complemento / Galpão / Bloco</label>
+                    <input
+                      type="text"
+                      value={dadosEmpresa.complemento}
+                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, complemento: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
+                      placeholder="Ex: Galpão 3 - Parque Industrial"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-medium">Bairro *</label>
+                    <input
+                      type="text"
+                      required
+                      value={dadosEmpresa.bairro}
+                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, bairro: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
+                      placeholder="Ex: Civit II, Bonsucesso"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-medium">Cidade *</label>
+                    <input
+                      type="text"
+                      required
+                      value={dadosEmpresa.cidade}
+                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, cidade: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
+                      placeholder="Ex: Serra, Rio de Janeiro, São Paulo"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-medium">Estado (UF) *</label>
+                    <input
+                      type="text"
+                      required
+                      maxLength={2}
+                      value={dadosEmpresa.estado}
+                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, estado: e.target.value.toUpperCase() })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500 uppercase font-mono"
+                      placeholder="ES, RJ, SP, MG..."
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 3: Responsável Principal */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+                <h2 className="text-sm font-black text-white uppercase tracking-wider border-b border-slate-800 pb-3 flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-blue-400" /> 3. Responsável da Gestão e Contatos
+                </h2>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-medium">Nome do Responsável *</label>
+                    <input
+                      type="text"
+                      required
+                      value={dadosEmpresa.respNome}
+                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, respNome: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
+                      placeholder="Nome Completo"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-medium">Cargo / Função</label>
+                    <input
+                      type="text"
+                      value={dadosEmpresa.respCargo}
+                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, respCargo: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
+                      placeholder="Ex: Gerente Operacional"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-medium">Email do Responsável *</label>
+                    <input
+                      type="email"
+                      required
+                      value={dadosEmpresa.respEmail}
+                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, respEmail: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
+                      placeholder="responsavel@empresa.com.br"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1 font-medium">WhatsApp / Celular Direto</label>
+                    <input
+                      type="text"
+                      value={dadosEmpresa.respWhatsapp}
+                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, respWhatsapp: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
+                      placeholder="(00) 90000-0000"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Botão de Ação Salvar */}
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  disabled={savingDados}
+                  className="bg-violet-600 hover:bg-violet-500 text-white font-bold px-8 py-3 rounded-xl shadow-lg shadow-violet-600/30 transition-all flex items-center gap-2 cursor-pointer text-xs"
+                >
+                  <Save className="w-4 h-4" />
+                  {savingDados ? 'Salvando...' : 'Salvar Alterações e Atualizar CD Hub'}
+                </button>
+              </div>
+            </form>
           </div>
         )}
 

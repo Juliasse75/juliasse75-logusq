@@ -55,11 +55,45 @@ const SEED_USUARIOS = [
     nivelAcesso: 'PARCIAL',
     criadoEm: '15/07/2026',
     senha_hash: '123456',
+  },
+  {
+    email: 'espirito.santo@logusq.com.br',
+    nome: 'Logística Capixaba (ES)',
+    perfil: 'CLIENTE' as const,
+    empresa: 'Logística Capixaba ES LTDA',
+    nivelAcesso: 'TOTAL',
+    criadoEm: '23/07/2026',
+    senha_hash: '123456',
   }
 ];
 
 // Seed Clients (SaaS)
 const SEED_CLIENTES: Cliente[] = [
+  {
+    idCliente: 'LOGUS-CLI-250723',
+    email: 'espirito.santo@logusq.com.br',
+    empresa: 'Logística Capixaba ES LTDA',
+    cnpj: '55.444.333/0001-22',
+    telefoneFixo: '(27) 3333-4444',
+    whatsapp: '(27) 99999-8888',
+    cep: '29168-000',
+    endereco: 'Rodovia BR-101 Norte',
+    numero: '1250',
+    complemento: 'Galpão Logístico 3 - Parque Industrial',
+    bairro: 'Civit II',
+    cidade: 'Serra',
+    estado: 'ES',
+    tipoUnidade: 'Matriz',
+    plano: 'Pro',
+    valorPlano: 999,
+    status: 'Ativo',
+    clienteDesde: '23/07/2026',
+    vencimento: '23/08/2026',
+    respNome: 'Julio Cesar Capixaba',
+    respCargo: 'Gerente Operacional',
+    respEmail: 'julio@logisticacapixaba.com.br',
+    pagamentoConfirmado: true,
+  },
   {
     idCliente: 'LOGUS-CLI-250101',
     email: 'demo@logusq.com.br',
@@ -791,20 +825,95 @@ export const dbRepo = {
     return list.filter(u => u.perfil === 'MASTER');
   },
 
-  getCliente: (email: string): Cliente | undefined => {
+  getCliente: (email: string): Cliente => {
     const list = dbRepo.getClientes();
-    return list.find(c => c.email === email);
+    const cleanEmail = (email || '').toLowerCase().trim();
+    const found = list.find(c => (c.email || '').toLowerCase().trim() === cleanEmail);
+    if (found) return found;
+
+    // Auto-generate client profile from user record if missing
+    const user = dbRepo.getUsuarios().find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
+    const fallbackCli: Cliente = {
+      idCliente: `LOGUS-CLI-${Date.now().toString().slice(-6)}`,
+      email: email,
+      empresa: user?.empresa || 'Minha Empresa Logística',
+      cnpj: '00.000.000/0001-00',
+      inscricaoEstadual: 'Isento',
+      telefoneFixo: '(11) 3000-0000',
+      whatsapp: '(11) 99999-0000',
+      cep: '01310-100',
+      endereco: 'Avenida Paulista',
+      numero: '1000',
+      complemento: 'Andar 10',
+      bairro: 'Bela Vista',
+      cidade: 'São Paulo',
+      estado: 'SP',
+      tipoUnidade: 'Matriz',
+      plano: 'Pro',
+      valorPlano: 999,
+      status: 'Ativo',
+      clienteDesde: new Date().toLocaleDateString('pt-BR'),
+      vencimento: '23/08/2026',
+      respNome: user?.nome || 'Gestor Responsável',
+      respCargo: 'Gerente de Operações',
+      respEmail: email,
+      pagamentoConfirmado: true,
+    };
+
+    const updated = [...list, fallbackCli];
+    dbRepo.saveClientes(updated);
+    return fallbackCli;
   },
 
   getFrota: (email: string): Veiculo[] => {
     const list = dbRepo.getVeiculos();
-    // Support filtering by owner/email, default to demo company for seed vehicles
-    return list.filter(v => (v as any).clienteEmail === email || (!(v as any).clienteEmail && email === 'demo@logusq.com.br'));
+    const cleanEmail = (email || '').toLowerCase().trim();
+    if (!cleanEmail) return [];
+
+    let userVehicles = list.filter(v => {
+      const vEmail = ((v as any).clienteEmail || '').toLowerCase().trim();
+      return vEmail === cleanEmail || (!vEmail && cleanEmail === 'demo@logusq.com.br');
+    });
+
+    // Auto-seed default fleet if client currently has 0 vehicles
+    if (userVehicles.length === 0) {
+      const seeded: Veiculo[] = SEED_VEICULOS.map((v, idx) => ({
+        ...v,
+        id: `V-${cleanEmail.replace(/[^a-z0-9]/g, '')}-${idx + 1}`,
+        idVeiculo: v.idVeiculo,
+        clienteEmail: cleanEmail,
+      }));
+      const updatedList = [...list, ...seeded];
+      dbRepo.saveVeiculos(updatedList);
+      userVehicles = seeded;
+    }
+
+    return userVehicles;
   },
 
   getCondutores: (email: string): Condutor[] => {
     const list = dbRepo.getCondutoresRaw();
-    return list.filter(c => (c as any).clienteEmail === email || (!(c as any).clienteEmail && email === 'demo@logusq.com.br'));
+    const cleanEmail = (email || '').toLowerCase().trim();
+    if (!cleanEmail) return [];
+
+    let userDrivers = list.filter(c => {
+      const cEmail = ((c as any).clienteEmail || '').toLowerCase().trim();
+      return cEmail === cleanEmail || (!cEmail && cleanEmail === 'demo@logusq.com.br');
+    });
+
+    // Auto-seed default drivers if client currently has 0 drivers
+    if (userDrivers.length === 0) {
+      const seeded: Condutor[] = SEED_CONDUTORES.map((c, idx) => ({
+        ...c,
+        id: `D-${cleanEmail.replace(/[^a-z0-9]/g, '')}-${idx + 1}`,
+        clienteEmail: cleanEmail,
+      }));
+      const updatedList = [...list, ...seeded];
+      dbRepo.saveCondutores(updatedList);
+      userDrivers = seeded;
+    }
+
+    return userDrivers;
   },
 
   getEntregas: (email: string): Entrega[] => {

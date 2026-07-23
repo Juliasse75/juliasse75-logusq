@@ -37,9 +37,59 @@ export default function App() {
               console.log('🔄 SYNC: Hydrating local cache with Supabase data...', d);
               if (d.usuarios && d.usuarios.length > 0) localStorage.setItem('logusq_usuarios', JSON.stringify(d.usuarios));
               if (d.clientes && d.clientes.length > 0) localStorage.setItem('logusq_clientes', JSON.stringify(d.clientes));
-              if (d.veiculos) localStorage.setItem('logusq_veiculos', JSON.stringify(d.veiculos));
-              if (d.condutores) localStorage.setItem('logusq_condutores', JSON.stringify(d.condutores));
-              if (d.entregas) localStorage.setItem(`logusq_entregas_${currentUserEmail}`, JSON.stringify(d.entregas));
+              
+              // Hydrate veiculos safely (merge instead of wiping out local data if pull is empty)
+              if (Array.isArray(d.veiculos)) {
+                const currentLocalVehicles = dbRepo.getVeiculos();
+                const cleanUserEmail = currentUserEmail.toLowerCase().trim();
+                const otherClientsVehicles = currentLocalVehicles.filter(v => {
+                  const vEmail = ((v as any).clienteEmail || '').toLowerCase().trim();
+                  return vEmail && vEmail !== cleanUserEmail;
+                });
+
+                let updatedVehicles = [...otherClientsVehicles];
+                if (d.veiculos.length > 0) {
+                  const pulled = d.veiculos.map((v: any) => ({ ...v, clienteEmail: cleanUserEmail }));
+                  updatedVehicles.push(...pulled);
+                } else {
+                  // Keep local vehicles for this client if present
+                  const localUserVehicles = currentLocalVehicles.filter(v => ((v as any).clienteEmail || '').toLowerCase().trim() === cleanUserEmail);
+                  if (localUserVehicles.length > 0) {
+                    updatedVehicles.push(...localUserVehicles);
+                  }
+                }
+                if (updatedVehicles.length > 0) {
+                  localStorage.setItem('logusq_veiculos', JSON.stringify(updatedVehicles));
+                }
+              }
+
+              // Hydrate condutores safely
+              if (Array.isArray(d.condutores)) {
+                const currentLocalDrivers = dbRepo.getCondutoresRaw();
+                const cleanUserEmail = currentUserEmail.toLowerCase().trim();
+                const otherClientsDrivers = currentLocalDrivers.filter(c => {
+                  const cEmail = ((c as any).clienteEmail || '').toLowerCase().trim();
+                  return cEmail && cEmail !== cleanUserEmail;
+                });
+
+                let updatedDrivers = [...otherClientsDrivers];
+                if (d.condutores.length > 0) {
+                  const pulled = d.condutores.map((c: any) => ({ ...c, clienteEmail: cleanUserEmail }));
+                  updatedDrivers.push(...pulled);
+                } else {
+                  const localUserDrivers = currentLocalDrivers.filter(c => ((c as any).clienteEmail || '').toLowerCase().trim() === cleanUserEmail);
+                  if (localUserDrivers.length > 0) {
+                    updatedDrivers.push(...localUserDrivers);
+                  }
+                }
+                if (updatedDrivers.length > 0) {
+                  localStorage.setItem('logusq_condutores', JSON.stringify(updatedDrivers));
+                }
+              }
+
+              if (d.entregas && Array.isArray(d.entregas) && d.entregas.length > 0) {
+                localStorage.setItem(`logusq_entregas_${currentUserEmail}`, JSON.stringify(d.entregas));
+              }
               if (d.rotasAtivas && Object.keys(d.rotasAtivas).length > 0) {
                 localStorage.setItem(`logusq_rotas_ativas_${currentUserEmail}`, JSON.stringify(d.rotasAtivas));
               }
