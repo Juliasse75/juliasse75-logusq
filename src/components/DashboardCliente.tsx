@@ -81,6 +81,31 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     };
   }, [refreshKey, userEmail]);
 
+  // Auto-repair delivery coordinates if legacy geocoder incorrectly placed them in another state (e.g. Vitória/ES due to substring 'es')
+  React.useEffect(() => {
+    if (!todasEntregas || todasEntregas.length === 0) return;
+    let needsUpdate = false;
+    const repaired = todasEntregas.map(ent => {
+      if (!ent.endereco) return ent;
+      const dist = haversineDistance(ent.latitude, ent.longitude, clientBaseCoords.lat, clientBaseCoords.lng);
+      if (dist > 150) {
+        const newCoords = geocodeAddress(ent.endereco, clientBaseCoords);
+        const newDist = haversineDistance(newCoords.lat, newCoords.lng, clientBaseCoords.lat, clientBaseCoords.lng);
+        if (newDist < dist) {
+          needsUpdate = true;
+          return { ...ent, latitude: newCoords.lat, longitude: newCoords.lng };
+        }
+      }
+      return ent;
+    });
+
+    if (needsUpdate) {
+      console.log('🔧 Auto-correção cartográfica: Coordenadas de entregas ajustadas para a região do CD Hub.');
+      localStorage.setItem(`logusq_entregas_${userEmail}`, JSON.stringify(repaired));
+      triggerRefresh();
+    }
+  }, [userEmail, clientBaseCoords.lat, clientBaseCoords.lng]);
+
   // Form selections
   const [selectedVeiculoEdit, setSelectedVeiculoEdit] = useState<string>(frota[0]?.idVeiculo || '');
   const veicSel = frota.find(v => v.idVeiculo === selectedVeiculoEdit);

@@ -93,10 +93,14 @@ const GEOCODE_DB: Record<string, { lat: number; lng: number }> = {
  * Uses a local database lookup first, with a smart coordinate generator for fallbacks
  * to guarantee that all points appear on the map beautifully without relying on external APIs.
  */
-export function geocodeAddress(endereco: string): { lat: number; lng: number } {
+export function geocodeAddress(
+  endereco: string,
+  fallbackBaseCoords?: { lat: number; lng: number }
+): { lat: number; lng: number } {
   const clean = endereco.toLowerCase().trim();
   if (!clean || clean === '-') {
-    return { lat: DEFAULT_BASE.latitude, lng: DEFAULT_BASE.longitude };
+    const base = fallbackBaseCoords || { lat: DEFAULT_BASE.latitude, lng: DEFAULT_BASE.longitude };
+    return { lat: base.lat, lng: base.lng };
   }
 
   // Sort entries by key length descending so longer/more specific keys match first!
@@ -113,48 +117,65 @@ export function geocodeAddress(endereco: string): { lat: number; lng: number } {
     }
   }
 
-  // Smarter Fallback: Detect correct general region based on state codes or city keywords
-  let baseLat = DEFAULT_BASE.latitude;
-  let baseLng = DEFAULT_BASE.longitude;
+  // Smarter Fallback: Detect correct general region based on state codes or city keywords using STRICT word boundaries
+  let baseLat = fallbackBaseCoords ? fallbackBaseCoords.lat : DEFAULT_BASE.latitude;
+  let baseLng = fallbackBaseCoords ? fallbackBaseCoords.lng : DEFAULT_BASE.longitude;
 
   if (
-    clean.includes('es') || clean.includes('espírito santo') || clean.includes('espirito santo') ||
-    clean.includes('vitória') || clean.includes('vitoria') || clean.includes('vila velha') ||
-    clean.includes('serra') || clean.includes('cariacica') || clean.includes('linhares') ||
-    clean.includes('colatina') || clean.includes('guarapari') || clean.includes('cachoeiro')
+    /\b(es|espírito santo|espirito santo|vitoria|vitória|vila velha|serra|cariacica|linhares|colatina|guarapari|cachoeiro|são mateus|sao mateus|aracruz)\b/i.test(clean)
   ) {
     baseLat = -20.3155;
     baseLng = -40.3128; // Vitória / ES
-  } else if (clean.includes('sp') || clean.includes('são paulo') || clean.includes('sao paulo') || clean.includes('paulista') || clean.includes('campinas')) {
-    baseLat = -23.5505;
-    baseLng = -46.6333; // São Paulo / SP
-  } else if (clean.includes('rj') || clean.includes('rio de janeiro') || clean.includes('copacabana') || clean.includes('niterói')) {
+  } else if (
+    /\b(rj|rio de janeiro|copacabana|niterói|niteroi|duque de caxias|caxias|nova iguaçu|nova iguacu|são gonçalo|sao goncalo|petrópolis|petropolis|campos dos goytacazes|macaé|macae|volta redonda|belford roxo|são joão de meriti|sao joao de meriti|itaboraí|itaborai|magé|mage|resende|friburgo|cabo frio|angra dos reis|maricá|marica|teresópolis|teresopolis|mesquita|nilópolis|nilopolis)\b/i.test(clean)
+  ) {
     baseLat = -22.9068;
     baseLng = -43.1729; // Rio de Janeiro / RJ
-  } else if (clean.includes('pr') || clean.includes('paraná') || clean.includes('curitiba')) {
-    baseLat = -25.4284;
-    baseLng = -49.2733; // Curitiba / PR
-  } else if (clean.includes('sc') || clean.includes('santa catarina') || clean.includes('florianópolis')) {
-    baseLat = -27.5954;
-    baseLng = -48.5480; // Florianópolis / SC
-  } else if (clean.includes('rs') || clean.includes('rio grande do sul') || clean.includes('porto alegre')) {
-    baseLat = -30.0346;
-    baseLng = -51.2177; // Porto Alegre / RS
-  } else if (clean.includes('go') || clean.includes('df') || clean.includes('brasília') || clean.includes('goiânia')) {
-    baseLat = -15.7975;
-    baseLng = -47.8919; // DF / GO
-  } else if (clean.includes('ba') || clean.includes('bahia') || clean.includes('salvador')) {
-    baseLat = -12.9777;
-    baseLng = -38.5016; // Salvador / BA
-  } else if (clean.includes('pe') || clean.includes('pernambuco') || clean.includes('recife')) {
-    baseLat = -8.0476;
-    baseLng = -34.8770; // Recife / PE
-  } else if (clean.includes('ce') || clean.includes('ceará') || clean.includes('fortaleza')) {
-    baseLat = -3.7319;
-    baseLng = -38.5267; // Fortaleza / CE
-  } else if (clean.includes('mg') || clean.includes('minas gerais') || clean.includes('belo horizonte')) {
+  } else if (
+    /\b(sp|são paulo|sao paulo|paulista|campinas|santos|guarulhos|são bernardo|sao bernardo|santo andré|santo andre|osasco|sorocaba|ribeirão preto|ribeirao preto|são josé dos campos|sao jose dos campos)\b/i.test(clean)
+  ) {
+    baseLat = -23.5505;
+    baseLng = -46.6333; // São Paulo / SP
+  } else if (
+    /\b(mg|minas gerais|belo horizonte|pampulha|savassi|lourdes|uberlândia|uberlandia|juiz de fora|contagem|betim|montes claros)\b/i.test(clean)
+  ) {
     baseLat = -19.9167;
     baseLng = -43.9345; // Belo Horizonte / MG
+  } else if (
+    /\b(pr|paraná|parana|curitiba|londrina|maringá|maringa|ponta grossa|foz do iguaçu|foz do iguacu)\b/i.test(clean)
+  ) {
+    baseLat = -25.4284;
+    baseLng = -49.2733; // Curitiba / PR
+  } else if (
+    /\b(sc|santa catarina|florianópolis|florianopolis|joinville|blumenau|chapecó|chapeco)\b/i.test(clean)
+  ) {
+    baseLat = -27.5954;
+    baseLng = -48.5480; // Florianópolis / SC
+  } else if (
+    /\b(rs|rio grande do sul|porto alegre|caxias do sul|pelotas|canoas)\b/i.test(clean)
+  ) {
+    baseLat = -30.0346;
+    baseLng = -51.2177; // Porto Alegre / RS
+  } else if (
+    /\b(df|go|goiás|goias|brasília|brasilia|goiânia|goiania|aparecida de goiânia)\b/i.test(clean)
+  ) {
+    baseLat = -15.7975;
+    baseLng = -47.8919; // DF / GO
+  } else if (
+    /\b(ba|bahia|salvador|feira de santana|vitória da conquista|vitoria da conquista)\b/i.test(clean)
+  ) {
+    baseLat = -12.9777;
+    baseLng = -38.5016; // Salvador / BA
+  } else if (
+    /\b(pe|pernambuco|recife|olinda|jaboatão|jaboatao|caruaru)\b/i.test(clean)
+  ) {
+    baseLat = -8.0476;
+    baseLng = -34.8770; // Recife / PE
+  } else if (
+    /\b(ce|ceará|ceara|fortaleza|caucaia|juazeiro do norte)\b/i.test(clean)
+  ) {
+    baseLat = -3.7319;
+    baseLng = -38.5267; // Fortaleza / CE
   }
 
   let hash = 0;

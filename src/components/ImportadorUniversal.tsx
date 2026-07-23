@@ -569,6 +569,20 @@ export default function ImportadorUniversal({
     try {
       const total = toImport.length;
       
+      // Pre-calculate client base hub coordinates for fallback geocoding
+      let clientBaseCoords: { lat: number; lng: number } | undefined;
+      try {
+        const clientData = dbRepo.getCliente ? dbRepo.getCliente(userEmail) : null;
+        if (clientData) {
+          const fullAddress = `${clientData.endereco || ''}, ${clientData.cidade || ''} - ${clientData.estado || ''}`.trim();
+          if (fullAddress && fullAddress.length > 3) {
+            clientBaseCoords = geocodeAddress(fullAddress);
+          }
+        }
+      } catch (e) {
+        // Fallback default
+      }
+
       for (let i = 0; i < total; i++) {
         const item = toImport[i];
         setSaveProgressMsg(`Processando e salvando registro ${i + 1} de ${total}...`);
@@ -611,7 +625,7 @@ export default function ImportadorUniversal({
           const addressToGeocode = item.endereco || '';
           
           // 1. Calculate offline coordinates immediately using enhanced routingEngine geocoder
-          const offlineCoords = geocodeAddress(addressToGeocode);
+          const offlineCoords = geocodeAddress(addressToGeocode, clientBaseCoords);
           let lat: number = offlineCoords.lat;
           let lng: number = offlineCoords.lng;
 
