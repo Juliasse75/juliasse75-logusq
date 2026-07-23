@@ -107,7 +107,24 @@ const CITY_COORDS: Record<string, { lat: number; lng: number; region: string }> 
   'sorocaba': { lat: -23.5015, lng: -47.4581, region: 'SP' },
   'ribeirão preto': { lat: -21.1775, lng: -47.8103, region: 'SP' },
 
-  // Rio de Janeiro (RJ)
+  // Rio de Janeiro (RJ) - Coastal Districts & Bairros FIRST
+  'barra de são joão': { lat: -22.5936, lng: -41.9961, region: 'RJ' },
+  'barra de sao joao': { lat: -22.5936, lng: -41.9961, region: 'RJ' },
+  'unamar': { lat: -22.6842, lng: -41.9836, region: 'RJ' },
+  'tamoios': { lat: -22.6842, lng: -41.9836, region: 'RJ' },
+  'costazul': { lat: -22.5283, lng: -41.9281, region: 'RJ' },
+  'ancora': { lat: -22.5188, lng: -41.9366, region: 'RJ' },
+  'cavaleiros': { lat: -22.4089, lng: -41.8028, region: 'RJ' },
+  'imbetiba': { lat: -22.3811, lng: -41.7772, region: 'RJ' },
+  'cancela preta': { lat: -22.3991, lng: -41.7911, region: 'RJ' },
+  'bacaxá': { lat: -22.8850, lng: -42.4719, region: 'RJ' },
+  'bacaxa': { lat: -22.8850, lng: -42.4719, region: 'RJ' },
+  'inoã': { lat: -22.9150, lng: -42.9222, region: 'RJ' },
+  'inoa': { lat: -22.9150, lng: -42.9222, region: 'RJ' },
+  'itaipuaçu': { lat: -22.9611, lng: -42.9819, region: 'RJ' },
+  'itaipuacu': { lat: -22.9611, lng: -42.9819, region: 'RJ' },
+
+  // Rio de Janeiro (RJ) - Municipality Centers
   'rio de janeiro': { lat: -22.9068, lng: -43.1729, region: 'RJ' },
   'niterói': { lat: -22.8833, lng: -43.1036, region: 'RJ' },
   'niteroi': { lat: -22.8833, lng: -43.1036, region: 'RJ' },
@@ -314,6 +331,68 @@ export function geocodeAddress(
     lat: baseLat + latOffset,
     lng: baseLng + lngOffset,
   };
+}
+
+/**
+ * Direct OpenStreetMap Nominatim Geocoding API helper.
+ * Queries Nominatim online with fallback query variations and distance validations.
+ */
+export async function fetchDirectNominatimGeocode(
+  address: string,
+  baseCoords?: { lat: number; lng: number }
+): Promise<{ lat: number; lng: number; precision: 'exact' | 'district' | 'fallback' } | null> {
+  if (!address || address.length < 3) return null;
+
+  const cleanedAddress = address
+    .replace(/ - /g, ', ')
+    .replace(/\//g, ', ')
+    .trim();
+
+  const queryVariants = [
+    cleanedAddress,
+    `${cleanedAddress}, Brasil`
+  ];
+
+  for (const q of queryVariants) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+      const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(q)}`;
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'Accept-Language': 'pt-BR,pt;q=0.9',
+        }
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const results = await res.json();
+        if (Array.isArray(results) && results.length > 0) {
+          const top = results[0];
+          const lat = parseFloat(top.lat);
+          const lng = parseFloat(top.lon);
+
+          if (!isNaN(lat) && !isNaN(lng)) {
+            if (baseCoords) {
+              const dist = haversineDistance(lat, lng, baseCoords.lat, baseCoords.lng);
+              if (dist <= 160) {
+                const precision = (top.type === 'house' || top.type === 'building' || top.class === 'building' || top.class === 'highway' || top.class === 'place') ? 'exact' : 'district';
+                return { lat, lng, precision };
+              }
+            } else {
+              return { lat, lng, precision: 'exact' };
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Proceed
+    }
+  }
+
+  return null;
 }
 
 /**

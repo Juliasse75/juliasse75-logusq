@@ -3,7 +3,7 @@ import {
   X, Upload, FileText, Clipboard, Sparkles, Check, 
   AlertTriangle, Play, HelpCircle, ArrowRight, Table, ListPlus, Loader2
 } from 'lucide-react';
-import { geocodeAddress, haversineDistance } from '../utils/routingEngine';
+import { geocodeAddress, fetchDirectNominatimGeocode, haversineDistance } from '../utils/routingEngine';
 
 interface ImportadorUniversalProps {
   isOpen: boolean;
@@ -641,35 +641,21 @@ export default function ImportadorUniversal({
           let lat: number = offlineCoords.lat;
           let lng: number = offlineCoords.lng;
 
-          // 2. Try fast Nominatim lookup with city/state context and strict distance validation
+          // 2. Try online direct OpenStreetMap Nominatim geocode
           if (addressToGeocode && addressToGeocode.length > 3) {
-            try {
-              const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), 900); // 900ms fast timeout
-              
-              // Include client's city and state in query string for accuracy
-              const cityStateContext = `${clientData?.cidade || ''} - ${clientData?.estado || ''}`.trim();
-              const fullSearchQuery = cityStateContext ? `${addressToGeocode}, ${cityStateContext}` : addressToGeocode;
-
-              const res = await fetch(`/api/geocode?q=${encodeURIComponent(fullSearchQuery)}`, {
-                signal: controller.signal
-              });
-              clearTimeout(timeoutId);
-
-              if (res.ok) {
-                const data = await res.json();
-                if (data.lat && data.lng) {
-                  // Validate that online result is within 120km of the client CD hub
-                  const distFromHub = haversineDistance(data.lat, data.lng, clientBaseCoords.lat, clientBaseCoords.lng);
-                  if (distFromHub <= 120) {
-                    lat = data.lat;
-                    lng = data.lng;
-                  }
-                }
-              }
-            } catch (e) {
-              // Gracefully fall back to offline coordinates
+            const cityStateContext = `${clientData?.cidade || ''} - ${clientData?.estado || ''}`.trim();
+            const fullSearchQuery = cityStateContext ? `${addressToGeocode}, ${cityStateContext}` : addressToGeocode;
+            const direct = await fetchDirectNominatimGeocode(fullSearchQuery, clientBaseCoords);
+            if (direct && direct.lat && direct.lng) {
+              lat = direct.lat;
+              lng = direct.lng;
             }
+          }
+
+          // 3. Override with explicit latitude/longitude if provided in file
+          if (item.latitude && item.longitude && !isNaN(parseFloat(item.latitude)) && !isNaN(parseFloat(item.longitude))) {
+            lat = parseFloat(item.latitude);
+            lng = parseFloat(item.longitude);
           }
 
           dbRepo.cadastrarEntrega(userEmail, {

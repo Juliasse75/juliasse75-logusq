@@ -23,91 +23,126 @@ export default function App() {
     setCurrentUserEmail(null);
   };
 
-  // Pull latest data from Supabase to client local cache on mount or login
+  // Pull latest data from Supabase to client local cache with automatic polling and real-time broadcast
   React.useEffect(() => {
-    if (currentUserEmail) {
-      const user = dbRepo.getUsuario(currentUserEmail);
-      if (user) {
-        fetch(`/api/sync/pull?email=${encodeURIComponent(currentUserEmail)}&perfil=${user.perfil}`)
-          .then(res => res.json())
-          .then(resData => {
-            if (resData.success && resData.mode === 'supabase' && resData.data) {
-              setDbMode('supabase');
-              const d = resData.data;
-              console.log('🔄 SYNC: Hydrating local cache with Supabase data...', d);
-              if (d.usuarios && d.usuarios.length > 0) localStorage.setItem('logusq_usuarios', JSON.stringify(d.usuarios));
-              if (d.clientes && d.clientes.length > 0) localStorage.setItem('logusq_clientes', JSON.stringify(d.clientes));
-              
-              // Hydrate veiculos safely (merge instead of wiping out local data if pull is empty)
-              if (Array.isArray(d.veiculos)) {
-                const currentLocalVehicles = dbRepo.getVeiculos();
-                const cleanUserEmail = currentUserEmail.toLowerCase().trim();
-                const otherClientsVehicles = currentLocalVehicles.filter(v => {
-                  const vEmail = ((v as any).clienteEmail || '').toLowerCase().trim();
-                  return vEmail && vEmail !== cleanUserEmail;
-                });
+    if (!currentUserEmail) return;
 
-                let updatedVehicles = [...otherClientsVehicles];
-                if (d.veiculos.length > 0) {
-                  const pulled = d.veiculos.map((v: any) => ({ ...v, clienteEmail: cleanUserEmail }));
-                  updatedVehicles.push(...pulled);
-                } else {
-                  // Keep local vehicles for this client if present
-                  const localUserVehicles = currentLocalVehicles.filter(v => ((v as any).clienteEmail || '').toLowerCase().trim() === cleanUserEmail);
-                  if (localUserVehicles.length > 0) {
-                    updatedVehicles.push(...localUserVehicles);
-                  }
-                }
-                if (updatedVehicles.length > 0) {
-                  localStorage.setItem('logusq_veiculos', JSON.stringify(updatedVehicles));
-                }
-              }
-
-              // Hydrate condutores safely
-              if (Array.isArray(d.condutores)) {
-                const currentLocalDrivers = dbRepo.getCondutoresRaw();
-                const cleanUserEmail = currentUserEmail.toLowerCase().trim();
-                const otherClientsDrivers = currentLocalDrivers.filter(c => {
-                  const cEmail = ((c as any).clienteEmail || '').toLowerCase().trim();
-                  return cEmail && cEmail !== cleanUserEmail;
-                });
-
-                let updatedDrivers = [...otherClientsDrivers];
-                if (d.condutores.length > 0) {
-                  const pulled = d.condutores.map((c: any) => ({ ...c, clienteEmail: cleanUserEmail }));
-                  updatedDrivers.push(...pulled);
-                } else {
-                  const localUserDrivers = currentLocalDrivers.filter(c => ((c as any).clienteEmail || '').toLowerCase().trim() === cleanUserEmail);
-                  if (localUserDrivers.length > 0) {
-                    updatedDrivers.push(...localUserDrivers);
-                  }
-                }
-                if (updatedDrivers.length > 0) {
-                  localStorage.setItem('logusq_condutores', JSON.stringify(updatedDrivers));
-                }
-              }
-
-              if (d.entregas && Array.isArray(d.entregas) && d.entregas.length > 0) {
-                localStorage.setItem(`logusq_entregas_${currentUserEmail}`, JSON.stringify(d.entregas));
-              }
-              if (d.rotasAtivas && Object.keys(d.rotasAtivas).length > 0) {
-                localStorage.setItem(`logusq_rotas_ativas_${currentUserEmail}`, JSON.stringify(d.rotasAtivas));
-              }
-              if (d.auditoriaLogs) localStorage.setItem('logusq_auditoria', JSON.stringify(d.auditoriaLogs));
-              if (d.mensagensSuporte) localStorage.setItem('logusq_mensagens', JSON.stringify(d.mensagensSuporte));
-              
-              // Let all dashboard screens know they should reload local state
-              window.dispatchEvent(new Event('logusq_sync_complete'));
-            } else {
-              setDbMode('offline');
-            }
-          })
-          .catch(err => {
-            console.warn('Sync offline: rodando no modo de armazenamento local.', err);
-            setDbMode('offline');
-          });
-      }
+    let syncChannel: BroadcastChannel | null = null;
+    try {
+      syncChannel = new BroadcastChannel('logusq_sync_channel');
+      syncChannel.onmessage = (event) => {
+        if (event.data && event.data.type === 'SYNC_UPDATE') {
+          console.log('⚡ REALTIME: Broadcast update received across tabs/windows:', event.data);
+          window.dispatchEvent(new Event('logusq_sync_complete'));
+        }
+      };
+    } catch (e) {
+      console.warn('BroadcastChannel not supported in this browser, falling back to storage & polling.');
     }
+
+    const performSyncPull = () => {
+      const user = dbRepo.getUsuario(currentUserEmail);
+      if (!user) return;
+
+      fetch(`/api/sync/pull?email=${encodeURIComponent(currentUserEmail)}&perfil=${user.perfil}`)
+        .then(res => res.json())
+        .then(resData => {
+          if (resData.success && resData.mode === 'supabase' && resData.data) {
+            setDbMode('supabase');
+            const d = resData.data;
+            if (d.usuarios && d.usuarios.length > 0) localStorage.setItem('logusq_usuarios', JSON.stringify(d.usuarios));
+            if (d.clientes && d.clientes.length > 0) localStorage.setItem('logusq_clientes', JSON.stringify(d.clientes));
+            
+            // Hydrate veiculos safely
+            if (Array.isArray(d.veiculos)) {
+              const currentLocalVehicles = dbRepo.getVeiculos();
+              const cleanUserEmail = currentUserEmail.toLowerCase().trim();
+              const otherClientsVehicles = currentLocalVehicles.filter(v => {
+                const vEmail = ((v as any).clienteEmail || '').toLowerCase().trim();
+                return vEmail && vEmail !== cleanUserEmail;
+              });
+
+              let updatedVehicles = [...otherClientsVehicles];
+              if (d.veiculos.length > 0) {
+                const pulled = d.veiculos.map((v: any) => ({ ...v, clienteEmail: cleanUserEmail }));
+                updatedVehicles.push(...pulled);
+              } else {
+                const localUserVehicles = currentLocalVehicles.filter(v => ((v as any).clienteEmail || '').toLowerCase().trim() === cleanUserEmail);
+                if (localUserVehicles.length > 0) {
+                  updatedVehicles.push(...localUserVehicles);
+                }
+              }
+              if (updatedVehicles.length > 0) {
+                localStorage.setItem('logusq_veiculos', JSON.stringify(updatedVehicles));
+              }
+            }
+
+            // Hydrate condutores safely
+            if (Array.isArray(d.condutores)) {
+              const currentLocalDrivers = dbRepo.getCondutoresRaw();
+              const cleanUserEmail = currentUserEmail.toLowerCase().trim();
+              const otherClientsDrivers = currentLocalDrivers.filter(c => {
+                const cEmail = ((c as any).clienteEmail || '').toLowerCase().trim();
+                return cEmail && cEmail !== cleanUserEmail;
+              });
+
+              let updatedDrivers = [...otherClientsDrivers];
+              if (d.condutores.length > 0) {
+                const pulled = d.condutores.map((c: any) => ({ ...c, clienteEmail: cleanUserEmail }));
+                updatedDrivers.push(...pulled);
+              } else {
+                const localUserDrivers = currentLocalDrivers.filter(c => ((c as any).clienteEmail || '').toLowerCase().trim() === cleanUserEmail);
+                if (localUserDrivers.length > 0) {
+                  updatedDrivers.push(...localUserDrivers);
+                }
+              }
+              if (updatedDrivers.length > 0) {
+                localStorage.setItem('logusq_condutores', JSON.stringify(updatedDrivers));
+              }
+            }
+
+            if (d.entregas && Array.isArray(d.entregas) && d.entregas.length > 0) {
+              localStorage.setItem(`logusq_entregas_${currentUserEmail}`, JSON.stringify(d.entregas));
+            }
+            if (d.rotasAtivas && Object.keys(d.rotasAtivas).length > 0) {
+              localStorage.setItem(`logusq_rotas_ativas_${currentUserEmail}`, JSON.stringify(d.rotasAtivas));
+            }
+            if (d.auditoriaLogs) localStorage.setItem('logusq_auditoria', JSON.stringify(d.auditoriaLogs));
+            if (d.mensagensSuporte) localStorage.setItem('logusq_mensagens', JSON.stringify(d.mensagensSuporte));
+            
+            // Dispatch sync event for active dashboards
+            window.dispatchEvent(new Event('logusq_sync_complete'));
+          } else {
+            setDbMode('offline');
+          }
+        })
+        .catch(err => {
+          console.warn('Sync offline: rodando no modo de armazenamento local.', err);
+          setDbMode('offline');
+        });
+    };
+
+    // Initial sync
+    performSyncPull();
+
+    // Polling Interval: 20 seconds automatic background pull for Manager <-> Driver synchronization
+    const pollingInterval = setInterval(() => {
+      performSyncPull();
+    }, 20000);
+
+    // Cross-tab storage listener
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (e.key && e.key.startsWith('logusq_')) {
+        window.dispatchEvent(new Event('logusq_sync_complete'));
+      }
+    };
+    window.addEventListener('storage', handleStorageEvent);
+
+    return () => {
+      clearInterval(pollingInterval);
+      window.removeEventListener('storage', handleStorageEvent);
+      if (syncChannel) syncChannel.close();
+    };
   }, [currentUserEmail]);
 
   // If no user session, show login/signup

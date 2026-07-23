@@ -286,6 +286,46 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
     setActiveDriverRoutes(foundRoutes);
   }, [refreshKey, userEmail, driverProfile.nome]);
 
+  // Real-time auto-sync polling (15s) and cross-tab BroadcastChannel listener for driver screen
+  useEffect(() => {
+    const handleSyncEvent = () => {
+      triggerRefresh();
+    };
+
+    window.addEventListener('logusq_sync_complete', handleSyncEvent);
+
+    let syncChannel: BroadcastChannel | null = null;
+    try {
+      syncChannel = new BroadcastChannel('logusq_sync_channel');
+      syncChannel.onmessage = (event) => {
+        if (event.data && event.data.type === 'SYNC_UPDATE') {
+          triggerRefresh();
+        }
+      };
+    } catch (e) {
+      // Fallback
+    }
+
+    const interval = setInterval(() => {
+      triggerRefresh();
+    }, 15000);
+
+    return () => {
+      window.removeEventListener('logusq_sync_complete', handleSyncEvent);
+      clearInterval(interval);
+      if (syncChannel) syncChannel.close();
+    };
+  }, []);
+
+  const broadcastRealtimeUpdate = () => {
+    try {
+      const channel = new BroadcastChannel('logusq_sync_channel');
+      channel.postMessage({ type: 'SYNC_UPDATE', timestamp: Date.now() });
+      channel.close();
+    } catch (e) {}
+    window.dispatchEvent(new Event('logusq_sync_complete'));
+  };
+
   // Password reset state
   const [showResetPasswordForm, setShowResetPasswordForm] = useState(false);
   const [newPassword, setNewPassword] = useState('');
@@ -527,6 +567,7 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
     );
 
     triggerRefresh();
+    broadcastRealtimeUpdate();
     alert(status === 'Entregue' ? `Entrega registrada com sucesso! Tempo de atendimento: ${diffMin} min` : 'Operação cancelada/recusada registrada.');
     handleCloseProof();
   };

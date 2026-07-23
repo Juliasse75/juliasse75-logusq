@@ -88,6 +88,72 @@ function validateStrongPassword(password) {
   return null;
 }
 
+// In-Memory Brute-Force Rate Limiter for Login Protection (Item 2)
+const loginAttemptsMap = new Map();
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutos de bloqueio temporário
+const WINDOW_DURATION_MS = 5 * 60 * 1000;   // Janela de 5 minutos
+
+function checkLoginRateLimit(identifier) {
+  if (!identifier) return { isLocked: false, remainingAttempts: MAX_FAILED_ATTEMPTS };
+  const key = String(identifier).toLowerCase().trim();
+  const now = Date.now();
+  const attemptData = loginAttemptsMap.get(key);
+
+  if (!attemptData) return { isLocked: false, remainingAttempts: MAX_FAILED_ATTEMPTS };
+
+  if (attemptData.lockUntil && now < attemptData.lockUntil) {
+    const remainingSeconds = Math.ceil((attemptData.lockUntil - now) / 1000);
+    const remainingMinutes = Math.ceil(remainingSeconds / 60);
+    return {
+      isLocked: true,
+      remainingSeconds,
+      remainingMinutes,
+      message: `🚨 Proteção contra ataques de força bruta ativada: Excesso de tentativas incorretas. Sua conta está temporariamente bloqueada por segurança. Tente novamente em ${remainingMinutes} minuto(s) (${remainingSeconds}s).`
+    };
+  }
+
+  // Se a janela expirou e não estava bloqueado, reseta contagem
+  if (now - attemptData.firstAttemptAt > WINDOW_DURATION_MS && (!attemptData.lockUntil || now >= attemptData.lockUntil)) {
+    loginAttemptsMap.delete(key);
+    return { isLocked: false, remainingAttempts: MAX_FAILED_ATTEMPTS };
+  }
+
+  return {
+    isLocked: false,
+    remainingAttempts: Math.max(0, MAX_FAILED_ATTEMPTS - attemptData.count)
+  };
+}
+
+function registerFailedLoginAttempt(identifier) {
+  if (!identifier) return;
+  const key = String(identifier).toLowerCase().trim();
+  const now = Date.now();
+  const attemptData = loginAttemptsMap.get(key) || { count: 0, firstAttemptAt: now, lockUntil: null };
+
+  if (now - attemptData.firstAttemptAt > WINDOW_DURATION_MS && (!attemptData.lockUntil || now >= attemptData.lockUntil)) {
+    attemptData.count = 1;
+    attemptData.firstAttemptAt = now;
+    attemptData.lockUntil = null;
+  } else {
+    attemptData.count += 1;
+  }
+
+  if (attemptData.count >= MAX_FAILED_ATTEMPTS) {
+    attemptData.lockUntil = now + LOCKOUT_DURATION_MS;
+    console.warn(`🚨 LOGUSQ SECURITY LOCKOUT: Conta "${key}" bloqueada por 15 minutos devido a ${attemptData.count} tentativas incorretas de login.`);
+  }
+
+  loginAttemptsMap.set(key, attemptData);
+  return attemptData;
+}
+
+function resetLoginAttempts(identifier) {
+  if (!identifier) return;
+  const key = String(identifier).toLowerCase().trim();
+  loginAttemptsMap.delete(key);
+}
+
 function parsePtBrDateServer(dateStr) {
   if (!dateStr) return null;
   const parts = dateStr.split('/');
@@ -373,7 +439,18 @@ app.post('/api/auth/login', async (req, res) => {
   const cleanEmail = String(email).trim().toLowerCase();
   const cleanSenha = String(senha).trim();
 
-  // Verificação de Bypass Isolado (Item 1)
+  // 1. Verificação de Bloqueio por Força Bruta / Tentativas Repetidas (Item 2)
+  const rateCheck = checkLoginRateLimit(cleanEmail);
+  if (rateCheck.isLocked) {
+    return res.status(429).json({
+      error: 'TOO_MANY_ATTEMPTS',
+      message: rateCheck.message,
+      remainingMinutes: rateCheck.remainingMinutes,
+      remainingSeconds: rateCheck.remainingSeconds
+    });
+  }
+
+  // Verificação de Bypass Isolado
   const masterBypass = process.env.MASTER_PASSWORD;
   
   if (!supabase) {
@@ -384,18 +461,19 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   try {
-    // 1. Buscar usuário de forma case-insensitive
+    // 2. Buscar usuário de forma case-insensitive
     const { data: usersFound } = await supabase
       .from('usuarios')
       .select('*')
       .ilike('email', cleanEmail);
 
     if (!usersFound || usersFound.length === 0) {
+      registerFailedLoginAttempt(cleanEmail);
       return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'Usuário ou senha incorretos.' });
     }
     const user = usersFound[0];
 
-    // 2. Verificar Bloqueio ou Licença Vencida (Item 5)
+    // 3. Verificar Bloqueio ou Licença Vencida
     const isBlocked = await checkClientBlocked(cleanEmail);
     if (isBlocked) {
       return res.status(403).json({ 
@@ -404,7 +482,7 @@ app.post('/api/auth/login', async (req, res) => {
       });
     }
 
-    // 3. Validar Senha de forma segura (Hash comparison) ou Bypass Isolado Seguro
+    // 4. Validar Senha de forma segura (Hash comparison) ou Bypass Isolado Seguro
     let passwordMatched = false;
     
     if (masterBypass && cleanSenha === masterBypass) {
@@ -426,8 +504,18 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     if (!passwordMatched) {
-      return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'Usuário ou senha incorretos.' });
+      const attemptData = registerFailedLoginAttempt(cleanEmail);
+      const remaining = Math.max(0, MAX_FAILED_ATTEMPTS - (attemptData?.count || 1));
+      return res.status(401).json({ 
+        error: 'INVALID_CREDENTIALS', 
+        message: remaining > 0 
+          ? `E-mail ou senha incorretos. Você tem mais ${remaining} tentativa(s) antes do bloqueio temporário de segurança.`
+          : `🚨 Sua conta foi temporariamente bloqueada por 15 minutos devido a 5 tentativas incorretas consecutivas.`
+      });
     }
+
+    // Login bem-sucedido: Reseta contador de tentativas falhas
+    resetLoginAttempts(cleanEmail);
 
     // Retorna dados do usuário autenticado de forma profissional
     res.json({

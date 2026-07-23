@@ -151,12 +151,75 @@ export default function LoginCadastro({ onLoginSuccess }: LoginCadastroProps) {
     return null;
   };
 
+  // Client-Side Rate Limiter Helpers for Offline & Server Backup Protection (Item 2)
+  const checkLocalRateLimit = (identifier: string) => {
+    if (!identifier) return { isLocked: false, remainingAttempts: 5 };
+    const key = `logusq_failed_logins_${identifier.toLowerCase().trim()}`;
+    const raw = localStorage.getItem(key);
+    if (!raw) return { isLocked: false, remainingAttempts: 5 };
+    try {
+      const data = JSON.parse(raw);
+      const now = Date.now();
+      if (data.lockUntil && now < data.lockUntil) {
+        const remainingSec = Math.ceil((data.lockUntil - now) / 1000);
+        const remainingMin = Math.ceil(remainingSec / 60);
+        return {
+          isLocked: true,
+          remainingMin,
+          remainingSec,
+          message: `🚨 Proteção de Segurança: Excesso de tentativas incorretas. Conta bloqueada temporariamente. Tente novamente em ${remainingMin}m (${remainingSec}s).`
+        };
+      }
+      if (now - data.firstAttemptAt > 5 * 60 * 1000) {
+        localStorage.removeItem(key);
+        return { isLocked: false, remainingAttempts: 5 };
+      }
+      return { isLocked: false, remainingAttempts: Math.max(0, 5 - data.count) };
+    } catch (e) {
+      return { isLocked: false, remainingAttempts: 5 };
+    }
+  };
+
+  const registerLocalFailedLogin = (identifier: string) => {
+    if (!identifier) return { count: 1 };
+    const key = `logusq_failed_logins_${identifier.toLowerCase().trim()}`;
+    const raw = localStorage.getItem(key);
+    const now = Date.now();
+    let data = raw ? JSON.parse(raw) : { count: 0, firstAttemptAt: now, lockUntil: null };
+
+    if (now - data.firstAttemptAt > 5 * 60 * 1000) {
+      data = { count: 1, firstAttemptAt: now, lockUntil: null };
+    } else {
+      data.count += 1;
+    }
+
+    if (data.count >= 5) {
+      data.lockUntil = now + 15 * 60 * 1000;
+    }
+
+    localStorage.setItem(key, JSON.stringify(data));
+    return data;
+  };
+
+  const clearLocalFailedLogin = (identifier: string) => {
+    if (!identifier) return;
+    const key = `logusq_failed_logins_${identifier.toLowerCase().trim()}`;
+    localStorage.removeItem(key);
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
     
     const cleanEmail = loginEmail.trim().toLowerCase();
     const cleanSenha = loginSenha.trim();
+
+    // Check local rate limit before attempt
+    const rateCheck = checkLocalRateLimit(cleanEmail);
+    if (rateCheck.isLocked) {
+      setLoginError(rateCheck.message);
+      return;
+    }
 
     try {
       const response = await fetch('/api/auth/login', {
@@ -166,30 +229,53 @@ export default function LoginCadastro({ onLoginSuccess }: LoginCadastroProps) {
       });
       
       const data = await response.json();
+
+      if (response.status === 429) {
+        registerLocalFailedLogin(cleanEmail);
+        setLoginError(data.message || '🚨 Proteção ativada: Excesso de tentativas incorretas. Sua conta foi temporariamente bloqueada.');
+        return;
+      }
+
       if (response.ok) {
-        // Logged in with Supabase successfully
+        clearLocalFailedLogin(cleanEmail);
         localStorage.setItem('logusq_logged_user', JSON.stringify(data.user));
         onLoginSuccess(data.user.email);
       } else {
         // Fallback to local dbRepo if API credentials mismatch or offline
         const userMock = dbRepo.autenticarUsuario(cleanEmail, cleanSenha);
         if (userMock) {
+          clearLocalFailedLogin(cleanEmail);
           localStorage.setItem('logusq_logged_user', JSON.stringify(userMock));
           onLoginSuccess(userMock.email);
           return;
         }
-        setLoginError(data.message || 'E-mail ou senha inválidos. Verifique suas credenciais.');
+
+        const failedData = registerLocalFailedLogin(cleanEmail);
+        const remaining = Math.max(0, 5 - failedData.count);
+        setLoginError(
+          remaining > 0
+            ? `${data.message || 'E-mail ou senha inválidos.'} Tentativas restantes: ${remaining}/5.`
+            : '🚨 Proteção ativada: 5 tentativas incorretas atingidas. Sua conta foi temporariamente bloqueada por 15 minutos.'
+        );
       }
     } catch (err) {
       console.error('Erro de rede ao fazer login:', err);
       // Fallback to local dbRepo if network error occurs
       const userMock = dbRepo.autenticarUsuario(cleanEmail, cleanSenha);
       if (userMock) {
+        clearLocalFailedLogin(cleanEmail);
         localStorage.setItem('logusq_logged_user', JSON.stringify(userMock));
         onLoginSuccess(userMock.email);
         return;
       }
-      setLoginError('Não foi possível se conectar ao servidor de banco de dados.');
+
+      const failedData = registerLocalFailedLogin(cleanEmail);
+      const remaining = Math.max(0, 5 - failedData.count);
+      setLoginError(
+        remaining > 0
+          ? `Credenciais incorretas ou servidor indisponível. Tentativas restantes: ${remaining}/5.`
+          : '🚨 Proteção ativada: 5 tentativas incorretas atingidas. Sua conta foi temporariamente bloqueada por 15 minutos.'
+      );
     }
   };
 
@@ -1197,9 +1283,15 @@ REPRESENTANTE DA CONTRATANTE
                               setMotError('Por favor, informe CPF e senha.');
                               return;
                             }
+                            const rateCheck = checkLocalRateLimit(`mot_${cleanCpf}`);
+                            if (rateCheck.isLocked) {
+                              setMotError(rateCheck.message);
+                              return;
+                            }
                             const list = dbRepo.getCondutoresRaw();
                             const matched = list.find(c => c.cpf.replace(/\D/g, '') === cleanCpf);
                             if (!matched) {
+                              registerLocalFailedLogin(`mot_${cleanCpf}`);
                               setMotError('CPF não localizado no sistema. Faça o "Primeiro Acesso" primeiro.');
                               return;
                             }
@@ -1208,9 +1300,16 @@ REPRESENTANTE DA CONTRATANTE
                               return;
                             }
                             if (matched.senha === motSenha || motSenha === '123456') {
+                              clearLocalFailedLogin(`mot_${cleanCpf}`);
                               onLoginSuccess(matched.email);
                             } else {
-                              setMotError('CPF ou senha inválidos. Tente novamente.');
+                              const failedData = registerLocalFailedLogin(`mot_${cleanCpf}`);
+                              const remaining = Math.max(0, 5 - failedData.count);
+                              setMotError(
+                                remaining > 0
+                                  ? `CPF ou senha inválidos. Tentativas restantes: ${remaining}/5.`
+                                  : '🚨 Proteção ativada: 5 tentativas incorretas atingidas. Acesso temporariamente bloqueado por 15 minutos.'
+                              );
                             }
                           }} className="space-y-3">
                             <div>

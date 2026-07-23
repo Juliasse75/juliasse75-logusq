@@ -8,7 +8,7 @@ import {
   Info, RotateCcw, Clock, Bell, Printer, UserCheck, Building2, Save, Phone, Mail, User, Search, Edit3
 } from 'lucide-react';
 import SimulatedMap from './SimulatedMap';
-import { clusterAndOptimize, DEFAULT_BASE, geocodeAddress, haversineDistance, optimizeTSP } from '../utils/routingEngine';
+import { clusterAndOptimize, DEFAULT_BASE, geocodeAddress, fetchDirectNominatimGeocode, haversineDistance, optimizeTSP } from '../utils/routingEngine';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import ImportadorUniversal from './ImportadorUniversal';
 
@@ -1194,6 +1194,77 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   const [delNotaFiscal, setDelNotaFiscal] = useState('');
   const [delPeso, setDelPeso] = useState(15);
   const [delTipo, setDelTipo] = useState<'Entrega' | 'Coleta'>('Entrega');
+  const [delLat, setDelLat] = useState<string>('');
+  const [delLng, setDelLng] = useState<string>('');
+  const [delGeocodeStatus, setDelGeocodeStatus] = useState<{ precision: string; msg: string; lat?: number; lng?: number } | null>(null);
+  const [isGeocodingLoading, setIsGeocodingLoading] = useState(false);
+
+  const handleValidateAddressPrecision = async (addressToTest?: string) => {
+    const targetAddr = addressToTest || delEnd;
+    if (!targetAddr || targetAddr.length < 3) return;
+    setIsGeocodingLoading(true);
+
+    // 1. Try online direct Nominatim geocode
+    const online = await fetchDirectNominatimGeocode(targetAddr, clientBaseCoords);
+    if (online) {
+      setDelLat(online.lat.toFixed(6));
+      setDelLng(online.lng.toFixed(6));
+      setDelGeocodeStatus({
+        precision: online.precision,
+        msg: online.precision === 'exact' 
+          ? `📍 Endereço localizado com alta precisão (${online.lat.toFixed(4)}, ${online.lng.toFixed(4)})`
+          : `🏘️ Localizado por Bairro/Distrito (${online.lat.toFixed(4)}, ${online.lng.toFixed(4)})`,
+        lat: online.lat,
+        lng: online.lng
+      });
+      setIsGeocodingLoading(false);
+      return;
+    }
+
+    // 2. Fallback to dictionary-aware local geocode
+    const offline = geocodeAddress(targetAddr, clientBaseCoords);
+    setDelLat(offline.lat.toFixed(6));
+    setDelLng(offline.lng.toFixed(6));
+    setDelGeocodeStatus({
+      precision: 'district',
+      msg: `📍 Localizado via dicionário regional da zona (${offline.lat.toFixed(4)}, ${offline.lng.toFixed(4)})`,
+      lat: offline.lat,
+      lng: offline.lng
+    });
+    setIsGeocodingLoading(false);
+  };
+
+  const handleRecalibrateDeliveries = async () => {
+    if (entregasPendentes.length === 0) {
+      alert('Não há entregas pendentes para recalibrar.');
+      return;
+    }
+    
+    setIsGeocodingLoading(true);
+    let fixedCount = 0;
+    const updatedDeliveries = await Promise.all(
+      entregasPendentes.map(async (ent) => {
+        // Direct online geocode
+        const direct = await fetchDirectNominatimGeocode(ent.endereco, clientBaseCoords);
+        if (direct && direct.lat && direct.lng) {
+          fixedCount++;
+          return { ...ent, latitude: direct.lat, longitude: direct.lng };
+        }
+        // Offline district-aware geocode
+        const offline = geocodeAddress(ent.endereco, clientBaseCoords);
+        if (offline.lat !== ent.latitude || offline.lng !== ent.longitude) {
+          fixedCount++;
+          return { ...ent, latitude: offline.lat, longitude: offline.lng };
+        }
+        return ent;
+      })
+    );
+
+    dbRepo.saveEntregas(userEmail, updatedDeliveries);
+    setIsGeocodingLoading(false);
+    triggerRefresh();
+    alert(`🎯 Recalibração de precisão concluída! ${fixedCount} pontos de entrega foram atualizados para coordenadas geográficas exatas.`);
+  };
 
   const handleDelCepLookup = async (cepValue: string) => {
     const cleanCep = cepValue.replace(/\D/g, '').slice(0, 8);
@@ -1216,6 +1287,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
             if (state) fullAddress += (fullAddress ? `/${state}` : `/${state}`);
             
             setDelEnd(fullAddress);
+            handleValidateAddressPrecision(fullAddress);
           }
         }
       } catch (err) {
@@ -1555,21 +1627,19 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       return;
     }
 
-    let lat: number | undefined;
-    let lng: number | undefined;
+    let lat: number | undefined = delLat ? parseFloat(delLat) : undefined;
+    let lng: number | undefined = delLng ? parseFloat(delLng) : undefined;
     
-    try {
-      const res = await fetch(`/api/geocode?q=${encodeURIComponent(delEnd)}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.lat && data.lng) {
-          lat = data.lat;
-          lng = data.lng;
-          console.log(`🗺️ Endereço manual geocodificado com sucesso: ${data.displayName} (${lat}, ${lng})`);
-        }
+    if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+      const direct = await fetchDirectNominatimGeocode(delEnd, clientBaseCoords);
+      if (direct) {
+        lat = direct.lat;
+        lng = direct.lng;
+      } else {
+        const offline = geocodeAddress(delEnd, clientBaseCoords);
+        lat = offline.lat;
+        lng = offline.lng;
       }
-    } catch (err) {
-      console.warn('Erro ao geocodificar endereço manualmente, usando fallback de BH:', err);
     }
 
     dbRepo.cadastrarEntrega(userEmail, {
@@ -1596,8 +1666,11 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     setDelTel('');
     setDelZap('');
     setDelNotaFiscal('');
+    setDelLat('');
+    setDelLng('');
+    setDelGeocodeStatus(null);
     triggerRefresh();
-    alert('Ponto de entrega adicionado!');
+    alert('Ponto de entrega cadastrado com sucesso!');
   };
 
   const handleOptimize = () => {
@@ -2355,6 +2428,51 @@ Assinatura do Expedidor: _______________________________`;
                       />
                     </div>
 
+                    <div className="border-t border-slate-800/80 pt-2.5 mt-2 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-[9px] font-mono text-emerald-400 font-bold uppercase tracking-wider">
+                          📍 Coordenadas GPS de Precisão Exata (Opcional)
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleValidateAddressPrecision()}
+                          disabled={isGeocodingLoading || !delEnd}
+                          className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                        >
+                          {isGeocodingLoading ? 'Buscando...' : '🔍 Validar no Mapa'}
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[8px] font-mono text-slate-500 uppercase mb-0.5">Latitude (ex: -22.59361)</label>
+                          <input
+                            type="text"
+                            placeholder="-22.59361"
+                            value={delLat}
+                            onChange={e => setDelLat(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-emerald-300 font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[8px] font-mono text-slate-500 uppercase mb-0.5">Longitude (ex: -41.99611)</label>
+                          <input
+                            type="text"
+                            placeholder="-41.99611"
+                            value={delLng}
+                            onChange={e => setDelLng(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-emerald-300 font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      {delGeocodeStatus && (
+                        <div className="bg-emerald-950/40 border border-emerald-500/30 rounded p-2 text-[10px] text-emerald-300 flex items-center gap-1.5">
+                          <span>{delGeocodeStatus.msg}</span>
+                        </div>
+                      )}
+                    </div>
+
                     <button
                       type="submit"
                       className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white py-2 rounded-lg text-xs font-bold transition-all mt-3"
@@ -2369,20 +2487,31 @@ Assinatura do Expedidor: _______________________________`;
                   <div className="flex justify-between items-center mb-3">
                     <h3 className="text-xs font-bold text-white uppercase tracking-wider">Pontos Pendentes ({entregasPendentes.length})</h3>
                     {entregasPendentes.length > 0 && (
-                      <button 
-                        onClick={() => {
-                          if (confirm('Deseja realmente apagar todas as entregas e coletas do sistema?')) {
-                            dbRepo.saveEntregas(userEmail, []);
-                            dbRepo.saveRotasAtivas(userEmail, {});
-                            setActiveRoutes({});
-                            setMapRoutes({});
-                            triggerRefresh();
-                          }
-                        }}
-                        className="text-[10px] text-red-400 hover:underline animate-pulse cursor-pointer"
-                      >
-                        Limpar todos os pontos
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={handleRecalibrateDeliveries}
+                          disabled={isGeocodingLoading}
+                          className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 cursor-pointer bg-emerald-950/40 border border-emerald-500/30 px-2 py-0.5 rounded transition-all"
+                          title="Recalibra todas as coordenadas usando dicionário de distritos e geocodificador de alta precisão"
+                        >
+                          🎯 Recalibrar Precisão
+                        </button>
+                        <button 
+                          onClick={() => {
+                            if (confirm('Deseja realmente apagar todas as entregas e coletas do sistema?')) {
+                              dbRepo.saveEntregas(userEmail, []);
+                              dbRepo.saveRotasAtivas(userEmail, {});
+                              setActiveRoutes({});
+                              setMapRoutes({});
+                              triggerRefresh();
+                            }
+                          }}
+                          className="text-[10px] text-red-400 hover:underline cursor-pointer"
+                        >
+                          Limpar todos
+                        </button>
+                      </div>
                     )}
                   </div>
 
