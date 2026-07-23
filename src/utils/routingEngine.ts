@@ -134,7 +134,8 @@ const CITY_COORDS: Record<string, { lat: number; lng: number; region: string }> 
 
 /**
  * Normalizes and geocodes an address.
- * Prioritizes explicit state/city context and fallback base coordinates to eliminate
+ * Prioritizes explicit state/city context, filters out street names (e.g. Rua São Paulo),
+ * and uses fallback base coordinates with distance sanity checks to eliminate
  * any cross-state pollution (e.g. Santa Catarina deliveries landing in RJ or SP).
  */
 export function geocodeAddress(
@@ -148,38 +149,89 @@ export function geocodeAddress(
     return { lat: defaultBase.lat, lng: defaultBase.lng };
   }
 
-  // 1. Detect explicit region (State / UF) in address string
+  // 1. Infer client's home region from fallbackBaseCoords if available
+  let baseRegion: string | null = null;
+  if (fallbackBaseCoords) {
+    const { lat, lng } = fallbackBaseCoords;
+    if (lat < -25.5 && lat > -29.8 && lng < -48.0 && lng > -54.5) baseRegion = 'SC';
+    else if (lat < -19.5 && lat > -21.5 && lng < -39.5 && lng > -42.0) baseRegion = 'ES';
+    else if (lat < -20.5 && lat > -23.5 && lng < -40.5 && lng > -45.0) baseRegion = 'RJ';
+    else if (lat < -19.5 && lat > -25.5 && lng < -44.0 && lng > -53.0) baseRegion = 'SP';
+    else if (lat < -14.0 && lat > -23.0 && lng < -39.5 && lng > -51.0) baseRegion = 'MG';
+    else if (lat < -22.5 && lat > -26.8 && lng < -48.0 && lng > -54.8) baseRegion = 'PR';
+    else if (lat < -26.8 && lat > -33.8 && lng < -49.5 && lng > -57.5) baseRegion = 'RS';
+  }
+
+  // 2. Detect explicit region (State / UF) in address string
   let detectedRegion: string | null = null;
-  if (/\b(sc|santa catarina)\b/i.test(clean)) detectedRegion = 'SC';
-  else if (/\b(rj|rio de janeiro)\b/i.test(clean)) detectedRegion = 'RJ';
-  else if (/\b(sp|são paulo|sao paulo)\b/i.test(clean)) detectedRegion = 'SP';
-  else if (/\b(mg|minas gerais)\b/i.test(clean)) detectedRegion = 'MG';
-  else if (/\b(es|espírito santo|espirito santo)\b/i.test(clean)) detectedRegion = 'ES';
-  else if (/\b(pr|paraná|parana)\b/i.test(clean)) detectedRegion = 'PR';
-  else if (/\b(rs|rio grande do sul)\b/i.test(clean)) detectedRegion = 'RS';
+  
+  // Look for explicit UF suffixes like "- SC", ", SC", " SC", "/SC", "santa catarina"
+  if (/(^|\W)(sc|santa catarina)($|\W)/i.test(clean)) detectedRegion = 'SC';
+  else if (/(^|\W)(rj|rio de janeiro)($|\W)/i.test(clean) && !/\b(rua|r\.|avenida|av\.|alameda|al\.|praça|praca|tv\.|travessa)\s+(rio de janeiro)\b/i.test(clean)) detectedRegion = 'RJ';
+  else if (/(^|\W)(sp|são paulo|sao paulo)($|\W)/i.test(clean) && !/\b(rua|r\.|avenida|av\.|alameda|al\.|praça|praca|tv\.|travessa)\s+(são paulo|sao paulo)\b/i.test(clean)) detectedRegion = 'SP';
+  else if (/(^|\W)(mg|minas gerais)($|\W)/i.test(clean) && !/\b(rua|r\.|avenida|av\.|alameda|al\.|praça|praca|tv\.|travessa)\s+(minas gerais)\b/i.test(clean)) detectedRegion = 'MG';
+  else if (/(^|\W)(es|espírito santo|espirito santo)($|\W)/i.test(clean) && !/\b(rua|r\.|avenida|av\.|alameda|al\.|praça|praca|tv\.|travessa)\s+(espírito santo|espirito santo)\b/i.test(clean)) detectedRegion = 'ES';
+  else if (/(^|\W)(pr|paraná|parana)($|\W)/i.test(clean) && !/\b(rua|r\.|avenida|av\.|alameda|al\.|praça|praca|tv\.|travessa)\s+(paraná|parana)\b/i.test(clean)) detectedRegion = 'PR';
+  else if (/(^|\W)(rs|rio grande do sul)($|\W)/i.test(clean) && !/\b(rua|r\.|avenida|av\.|alameda|al\.|praça|praca|tv\.|travessa)\s+(rio grande do sul)\b/i.test(clean)) detectedRegion = 'RS';
 
-  // 2. Check explicit city lookup in CITY_COORDS
-  for (const [cityName, coords] of Object.entries(CITY_COORDS)) {
-    if (new RegExp(`\\b${cityName}\\b`, 'i').test(clean)) {
-      // Generate a deterministic jitter around the city center
-      let hash = 0;
-      for (let i = 0; i < clean.length; i++) {
-        hash = clean.charCodeAt(i) + ((hash << 5) - hash);
+  // Fallback to base region if no explicit foreign state was found
+  const activeRegion = detectedRegion || baseRegion;
+
+  // 3. Check explicit city lookup in CITY_COORDS
+  let bestCityMatch: { coords: { lat: number; lng: number }; region: string } | null = null;
+
+  for (const [cityName, cityData] of Object.entries(CITY_COORDS)) {
+    const cityRegex = new RegExp(`\\b${cityName}\\b`, 'i');
+    if (cityRegex.test(clean)) {
+      // Check if it's just a street name prefix (e.g. "Rua São Paulo", "Avenida Rio de Janeiro")
+      const isStreetPrefix = new RegExp(`\\b(rua|r\\.|avenida|av\\.|alameda|al\\.|praça|praca|tv\\.|travessa)\\s+${cityName}\\b`, 'i').test(clean);
+      
+      if (!isStreetPrefix) {
+        // If we have an active region, prioritize matching cities in that region!
+        if (!activeRegion || cityData.region === activeRegion) {
+          bestCityMatch = { coords: cityData, region: cityData.region };
+          break; // Found city in the correct target region!
+        } else if (!bestCityMatch) {
+          // Store secondary match, but keep searching for a region-aligned city
+          bestCityMatch = { coords: cityData, region: cityData.region };
+        }
       }
-      const latOffset = (((hash & 0xff) / 255) - 0.5) * 0.04;
-      const lngOffset = ((((hash >> 8) & 0xff) / 255) - 0.5) * 0.04;
-
-      return {
-        lat: coords.lat + latOffset,
-        lng: coords.lng + lngOffset,
-      };
     }
   }
 
-  // 3. Check Regional Geocode DB (matched only if region aligns)
+  if (bestCityMatch) {
+    // Generate a deterministic jitter around the city center
+    let hash = 0;
+    for (let i = 0; i < clean.length; i++) {
+      hash = clean.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const latOffset = (((hash & 0xff) / 255) - 0.5) * 0.04;
+    const lngOffset = ((((hash >> 8) & 0xff) / 255) - 0.5) * 0.04;
+
+    const candidate = {
+      lat: bestCityMatch.coords.lat + latOffset,
+      lng: bestCityMatch.coords.lng + lngOffset,
+    };
+
+    // Sanity check: if candidate is > 200km away from fallbackBaseCoords and address didn't explicitly specify another state UF
+    if (fallbackBaseCoords) {
+      const dist = haversineDistance(candidate.lat, candidate.lng, fallbackBaseCoords.lat, fallbackBaseCoords.lng);
+      const hasExplicitForeignUf = detectedRegion && baseRegion && detectedRegion !== baseRegion;
+      
+      if (dist > 200 && !hasExplicitForeignUf) {
+        // Reject candidate outside client's operating zone and fallback to local anchor
+      } else {
+        return candidate;
+      }
+    } else {
+      return candidate;
+    }
+  }
+
+  // 4. Check Regional Geocode DB
   for (const item of REGIONAL_GEOCODE_DB) {
     if (clean.includes(item.key)) {
-      if (!detectedRegion || detectedRegion === item.region) {
+      if (!activeRegion || activeRegion === item.region) {
         let hash = 0;
         for (let i = 0; i < clean.length; i++) {
           hash = clean.charCodeAt(i) + ((hash << 5) - hash);
@@ -192,32 +244,31 @@ export function geocodeAddress(
     }
   }
 
-  // 4. Region State Level Fallbacks if city wasn't explicitly found
+  // 5. Region State Level Fallbacks
   let baseLat = defaultBase.lat;
   let baseLng = defaultBase.lng;
 
-  if (detectedRegion === 'SC' || (fallbackBaseCoords && fallbackBaseCoords.lat < -25 && fallbackBaseCoords.lat > -30 && fallbackBaseCoords.lng < -48 && fallbackBaseCoords.lng > -55)) {
-    // Default SC anchor (Florianópolis / Joinville region)
+  if (activeRegion === 'SC') {
     if (!fallbackBaseCoords || fallbackBaseCoords.lat > -25) {
       baseLat = -27.5954;
       baseLng = -48.5480;
     }
-  } else if (detectedRegion === 'RJ') {
+  } else if (activeRegion === 'RJ') {
     baseLat = -22.9068;
     baseLng = -43.1729;
-  } else if (detectedRegion === 'SP') {
+  } else if (activeRegion === 'SP') {
     baseLat = -23.5505;
     baseLng = -46.6333;
-  } else if (detectedRegion === 'MG') {
+  } else if (activeRegion === 'MG') {
     baseLat = -19.9167;
     baseLng = -43.9345;
-  } else if (detectedRegion === 'ES') {
+  } else if (activeRegion === 'ES') {
     baseLat = -20.1385;
     baseLng = -40.2920;
-  } else if (detectedRegion === 'PR') {
+  } else if (activeRegion === 'PR') {
     baseLat = -25.4284;
     baseLng = -49.2733;
-  } else if (detectedRegion === 'RS') {
+  } else if (activeRegion === 'RS') {
     baseLat = -30.0346;
     baseLng = -51.2177;
   }
