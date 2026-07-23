@@ -167,11 +167,18 @@ export default function ImportadorUniversal({
         }
 
         setProcessingStatus(`Lendo arquivo: ${file.name} (${Math.round(file.size / 1024)} KB)...`);
-        const base64Data = await fileToBase64(file);
         
-        payload.fileBase64 = base64Data;
-        payload.mimeType = file.type || 'application/octet-stream';
-        payload.fileName = file.name;
+        const isTextLike = file.name.endsWith('.csv') || file.name.endsWith('.txt') || file.name.endsWith('.tsv') || file.name.endsWith('.json') || file.type.includes('csv') || file.type.includes('text');
+        
+        if (isTextLike) {
+          const textContent = await file.text();
+          payload.rawText = textContent;
+        } else {
+          const base64Data = await fileToBase64(file);
+          payload.fileBase64 = base64Data;
+          payload.mimeType = file.type || 'application/octet-stream';
+          payload.fileName = file.name;
+        }
       } else {
         if (!pastedText.trim()) {
           throw new Error('Por favor, cole algum texto no campo abaixo antes de analisar.');
@@ -180,7 +187,7 @@ export default function ImportadorUniversal({
         payload.rawText = pastedText;
       }
 
-      setProcessingStatus('Enviando dados de transporte para o Gemini 3.5 Flash...');
+      setProcessingStatus('Enviando dados de transporte para o Gemini 2.5 Flash...');
       
       const response = await fetch('/api/import/parse', {
         method: 'POST',

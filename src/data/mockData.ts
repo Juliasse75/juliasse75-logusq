@@ -870,25 +870,10 @@ export const dbRepo = {
     const cleanEmail = (email || '').toLowerCase().trim();
     if (!cleanEmail) return [];
 
-    let userVehicles = list.filter(v => {
+    return list.filter(v => {
       const vEmail = ((v as any).clienteEmail || '').toLowerCase().trim();
       return vEmail === cleanEmail || (!vEmail && cleanEmail === 'demo@logusq.com.br');
     });
-
-    // Auto-seed default fleet if client currently has 0 vehicles
-    if (userVehicles.length === 0) {
-      const seeded: Veiculo[] = SEED_VEICULOS.map((v, idx) => ({
-        ...v,
-        id: `V-${cleanEmail.replace(/[^a-z0-9]/g, '')}-${idx + 1}`,
-        idVeiculo: v.idVeiculo,
-        clienteEmail: cleanEmail,
-      }));
-      const updatedList = [...list, ...seeded];
-      dbRepo.saveVeiculos(updatedList);
-      userVehicles = seeded;
-    }
-
-    return userVehicles;
   },
 
   getCondutores: (email: string): Condutor[] => {
@@ -896,24 +881,10 @@ export const dbRepo = {
     const cleanEmail = (email || '').toLowerCase().trim();
     if (!cleanEmail) return [];
 
-    let userDrivers = list.filter(c => {
+    return list.filter(c => {
       const cEmail = ((c as any).clienteEmail || '').toLowerCase().trim();
       return cEmail === cleanEmail || (!cEmail && cleanEmail === 'demo@logusq.com.br');
     });
-
-    // Auto-seed default drivers if client currently has 0 drivers
-    if (userDrivers.length === 0) {
-      const seeded: Condutor[] = SEED_CONDUTORES.map((c, idx) => ({
-        ...c,
-        id: `D-${cleanEmail.replace(/[^a-z0-9]/g, '')}-${idx + 1}`,
-        clienteEmail: cleanEmail,
-      }));
-      const updatedList = [...list, ...seeded];
-      dbRepo.saveCondutores(updatedList);
-      userDrivers = seeded;
-    }
-
-    return userDrivers;
   },
 
   getEntregas: (email: string): Entrega[] => {

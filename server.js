@@ -970,7 +970,7 @@ Retorne estritamente um array JSON de objetos válidos, sem formatação markdow
       return res.status(400).json({ error: 'INVALID_INPUT', message: 'Nenhum arquivo ou texto fornecido.' });
     }
 
-    console.log(`Chamando Gemini 3.5 Flash para analisar importação do tipo: ${type}...`);
+    console.log(`Chamando Gemini 2.5 Flash para analisar importação do tipo: ${type}...`);
     
     let response;
     let retries = 3;
@@ -979,7 +979,7 @@ Retorne estritamente um array JSON de objetos válidos, sem formatação markdow
     for (let i = 0; i < retries; i++) {
       try {
         response = await ai.models.generateContent({
-          model: 'gemini-3.5-flash',
+          model: 'gemini-2.5-flash',
           contents: contents,
           config: {
             responseMimeType: 'application/json'
