@@ -892,6 +892,11 @@ export const dbRepo = {
     return data ? JSON.parse(data) : [];
   },
 
+  saveEntregas: (email: string, list: Entrega[]) => {
+    localStorage.setItem(`${KEYS.ENTREGAS}_${email}`, JSON.stringify(list));
+    triggerPushSync('entregas', list);
+  },
+
   cadastrarEntrega: (email: string, params: Partial<Entrega>) => {
     const list = dbRepo.getEntregas(email);
     const nova: Entrega = {

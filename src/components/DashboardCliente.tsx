@@ -212,6 +212,47 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     };
   }, [refreshKey, userEmail]);
 
+  // Auto-correct any legacy or mis-geocoded delivery points in wrong states (e.g. SP/RJ when CD Hub is in SC)
+  React.useEffect(() => {
+    if (!clientData || todasEntregas.length === 0) return;
+
+    let needsUpdate = false;
+    const corrected = todasEntregas.map(ent => {
+      const dist = haversineDistance(
+        ent.latitude,
+        ent.longitude,
+        clientBaseCoords.lat,
+        clientBaseCoords.lng
+      );
+
+      // If delivery point is > 180 km away from CD Hub, check if re-geocoding brings it closer to the client's state/region
+      if (dist > 180) {
+        const freshCoords = geocodeAddress(ent.endereco, clientBaseCoords);
+        const newDist = haversineDistance(
+          freshCoords.lat,
+          freshCoords.lng,
+          clientBaseCoords.lat,
+          clientBaseCoords.lng
+        );
+
+        if (newDist < dist) {
+          needsUpdate = true;
+          return {
+            ...ent,
+            latitude: freshCoords.lat,
+            longitude: freshCoords.lng,
+          };
+        }
+      }
+      return ent;
+    });
+
+    if (needsUpdate) {
+      dbRepo.saveEntregas(userEmail, corrected);
+      triggerRefresh();
+    }
+  }, [clientData?.email, clientBaseCoords.lat, clientBaseCoords.lng, todasEntregas.length]);
+
   // Form selections
   const [selectedVeiculoEdit, setSelectedVeiculoEdit] = useState<string>(frota[0]?.idVeiculo || '');
   const veicSel = frota.find(v => v.idVeiculo === selectedVeiculoEdit);
