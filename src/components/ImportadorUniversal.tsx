@@ -3,7 +3,7 @@ import {
   X, Upload, FileText, Clipboard, Sparkles, Check, 
   AlertTriangle, Play, HelpCircle, ArrowRight, Table, ListPlus, Loader2
 } from 'lucide-react';
-import { geocodeAddress } from '../utils/routingEngine';
+import { geocodeAddress, haversineDistance } from '../utils/routingEngine';
 
 interface ImportadorUniversalProps {
   isOpen: boolean;
@@ -578,8 +578,8 @@ export default function ImportadorUniversal({
       
       // Pre-calculate client base hub coordinates for fallback geocoding
       let clientBaseCoords: { lat: number; lng: number } | undefined;
+      const clientData = dbRepo.getCliente ? dbRepo.getCliente(userEmail) : null;
       try {
-        const clientData = dbRepo.getCliente ? dbRepo.getCliente(userEmail) : null;
         if (clientData) {
           const fullAddress = `${clientData.endereco || ''}, ${clientData.cidade || ''} - ${clientData.estado || ''}`.trim();
           if (fullAddress && fullAddress.length > 3) {
@@ -641,13 +641,17 @@ export default function ImportadorUniversal({
           let lat: number = offlineCoords.lat;
           let lng: number = offlineCoords.lng;
 
-          // 2. Try fast Nominatim lookup if network is fast
+          // 2. Try fast Nominatim lookup with city/state context and strict distance validation
           if (addressToGeocode && addressToGeocode.length > 3) {
             try {
               const controller = new AbortController();
               const timeoutId = setTimeout(() => controller.abort(), 900); // 900ms fast timeout
               
-              const res = await fetch(`/api/geocode?q=${encodeURIComponent(addressToGeocode)}`, {
+              // Include client's city and state in query string for accuracy
+              const cityStateContext = `${clientData?.cidade || ''} - ${clientData?.estado || ''}`.trim();
+              const fullSearchQuery = cityStateContext ? `${addressToGeocode}, ${cityStateContext}` : addressToGeocode;
+
+              const res = await fetch(`/api/geocode?q=${encodeURIComponent(fullSearchQuery)}`, {
                 signal: controller.signal
               });
               clearTimeout(timeoutId);
@@ -655,8 +659,12 @@ export default function ImportadorUniversal({
               if (res.ok) {
                 const data = await res.json();
                 if (data.lat && data.lng) {
-                  lat = data.lat;
-                  lng = data.lng;
+                  // Validate that online result is within 120km of the client CD hub
+                  const distFromHub = haversineDistance(data.lat, data.lng, clientBaseCoords.lat, clientBaseCoords.lng);
+                  if (distFromHub <= 120) {
+                    lat = data.lat;
+                    lng = data.lng;
+                  }
                 }
               }
             } catch (e) {

@@ -225,8 +225,8 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
         clientBaseCoords.lng
       );
 
-      // If delivery point is > 180 km away from CD Hub, check if re-geocoding brings it closer to the client's state/region
-      if (dist > 180) {
+      // If delivery point is > 100 km away from CD Hub, auto-correct coordinates to client's operational region
+      if (dist > 100) {
         const freshCoords = geocodeAddress(ent.endereco, clientBaseCoords);
         const newDist = haversineDistance(
           freshCoords.lat,
@@ -235,7 +235,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
           clientBaseCoords.lng
         );
 
-        if (newDist < dist) {
+        if (newDist < dist || newDist <= 100) {
           needsUpdate = true;
           return {
             ...ent,

@@ -114,6 +114,33 @@ const CITY_COORDS: Record<string, { lat: number; lng: number; region: string }> 
   'duque de caxias': { lat: -22.7856, lng: -43.3117, region: 'RJ' },
   'nova iguaçu': { lat: -22.7592, lng: -43.4511, region: 'RJ' },
   'campos dos goytacazes': { lat: -21.7545, lng: -41.3244, region: 'RJ' },
+  'rio das ostras': { lat: -22.5269, lng: -41.9483, region: 'RJ' },
+  'macaé': { lat: -22.3708, lng: -41.7869, region: 'RJ' },
+  'macae': { lat: -22.3708, lng: -41.7869, region: 'RJ' },
+  'cabo frio': { lat: -22.8892, lng: -42.0281, region: 'RJ' },
+  'búzios': { lat: -22.7561, lng: -41.8888, region: 'RJ' },
+  'buzios': { lat: -22.7561, lng: -41.8888, region: 'RJ' },
+  'armação dos búzios': { lat: -22.7561, lng: -41.8888, region: 'RJ' },
+  'armacao dos buzios': { lat: -22.7561, lng: -41.8888, region: 'RJ' },
+  'araruama': { lat: -22.8728, lng: -42.3428, region: 'RJ' },
+  'saquarema': { lat: -22.9203, lng: -42.5103, region: 'RJ' },
+  'casimiro de abreu': { lat: -22.4811, lng: -42.2028, region: 'RJ' },
+  'maricá': { lat: -22.9194, lng: -42.8186, region: 'RJ' },
+  'marica': { lat: -22.9194, lng: -42.8186, region: 'RJ' },
+  'itaboraí': { lat: -22.7472, lng: -42.8592, region: 'RJ' },
+  'itaborai': { lat: -22.7472, lng: -42.8592, region: 'RJ' },
+  'petrópolis': { lat: -22.5050, lng: -43.1789, region: 'RJ' },
+  'petropolis': { lat: -22.5050, lng: -43.1789, region: 'RJ' },
+  'teresópolis': { lat: -22.4122, lng: -42.9656, region: 'RJ' },
+  'teresopolis': { lat: -22.4122, lng: -42.9656, region: 'RJ' },
+  'nova friburgo': { lat: -22.2819, lng: -42.5311, region: 'RJ' },
+  'volta redonda': { lat: -22.5231, lng: -44.1042, region: 'RJ' },
+  'resende': { lat: -22.4697, lng: -44.4467, region: 'RJ' },
+  'angra dos reis': { lat: -23.0067, lng: -44.3181, region: 'RJ' },
+  'magé': { lat: -22.6528, lng: -43.0408, region: 'RJ' },
+  'mage': { lat: -22.6528, lng: -43.0408, region: 'RJ' },
+  'são gonçalo': { lat: -22.8269, lng: -43.0539, region: 'RJ' },
+  'sao goncalo': { lat: -22.8269, lng: -43.0539, region: 'RJ' },
 
   // Espírito Santo (ES)
   'serra': { lat: -20.1385, lng: -40.2920, region: 'ES' },
@@ -166,7 +193,7 @@ export function geocodeAddress(
   let detectedRegion: string | null = null;
   
   // Look for explicit UF suffixes like "- SC", ", SC", " SC", "/SC", "santa catarina"
-  if (/(^|\W)(sc|santa catarina)($|\W)/i.test(clean)) detectedRegion = 'SC';
+  if (/(^|\W)(sc|santa catarina)($|\W)/i.test(clean) && !/\b(rua|r\.|avenida|av\.|alameda|al\.|praça|praca|tv\.|travessa)\s+(santa catarina)\b/i.test(clean)) detectedRegion = 'SC';
   else if (/(^|\W)(rj|rio de janeiro)($|\W)/i.test(clean) && !/\b(rua|r\.|avenida|av\.|alameda|al\.|praça|praca|tv\.|travessa)\s+(rio de janeiro)\b/i.test(clean)) detectedRegion = 'RJ';
   else if (/(^|\W)(sp|são paulo|sao paulo)($|\W)/i.test(clean) && !/\b(rua|r\.|avenida|av\.|alameda|al\.|praça|praca|tv\.|travessa)\s+(são paulo|sao paulo)\b/i.test(clean)) detectedRegion = 'SP';
   else if (/(^|\W)(mg|minas gerais)($|\W)/i.test(clean) && !/\b(rua|r\.|avenida|av\.|alameda|al\.|praça|praca|tv\.|travessa)\s+(minas gerais)\b/i.test(clean)) detectedRegion = 'MG';
@@ -213,12 +240,12 @@ export function geocodeAddress(
       lng: bestCityMatch.coords.lng + lngOffset,
     };
 
-    // Sanity check: if candidate is > 200km away from fallbackBaseCoords and address didn't explicitly specify another state UF
+    // Sanity check: if candidate is > 100km away from fallbackBaseCoords and address didn't explicitly specify another state UF
     if (fallbackBaseCoords) {
       const dist = haversineDistance(candidate.lat, candidate.lng, fallbackBaseCoords.lat, fallbackBaseCoords.lng);
       const hasExplicitForeignUf = detectedRegion && baseRegion && detectedRegion !== baseRegion;
       
-      if (dist > 200 && !hasExplicitForeignUf) {
+      if (dist > 100 && !hasExplicitForeignUf) {
         // Reject candidate outside client's operating zone and fallback to local anchor
       } else {
         return candidate;
@@ -244,15 +271,17 @@ export function geocodeAddress(
     }
   }
 
-  // 5. Region State Level Fallbacks
+  // 5. Region State Level Fallbacks anchored around Client CD Hub
   let baseLat = defaultBase.lat;
   let baseLng = defaultBase.lng;
 
-  if (activeRegion === 'SC') {
-    if (!fallbackBaseCoords || fallbackBaseCoords.lat > -25) {
-      baseLat = -27.5954;
-      baseLng = -48.5480;
-    }
+  // Use client's fallbackBaseCoords if available and no explicit foreign state was requested
+  if (fallbackBaseCoords && (!detectedRegion || detectedRegion === baseRegion)) {
+    baseLat = fallbackBaseCoords.lat;
+    baseLng = fallbackBaseCoords.lng;
+  } else if (activeRegion === 'SC') {
+    baseLat = -27.5954;
+    baseLng = -48.5480;
   } else if (activeRegion === 'RJ') {
     baseLat = -22.9068;
     baseLng = -43.1729;
@@ -323,9 +352,10 @@ export function optimizeTSP(baseLat: number, baseLng: number, entregas: Entrega[
 }
 
 /**
- * Balanced Capacity-Constrained K-Means Clustering for vehicle route assignment
- * Ensures workload (number of stops) is balanced equally across available vehicles (k),
- * preventing 1 driver from getting 60+ stops while others get only 4.
+ * Pure Spatial K-Means Optimization for vehicle route assignment
+ * Clusters deliveries based strictly on geographical density and minimum total distance/fuel consumption.
+ * Allows variable stop counts per driver (e.g. 25 stops in dense urban core vs 8 stops on rural routes)
+ * to achieve quantum-level spatial efficiency.
  */
 export function clusterAndOptimize(
   entregas: Entrega[], 
@@ -336,66 +366,34 @@ export function clusterAndOptimize(
   if (entregas.length === 0 || numVeiculos <= 0) return {};
 
   const k = Math.min(numVeiculos, entregas.length);
-  const targetPerVehicle = Math.ceil(entregas.length / k);
-  // Cap capacity per vehicle so no single driver gets overloaded
-  const maxStopsPerVehicle = Math.max(1, Math.ceil(targetPerVehicle * 1.15));
 
-  // 1. Initialize centroids using K-Means++ style spatial dispersion
+  // 1. Initialize centroids using K-Means++ spatial dispersion
   const centroids = initializeKMeansPlusPlus(entregas, k);
   
   let clusters: Record<number, number[]> = {};
 
-  // Iterative Capitated K-Means
-  for (let iter = 0; iter < 15; iter++) {
+  // Standard K-Means iterations optimizing purely for spatial distance
+  for (let iter = 0; iter < 20; iter++) {
     clusters = {};
     for (let i = 0; i < k; i++) clusters[i] = [];
 
-    // Calculate distances from every point to every centroid
-    const pointPreferences: { pointIdx: number; distances: { clusterId: number; distSq: number }[] }[] = [];
-
+    // Assign each delivery point to its ABSOLUTE NEAREST spatial centroid
     entregas.forEach((p, pIdx) => {
-      const dists: { clusterId: number; distSq: number }[] = [];
+      let nearestCluster = 0;
+      let minDistanceSq = Infinity;
+
       centroids.forEach((c, cId) => {
         const d = Math.pow(p.latitude - c.lat, 2) + Math.pow(p.longitude - c.lng, 2);
-        dists.push({ clusterId: cId, distSq: d });
+        if (d < minDistanceSq) {
+          minDistanceSq = d;
+          nearestCluster = cId;
+        }
       });
-      // Sort clusters by ascending distance to this point
-      dists.sort((a, b) => a.distSq - b.distSq);
-      pointPreferences.push({ pointIdx: pIdx, distances: dists });
+
+      clusters[nearestCluster].push(pIdx);
     });
 
-    // Sort point assignments to prioritize points with strong preferences
-    pointPreferences.sort((a, b) => {
-      const diffA = a.distances.length > 1 ? a.distances[1].distSq - a.distances[0].distSq : 0;
-      const diffB = b.distances.length > 1 ? b.distances[1].distSq - b.distances[0].distSq : 0;
-      return diffB - diffA; // Points with highest penalty for missing nearest centroid go first
-    });
-
-    // Assign points respecting capacity limits
-    pointPreferences.forEach(({ pointIdx, distances }) => {
-      let assigned = false;
-      for (const pref of distances) {
-        if (clusters[pref.clusterId].length < maxStopsPerVehicle) {
-          clusters[pref.clusterId].push(pointIdx);
-          assigned = true;
-          break;
-        }
-      }
-      // Overflow fallback: if all centroids reached soft max, assign to cluster with fewest items
-      if (!assigned) {
-        let minCluster = 0;
-        let minLen = Infinity;
-        for (let i = 0; i < k; i++) {
-          if (clusters[i].length < minLen) {
-            minLen = clusters[i].length;
-            minCluster = i;
-          }
-        }
-        clusters[minCluster].push(pointIdx);
-      }
-    });
-
-    // Update centroids
+    // Update centroids to spatial mean of assigned points
     for (let i = 0; i < k; i++) {
       const idxs = clusters[i];
       if (idxs.length > 0) {
@@ -413,10 +411,7 @@ export function clusterAndOptimize(
     }
   }
 
-  // 2. Final Balancing Sweep: Equalize cluster counts tightly if discrepancy exists
-  equalizeClusterSizes(clusters, entregas, k, targetPerVehicle);
-
-  // 3. Map back to Entregas and optimize each cluster with TSP starting from base
+  // 2. Map back to Entregas and optimize each cluster with TSP starting from base CD Hub
   const result: Record<number, Entrega[]> = {};
   Object.entries(clusters).forEach(([cId, idxs]) => {
     if (idxs.length === 0) return;
