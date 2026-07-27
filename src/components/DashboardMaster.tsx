@@ -444,6 +444,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
         telefone: cTel,
         email: cEmail,
         cargo: cCargo,
+        regime: cRegime,
         nivelAcesso: cAccess as any,
         salarioBase: cSalarioBase !== '' ? Number(cSalarioBase) : undefined,
         cep: cCep,
