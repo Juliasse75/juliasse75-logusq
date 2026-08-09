@@ -1,0 +1,21 @@
+# =========================================================================
+# LOGUSQ VROOM EXPRESS SATELLITE SERVICE DOCKERFILE FOR RAILWAY
+# Industrial Vehicle Routing Open-source Optimization Machine (C++ Solver)
+# =========================================================================
+
+FROM ghcr.io/vroom-project/vroom-express:latest
+
+# Expose port 3000 for internal or external HTTP communication
+EXPOSE 3000
+
+# Environment variables for OSRM routing matrix backend
+ENV VROOM_ROUTER=osrm
+ENV OSRM_HOST=router.project-osrm.org
+ENV OSRM_PORT=80
+
+# Health check endpoint
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost:3000/health || exit 1
+
+# Start VROOM Express Node.js REST API wrapper
+CMD ["npm", "start"]

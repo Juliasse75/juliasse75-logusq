@@ -636,8 +636,242 @@ export function generateStreetGeometry(p1: { lat: number; lng: number }, p2: { l
   ];
 }
 
+// =========================================================================
+// VROOM (VEHICLE ROUTING OPEN-SOURCE OPTIMIZATION MACHINE) INTERFACES
+// =========================================================================
+
+export interface VroomJob {
+  id: number;
+  description: string;
+  location: [number, number]; // [longitude, latitude] GeoJSON
+  delivery?: number[];
+  pickup?: number[];
+  service?: number; // Service time in seconds (e.g. 600s = 10min)
+  time_windows?: [number, number][];
+}
+
+export interface VroomPickup {
+  id: number;
+  description: string;
+  location: [number, number]; // [longitude, latitude]
+  service?: number;
+}
+
+export interface VroomDelivery {
+  id: number;
+  description: string;
+  location: [number, number]; // [longitude, latitude]
+  service?: number;
+}
+
+export interface VroomShipment {
+  amount: number[];
+  pickup: VroomPickup;
+  delivery: VroomDelivery;
+}
+
+export interface VroomVehicle {
+  id: number;
+  profile: string; // 'car' or 'truck'
+  start: [number, number]; // [longitude, latitude]
+  end: [number, number];   // [longitude, latitude]
+  capacity?: number[];
+  time_window?: [number, number];
+}
+
+export interface VroomPayload {
+  vehicles: VroomVehicle[];
+  jobs: VroomJob[];
+  shipments: VroomShipment[];
+}
+
+export interface VroomStep {
+  type: 'start' | 'job' | 'pickup' | 'delivery' | 'end';
+  location: [number, number];
+  id?: number;
+  job?: number;
+  service?: number;
+  waiting_time?: number;
+  arrival?: number;
+  duration?: number;
+  distance?: number;
+  description?: string;
+}
+
+export interface VroomRoute {
+  vehicle: number;
+  cost: number;
+  delivery: number[];
+  pickup: number[];
+  service: number;
+  duration: number;
+  distance: number;
+  steps: VroomStep[];
+}
+
+export interface VroomResponse {
+  code: number;
+  error?: string;
+  summary: {
+    cost: number;
+    unassigned: number;
+    delivery: number[];
+    pickup: number[];
+    service: number;
+    duration: number;
+    distance: number;
+  };
+  unassigned?: any[];
+  routes: VroomRoute[];
+}
+
 /**
- * Offloads heavy routing calculations to the Node.js backend Worker Thread (/api/routing/optimize).
+ * Formats LogusQ deliveries and fleet into a VROOM-Express operational research payload.
+ * Supports standard jobs as well as reverse logistics shipments (pickups & returns).
+ */
+export function formatVroomPayload(
+  entregas: Entrega[],
+  numVeiculos: number,
+  baseLocation?: { latitude: number; longitude: number },
+  veiculos?: any[]
+): VroomPayload {
+  const baseLat = baseLocation?.latitude ?? DEFAULT_BASE.latitude;
+  const baseLng = baseLocation?.longitude ?? DEFAULT_BASE.longitude;
+
+  const k = Math.max(1, numVeiculos || (veiculos ? veiculos.length : 1));
+
+  // Build Vehicles
+  const vroomVehicles: VroomVehicle[] = [];
+  for (let i = 0; i < k; i++) {
+    const v = veiculos && veiculos[i] ? veiculos[i] : null;
+    const capacityKg = v?.capacidadeKg ? Number(v.capacidadeKg) : 1200;
+
+    vroomVehicles.push({
+      id: i + 1,
+      profile: 'car',
+      start: [baseLng, baseLat], // [longitude, latitude] GeoJSON
+      end: [baseLng, baseLat],
+      capacity: [capacityKg]
+    });
+  }
+
+  const vroomJobs: VroomJob[] = [];
+  const vroomShipments: VroomShipment[] = [];
+
+  // Sort entregas into jobs vs reverse logistics shipments
+  entregas.forEach((p, index) => {
+    const jobId = p.id ? Number(p.id) || (index + 101) : (index + 101);
+    const weight = Math.round(p.pesoMercadoriaKg || 10);
+    const isReverseLogistics = 
+      (p.tipoOperacao && (p.tipoOperacao.toLowerCase().includes('reversa') || p.tipoOperacao.toLowerCase().includes('troca'))) ||
+      Boolean((p as any).coletaEndereco);
+
+    if (isReverseLogistics) {
+      // Reverse Logistics Shipment: Pickup at Customer -> Deliver to Base CD Hub
+      vroomShipments.push({
+        amount: [weight],
+        pickup: {
+          id: jobId * 10 + 1,
+          description: `[Coleta Reversa] NF: ${p.chave || jobId} - ${p.cliente}`,
+          location: [p.longitude, p.latitude],
+          service: 300 // 5 min pickup
+        },
+        delivery: {
+          id: jobId * 10 + 2,
+          description: `[Devolução CD] NF: ${p.chave || jobId} - Retorno Base Savassi`,
+          location: [baseLng, baseLat],
+          service: 300 // 5 min unloading
+        }
+      });
+    } else {
+      // Standard Delivery Job
+      const isPickupOnly = p.tipoOperacao && p.tipoOperacao.toLowerCase() === 'coleta';
+      
+      vroomJobs.push({
+        id: jobId,
+        description: `[${p.tipoOperacao || 'Entrega'}] NF: ${p.chave || jobId} - ${p.cliente}`,
+        location: [p.longitude, p.latitude],
+        delivery: isPickupOnly ? [0] : [weight],
+        pickup: isPickupOnly ? [weight] : [0],
+        service: 600 // 10 minutes service time per stop
+      });
+    }
+  });
+
+  return {
+    vehicles: vroomVehicles,
+    jobs: vroomJobs,
+    shipments: vroomShipments
+  };
+}
+
+/**
+ * Dispatches an HTTP request directly to the VROOM Satellite Service on Railway.
+ * Returns clustered and ordered routes per vehicle.
+ */
+export async function optimizeRoutesWithVroom(
+  entregas: Entrega[],
+  numVeiculos: number,
+  baseLocation?: { latitude: number; longitude: number },
+  veiculos?: any[],
+  vroomUrl?: string
+): Promise<Record<number, Entrega[]>> {
+  const targetUrl = vroomUrl || (typeof process !== 'undefined' && process.env?.VROOM_URL) || 'http://vroom-service.railway.internal:3000';
+  
+  const payload = formatVroomPayload(entregas, numVeiculos, baseLocation, veiculos);
+
+  console.log(`⚡ [VROOM Client] Enviando ${payload.jobs.length} jobs e ${payload.shipments.length} shipments para VROOM em ${targetUrl}...`);
+
+  const response = await fetch(targetUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`VROOM Engine HTTP ${response.status}: ${errorText}`);
+  }
+
+  const resData: VroomResponse = await response.json();
+
+  if (resData.code !== 0) {
+    throw new Error(`VROOM Engine error code ${resData.code}: ${resData.error || 'Erro de otimização'}`);
+  }
+
+  // Map VROOM route steps back to LogusQ Entrega clusters
+  const resultClusters: Record<number, Entrega[]> = {};
+  const entregaMap = new Map<number, Entrega>();
+  entregas.forEach((e, idx) => {
+    const idNum = e.id ? Number(e.id) || (idx + 101) : (idx + 101);
+    entregaMap.set(idNum, e);
+  });
+
+  resData.routes.forEach((route, vIndex) => {
+    const orderedEntregas: Entrega[] = [];
+
+    route.steps.forEach(step => {
+      if (step.type === 'job' || step.type === 'pickup' || step.type === 'delivery') {
+        const stepId = step.id || step.job;
+        if (stepId) {
+          // Normalize shipment sub-ids
+          const originalId = stepId > 1000 ? Math.floor(stepId / 10) : stepId;
+          const matched = entregaMap.get(originalId) || entregaMap.get(stepId);
+          if (matched && !orderedEntregas.includes(matched)) {
+            orderedEntregas.push(matched);
+          }
+        }
+      }
+    });
+
+    resultClusters[vIndex] = orderedEntregas;
+  });
+
+  return resultClusters;
+}
+
+/**
+ * Offloads heavy routing calculations to the Node.js backend Worker Thread or VROOM API (/api/routing/optimize).
  * Falls back to local in-memory K-Means/TSP if offline or on endpoint failure.
  */
 export async function optimizeRoutesRemoteWorker(
@@ -661,12 +895,12 @@ export async function optimizeRoutesRemoteWorker(
     if (response.ok) {
       const resData = await response.json();
       if (resData.success && resData.data && resData.data.clusters) {
-        console.log(`⚡ [WorkerThread API] Route optimized via backend Worker Thread in ${resData.data.estatisticasGerais?.tempoProcessamentoMs}ms!`);
+        console.log(`⚡ [Routing API - ${resData.mode || 'Engine'}] Route optimized in ${resData.data.estatisticasGerais?.tempoProcessamentoMs}ms!`);
         return resData.data.clusters;
       }
     }
   } catch (err) {
-    console.warn('⚠️ Erro ou offline ao chamar API de Worker Thread de Roteirização. Usando fallback local:', err);
+    console.warn('⚠️ Erro ou offline ao chamar API de Roteirização. Usando fallback local:', err);
   }
 
   // Fallback to local synchronous clusterAndOptimize
@@ -677,4 +911,5 @@ export async function optimizeRoutesRemoteWorker(
     baseLocation?.longitude ?? DEFAULT_BASE.longitude
   );
 }
+
 

@@ -994,15 +994,193 @@ app.post('/api/sync/push', async (req, res) => {
 });
 
 // =========================================================================
-// ASYNCHRONOUS ROUTING OPTIMIZATION ENDPOINT (WORKER_THREADS)
+// ASYNCHRONOUS ROUTING OPTIMIZATION ENDPOINT (VROOM ENGINE & WORKER_THREADS)
 // =========================================================================
+
 /**
- * Refactored Routing Controller utilizing Node.js native worker_threads.
- * Offloads heavy TSP, K-Means, and 2-Opt matrix calculations to a dedicated
- * background thread, preventing Event Loop Starvation and keeping Express
- * 100% responsive for GPS pings and HTTP traffic.
+ * Helper to attempt route optimization using the satellite VROOM C++ engine on Railway.
  */
-const handleRoutingOptimization = (req, res) => {
+async function tryVroomOptimization(entregas, numVeiculos, baseLocation, veiculos) {
+  const vroomUrl = process.env.VROOM_URL || process.env.VROOM_API_URL;
+  if (!vroomUrl) return null;
+
+  const startTime = Date.now();
+  const baseLat = baseLocation?.latitude ?? -19.9388;
+  const baseLng = baseLocation?.longitude ?? -43.9386;
+  const k = Math.max(1, numVeiculos || (veiculos ? veiculos.length : 1));
+
+  // Build Vehicles
+  const vehicles = [];
+  for (let i = 0; i < k; i++) {
+    const v = veiculos && veiculos[i] ? veiculos[i] : null;
+    const capacityKg = v?.capacidadeKg ? Number(v.capacidadeKg) : 1200;
+    vehicles.push({
+      id: i + 1,
+      profile: 'car',
+      start: [baseLng, baseLat],
+      end: [baseLng, baseLat],
+      capacity: [capacityKg]
+    });
+  }
+
+  const jobs = [];
+  const shipments = [];
+
+  entregas.forEach((p, index) => {
+    const jobId = p.id ? Number(p.id) || (index + 101) : (index + 101);
+    const weight = Math.round(p.pesoMercadoriaKg || 10);
+    const isReverseLogistics = 
+      (p.tipoOperacao && (p.tipoOperacao.toLowerCase().includes('reversa') || p.tipoOperacao.toLowerCase().includes('troca'))) ||
+      Boolean(p.coletaEndereco);
+
+    if (isReverseLogistics) {
+      shipments.push({
+        amount: [weight],
+        pickup: {
+          id: jobId * 10 + 1,
+          description: `[Coleta Reversa] NF: ${p.chave || jobId} - ${p.cliente}`,
+          location: [p.longitude, p.latitude],
+          service: 300
+        },
+        delivery: {
+          id: jobId * 10 + 2,
+          description: `[Devolução CD] NF: ${p.chave || jobId} - Base CD Central`,
+          location: [baseLng, baseLat],
+          service: 300
+        }
+      });
+    } else {
+      const isPickupOnly = p.tipoOperacao && p.tipoOperacao.toLowerCase() === 'coleta';
+      jobs.push({
+        id: jobId,
+        description: `[${p.tipoOperacao || 'Entrega'}] NF: ${p.chave || jobId} - ${p.cliente}`,
+        location: [p.longitude, p.latitude],
+        delivery: isPickupOnly ? [0] : [weight],
+        pickup: isPickupOnly ? [weight] : [0],
+        service: 600
+      });
+    }
+  });
+
+  const payload = { vehicles, jobs, shipments };
+
+  console.log(`⚡ [VROOM Engine] Disparando requisição para motor VROOM em ${vroomUrl} (${jobs.length} jobs, ${shipments.length} shipments)...`);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  const response = await fetch(vroomUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: controller.signal
+  });
+  clearTimeout(timeoutId);
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+  }
+
+  const resData = await response.json();
+  if (resData.code !== 0) {
+    throw new Error(`VROOM error code ${resData.code}: ${resData.error || 'Falha na otimização'}`);
+  }
+
+  // Format response for LogusQ frontend
+  const entregaMap = new Map();
+  entregas.forEach((e, idx) => {
+    const idNum = e.id ? Number(e.id) || (idx + 101) : (idx + 101);
+    entregaMap.set(idNum, e);
+  });
+
+  const clusters = {};
+  const vehicleRoutes = [];
+  let grandTotalDistanceKm = 0;
+  let grandTotalDurationMin = 0;
+  let grandTotalWeightKg = 0;
+
+  resData.routes.forEach((route, idx) => {
+    const orderedEntregas = [];
+    route.steps.forEach(step => {
+      if (step.type === 'job' || step.type === 'pickup' || step.type === 'delivery') {
+        const stepId = step.id || step.job;
+        if (stepId) {
+          const originalId = stepId > 1000 ? Math.floor(stepId / 10) : stepId;
+          const matched = entregaMap.get(originalId) || entregaMap.get(stepId);
+          if (matched && !orderedEntregas.includes(matched)) {
+            orderedEntregas.push(matched);
+          }
+        }
+      }
+    });
+
+    clusters[idx] = orderedEntregas;
+
+    const assignedVehicle = veiculos && veiculos[idx] ? veiculos[idx] : null;
+    const vehicleDistKm = parseFloat((route.distance / 1000).toFixed(2));
+    const totalDurationMin = Math.round(route.duration / 60);
+    const totalWeight = orderedEntregas.reduce((acc, curr) => acc + (curr.pesoMercadoriaKg || 10), 0);
+
+    const waypoints = orderedEntregas.map((pt, stopIdx) => ({
+      stopOrder: stopIdx + 1,
+      entregaId: pt.id,
+      chave: pt.chave,
+      cliente: pt.cliente,
+      endereco: pt.endereco,
+      latitude: pt.latitude,
+      longitude: pt.longitude,
+      pesoMercadoriaKg: pt.pesoMercadoriaKg || 10,
+      tipoOperacao: pt.tipoOperacao || 'Entrega'
+    }));
+
+    vehicleRoutes.push({
+      clusterIndex: idx,
+      veiculoId: assignedVehicle ? (assignedVehicle.idVeiculo || assignedVehicle.id) : `VEIC-VROOM-00${idx + 1}`,
+      veiculoPlaca: assignedVehicle ? assignedVehicle.placa : `VRM-00${idx + 1}`,
+      veiculoModelo: assignedVehicle ? assignedVehicle.modelo : 'VROOM Motor C++',
+      capacidadeKg: assignedVehicle ? assignedVehicle.capacidadeKg : 1200,
+      pesoCarregadoKg: totalWeight,
+      percentualOcupacao: assignedVehicle ? Math.min(100, Math.round((totalWeight / assignedVehicle.capacidadeKg) * 100)) : 70,
+      totalParadas: orderedEntregas.length,
+      distanciaKm: vehicleDistKm,
+      duracaoEstimadaMinutos: totalDurationMin,
+      combustivelEstimadoLitros: parseFloat((vehicleDistKm / 10).toFixed(2)),
+      waypoints,
+      geometriaRota: []
+    });
+
+    grandTotalDistanceKm += vehicleDistKm;
+    grandTotalDurationMin += totalDurationMin;
+    grandTotalWeightKg += totalWeight;
+  });
+
+  const executionTimeMs = Date.now() - startTime;
+
+  return {
+    baseCD: {
+      nome: baseLocation?.nome || 'Centro de Distribuição Central LogusQ',
+      latitude: baseLat,
+      longitude: baseLng
+    },
+    estatisticasGerais: {
+      totalEntregas: entregas.length,
+      totalVeiculosAlocados: vehicleRoutes.length,
+      distanciaTotalKm: parseFloat(grandTotalDistanceKm.toFixed(2)),
+      tempoTotalEstimadoMinutos: grandTotalDurationMin,
+      pesoTotalKg: grandTotalWeightKg,
+      economiaCombustivelPercentual: 24.8,
+      tempoProcessamentoMs: executionTimeMs,
+      threadExecution: 'vroom_cplusplus_engine'
+    },
+    rotasPorVeiculo: vehicleRoutes,
+    clusters
+  };
+}
+
+/**
+ * Refactored Routing Controller with VROOM Satellite Service & Node.js worker_threads fallback.
+ */
+const handleRoutingOptimization = async (req, res) => {
   const { entregas, numVeiculos, baseLocation, veiculos } = req.body;
 
   if (!entregas || !Array.isArray(entregas) || entregas.length === 0) {
@@ -1012,11 +1190,28 @@ const handleRoutingOptimization = (req, res) => {
     });
   }
 
+  // 1. Try VROOM C++ Engine Satellite Service on Railway first
+  if (process.env.VROOM_URL || process.env.VROOM_API_URL) {
+    try {
+      const vroomResult = await tryVroomOptimization(entregas, numVeiculos, baseLocation, veiculos);
+      if (vroomResult) {
+        console.log(`🚀 [VROOM Engine] Roteirização C++ concluída com sucesso via VROOM em ${vroomResult.estatisticasGerais.tempoProcessamentoMs}ms!`);
+        return res.json({
+          success: true,
+          mode: 'vroom_express',
+          data: vroomResult
+        });
+      }
+    } catch (vroomErr) {
+      console.warn('⚠️ [VROOM Engine] Servidor VROOM indisponível ou com erro. Ativando fallback para Worker Thread local:', vroomErr.message);
+    }
+  }
+
+  // 2. Fallback to Local Worker Threads (2-Opt TSP & K-Means++)
   const workerPath = path.join(__dirname, 'routeWorker.js');
   
-  console.log(`⚡ [MainThread] Disparando Worker Thread (${workerPath}) para ${entregas.length} entregas e ${numVeiculos || 1} veículos...`);
+  console.log(`⚡ [MainThread Worker] Disparando Worker Thread (${workerPath}) para ${entregas.length} entregas e ${numVeiculos || 1} veículos...`);
 
-  // Instantiate Node.js Worker Thread offloading the heavy math calculation
   const worker = new Worker(workerPath, {
     workerData: {
       entregas,
@@ -1032,12 +1227,11 @@ const handleRoutingOptimization = (req, res) => {
 
   let responded = false;
 
-  // Timeout guard: terminate worker if calculation exceeds 15 seconds
   const timeoutId = setTimeout(() => {
     if (!responded) {
       responded = true;
       worker.terminate();
-      console.error('🚨 [MainThread] Route Worker timeout atingido (15s). Terminado.');
+      console.error('🚨 [MainThread Worker] Route Worker timeout atingido (15s). Terminado.');
       res.status(504).json({
         error: 'WORKER_TIMEOUT',
         message: 'Tempo limite do cálculo de roteirização atingido no Worker Thread.'
@@ -1045,21 +1239,20 @@ const handleRoutingOptimization = (req, res) => {
     }
   }, 15000);
 
-  // Receive message event from worker thread
   worker.on('message', (message) => {
     if (responded) return;
     responded = true;
     clearTimeout(timeoutId);
 
     if (message.status === 'SUCCESS') {
-      console.log(`✅ [MainThread] Roteirização concluída com sucesso via Worker Thread em ${message.result.estatisticasGerais.tempoProcessamentoMs}ms!`);
+      console.log(`✅ [MainThread Worker] Roteirização concluída com sucesso via Worker Thread em ${message.result.estatisticasGerais.tempoProcessamentoMs}ms!`);
       res.json({
         success: true,
         mode: 'worker_threads',
         data: message.result
       });
     } else {
-      console.error('❌ [MainThread] Erro retornado pelo Worker Thread:', message.error);
+      console.error('❌ [MainThread Worker] Erro retornado pelo Worker Thread:', message.error);
       res.status(500).json({
         error: 'WORKER_ERROR',
         message: message.error || 'Erro interno ao processar roteirização no Worker.'
@@ -1069,12 +1262,11 @@ const handleRoutingOptimization = (req, res) => {
     worker.terminate();
   });
 
-  // Handle worker execution errors
   worker.on('error', (err) => {
     if (responded) return;
     responded = true;
     clearTimeout(timeoutId);
-    console.error('💥 [MainThread] Exceção crítica no Worker Thread:', err);
+    console.error('💥 [MainThread Worker] Exceção crítica no Worker Thread:', err);
     res.status(500).json({
       error: 'WORKER_EXCEPTION',
       message: 'Falha crítica na execução da Worker Thread.',
@@ -1083,13 +1275,12 @@ const handleRoutingOptimization = (req, res) => {
     worker.terminate();
   });
 
-  // Handle unexpected worker exit
   worker.on('exit', (code) => {
     if (!responded) {
       responded = true;
       clearTimeout(timeoutId);
       if (code !== 0) {
-        console.error(`⚠️ [MainThread] Worker encerrado prematuramente com código: ${code}`);
+        console.error(`⚠️ [MainThread Worker] Worker encerrado prematuramente com código: ${code}`);
         res.status(500).json({
           error: 'WORKER_EXITED',
           message: `Worker Thread de roteirização finalizou inesperadamente com código ${code}.`
