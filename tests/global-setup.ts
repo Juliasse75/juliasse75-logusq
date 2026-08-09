@@ -13,7 +13,7 @@ async function globalSetup(config: FullConfig) {
   const targetURL = baseURL || 'http://localhost:3000';
 
   // Garante a existência do diretório de armazenamento de autenticação (.auth)
-  const authDir = path.join(__dirname, '../.auth');
+  const authDir = path.resolve('.auth');
   if (!fs.existsSync(authDir)) {
     fs.mkdirSync(authDir, { recursive: true });
   }

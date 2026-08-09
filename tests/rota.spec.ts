@@ -8,7 +8,7 @@ import path from 'path';
  */
 test.describe('Painel do Gestor de Logística - Módulo de Roteirização e Frota', () => {
   // Injeta explicitamente o storageState autenticado do Gestor
-  test.use({ storageState: path.join(__dirname, '../.auth/gestorAuth.json') });
+  test.use({ storageState: './.auth/gestorAuth.json' });
 
   test('Deve acessar diretamente o painel sem passar pela tela de login e renderizar os botões de controle de frota', async ({ page }) => {
     // 1. Acessa diretamente a URL do sistema (ja autenticado via storageState)

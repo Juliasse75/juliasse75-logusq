@@ -19,7 +19,7 @@ export default defineConfig({
   reporter: [['html', { open: 'never' }], ['list']],
   
   /* Executa o script de login global prévio para gerar sessões reaproveitáveis */
-  globalSetup: require.resolve('./tests/global-setup'),
+  globalSetup: './tests/global-setup.ts',
 
   use: {
     /* URL base do ambiente de desenvolvimento/produção */
@@ -39,7 +39,7 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         // Injeta a sessão pré-autenticada do Gestor
-        storageState: path.join(__dirname, '.auth/gestorAuth.json'),
+        storageState: './.auth/gestorAuth.json',
       },
     },
     {
@@ -47,7 +47,7 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         // Injeta a sessão pré-autenticada do Motorista
-        storageState: path.join(__dirname, '.auth/motoristaAuth.json'),
+        storageState: './.auth/motoristaAuth.json',
       },
     },
     {
@@ -55,7 +55,7 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         // Injeta a sessão pré-autenticada do Master CEO
-        storageState: path.join(__dirname, '.auth/masterAuth.json'),
+        storageState: './.auth/masterAuth.json',
       },
     },
   ],
