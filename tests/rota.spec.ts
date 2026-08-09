@@ -50,11 +50,11 @@ test.describe('Painel do Gestor de Logística - Módulo de Roteirização e Frot
     await condutoresTabButton.click();
 
     // Valida título de condutores
-    const condutoresHeader = page.locator('h1', { hasText: 'Gestão de Condutores e Motoristas' });
+    const condutoresHeader = page.locator('h1', { hasText: 'Gestão de Motoristas Habilitados' });
     await expect(condutoresHeader).toBeVisible();
 
     // Retorna para Roteirização
-    const roteiroTabButton = page.getByRole('button', { name: /Meus Dados & CD Hub/i });
+    const roteiroTabButton = page.getByRole('button', { name: /Roteirização Científica/i });
     await expect(roteiroTabButton).toBeVisible();
   });
 });

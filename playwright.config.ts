@@ -7,6 +7,8 @@ import path from 'path';
  */
 export default defineConfig({
   testDir: './tests',
+  /* Apenas arquivos .spec.ts são testes E2E do Playwright */
+  testMatch: '**/*.spec.ts',
   /* Executa testes em arquivos em paralelo */
   fullyParallel: true,
   /* Impede acidental test.only em ambiente de CI */
