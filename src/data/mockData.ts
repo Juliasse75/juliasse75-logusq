@@ -1236,7 +1236,7 @@ export const dbRepo = {
   cadastrarVeiculo: (email: string, params: Partial<Veiculo>) => {
     const list = dbRepo.getVeiculos();
     const novo: Veiculo = {
-      id: `V-${Date.now()}`,
+      id: `V-${Date.now()}-${Math.floor(Math.random() * 1000000)}`,
       idVeiculo: params.idVeiculo || '',
       placa: params.placa || '',
       modelo: params.modelo || '',
@@ -1307,7 +1307,7 @@ export const dbRepo = {
     }
 
     const novo: Condutor = {
-      id: `D-${Date.now()}`,
+      id: `D-${Date.now()}-${Math.floor(Math.random() * 1000000)}`,
       nome: params.nome || '',
       cpf: params.cpf || '',
       rg: params.rg,

@@ -1579,16 +1579,21 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
           return;
         }
 
+        let delimiter = ',';
+        const firstLine = lines[0];
+        if (firstLine.includes(';')) delimiter = ';';
+        else if (firstLine.includes('\t')) delimiter = '\t';
+
         let importCount = 0;
         for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
-          if (cols.length < 5) continue;
+          const cols = lines[i].split(delimiter).map(c => c.trim().replace(/^"|"$/g, ''));
+          if (cols.length < 2 || !cols[0]) continue;
 
           const nome = cols[0];
-          const cpf = cols[1];
+          const cpf = cols[1] || '';
           const rg = cols[2] || '';
           const tel = cols[3] || '';
-          const email = cols[4];
+          const email = cols[4] || `motorista.${Math.floor(Math.random() * 10000)}@logusq.com.br`;
           const nascimento = cols[5] || '';
           const cnh = cols[6] || '';
           const cat = cols[7] || 'B';
