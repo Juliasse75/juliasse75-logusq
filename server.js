@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { Worker } from 'node:worker_threads';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
@@ -991,6 +992,115 @@ app.post('/api/sync/push', async (req, res) => {
     res.status(500).json({ error: 'SYNC_ERROR', message: 'Erro ao salvar alterações no banco de dados.' });
   }
 });
+
+// =========================================================================
+// ASYNCHRONOUS ROUTING OPTIMIZATION ENDPOINT (WORKER_THREADS)
+// =========================================================================
+/**
+ * Refactored Routing Controller utilizing Node.js native worker_threads.
+ * Offloads heavy TSP, K-Means, and 2-Opt matrix calculations to a dedicated
+ * background thread, preventing Event Loop Starvation and keeping Express
+ * 100% responsive for GPS pings and HTTP traffic.
+ */
+const handleRoutingOptimization = (req, res) => {
+  const { entregas, numVeiculos, baseLocation, veiculos } = req.body;
+
+  if (!entregas || !Array.isArray(entregas) || entregas.length === 0) {
+    return res.status(400).json({
+      error: 'BAD_REQUEST',
+      message: 'Lista de entregas (array) é obrigatória para processar a roteirização.'
+    });
+  }
+
+  const workerPath = path.join(__dirname, 'routeWorker.js');
+  
+  console.log(`⚡ [MainThread] Disparando Worker Thread (${workerPath}) para ${entregas.length} entregas e ${numVeiculos || 1} veículos...`);
+
+  // Instantiate Node.js Worker Thread offloading the heavy math calculation
+  const worker = new Worker(workerPath, {
+    workerData: {
+      entregas,
+      numVeiculos: numVeiculos || 1,
+      baseLocation: baseLocation || {
+        nome: 'Centro de Distribuição Central LogusQ (Savassi)',
+        latitude: -19.9388,
+        longitude: -43.9386,
+      },
+      veiculos: veiculos || []
+    }
+  });
+
+  let responded = false;
+
+  // Timeout guard: terminate worker if calculation exceeds 15 seconds
+  const timeoutId = setTimeout(() => {
+    if (!responded) {
+      responded = true;
+      worker.terminate();
+      console.error('🚨 [MainThread] Route Worker timeout atingido (15s). Terminado.');
+      res.status(504).json({
+        error: 'WORKER_TIMEOUT',
+        message: 'Tempo limite do cálculo de roteirização atingido no Worker Thread.'
+      });
+    }
+  }, 15000);
+
+  // Receive message event from worker thread
+  worker.on('message', (message) => {
+    if (responded) return;
+    responded = true;
+    clearTimeout(timeoutId);
+
+    if (message.status === 'SUCCESS') {
+      console.log(`✅ [MainThread] Roteirização concluída com sucesso via Worker Thread em ${message.result.estatisticasGerais.tempoProcessamentoMs}ms!`);
+      res.json({
+        success: true,
+        mode: 'worker_threads',
+        data: message.result
+      });
+    } else {
+      console.error('❌ [MainThread] Erro retornado pelo Worker Thread:', message.error);
+      res.status(500).json({
+        error: 'WORKER_ERROR',
+        message: message.error || 'Erro interno ao processar roteirização no Worker.'
+      });
+    }
+
+    worker.terminate();
+  });
+
+  // Handle worker execution errors
+  worker.on('error', (err) => {
+    if (responded) return;
+    responded = true;
+    clearTimeout(timeoutId);
+    console.error('💥 [MainThread] Exceção crítica no Worker Thread:', err);
+    res.status(500).json({
+      error: 'WORKER_EXCEPTION',
+      message: 'Falha crítica na execução da Worker Thread.',
+      details: err.message
+    });
+    worker.terminate();
+  });
+
+  // Handle unexpected worker exit
+  worker.on('exit', (code) => {
+    if (!responded) {
+      responded = true;
+      clearTimeout(timeoutId);
+      if (code !== 0) {
+        console.error(`⚠️ [MainThread] Worker encerrado prematuramente com código: ${code}`);
+        res.status(500).json({
+          error: 'WORKER_EXITED',
+          message: `Worker Thread de roteirização finalizou inesperadamente com código ${code}.`
+        });
+      }
+    }
+  });
+};
+
+app.post('/api/routing/optimize', handleRoutingOptimization);
+app.post('/api/roteirizacao', handleRoutingOptimization);
 
 // =========================================================================
 // AI IMPORT PARSING WITH GEMINI 3.5 FLASH

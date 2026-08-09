@@ -635,3 +635,46 @@ export function generateStreetGeometry(p1: { lat: number; lng: number }, p2: { l
     [p2.lat, p2.lng]
   ];
 }
+
+/**
+ * Offloads heavy routing calculations to the Node.js backend Worker Thread (/api/routing/optimize).
+ * Falls back to local in-memory K-Means/TSP if offline or on endpoint failure.
+ */
+export async function optimizeRoutesRemoteWorker(
+  entregas: Entrega[],
+  numVeiculos: number,
+  baseLocation?: { nome?: string; latitude: number; longitude: number },
+  veiculos?: any[]
+): Promise<Record<number, Entrega[]>> {
+  try {
+    const response = await fetch('/api/routing/optimize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        entregas,
+        numVeiculos,
+        baseLocation,
+        veiculos
+      })
+    });
+
+    if (response.ok) {
+      const resData = await response.json();
+      if (resData.success && resData.data && resData.data.clusters) {
+        console.log(`⚡ [WorkerThread API] Route optimized via backend Worker Thread in ${resData.data.estatisticasGerais?.tempoProcessamentoMs}ms!`);
+        return resData.data.clusters;
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️ Erro ou offline ao chamar API de Worker Thread de Roteirização. Usando fallback local:', err);
+  }
+
+  // Fallback to local synchronous clusterAndOptimize
+  return clusterAndOptimize(
+    entregas,
+    numVeiculos,
+    baseLocation?.latitude ?? DEFAULT_BASE.latitude,
+    baseLocation?.longitude ?? DEFAULT_BASE.longitude
+  );
+}
+
