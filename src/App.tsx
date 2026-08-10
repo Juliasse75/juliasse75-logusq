@@ -76,19 +76,9 @@ export default function App() {
                 return vEmail && vEmail !== cleanUserEmail;
               });
 
-              let updatedVehicles = [...otherClientsVehicles];
-              if (d.veiculos.length > 0) {
-                const pulled = d.veiculos.map((v: any) => ({ ...v, clienteEmail: cleanUserEmail }));
-                updatedVehicles.push(...pulled);
-              } else {
-                const localUserVehicles = currentLocalVehicles.filter(v => ((v as any).clienteEmail || '').toLowerCase().trim() === cleanUserEmail);
-                if (localUserVehicles.length > 0) {
-                  updatedVehicles.push(...localUserVehicles);
-                }
-              }
-              if (updatedVehicles.length > 0) {
-                localStorage.setItem('logusq_veiculos', JSON.stringify(updatedVehicles));
-              }
+              const pulled = d.veiculos.map((v: any) => ({ ...v, clienteEmail: cleanUserEmail }));
+              const updatedVehicles = [...otherClientsVehicles, ...pulled];
+              localStorage.setItem('logusq_veiculos', JSON.stringify(updatedVehicles));
             }
 
             // Hydrate condutores safely
@@ -100,25 +90,15 @@ export default function App() {
                 return cEmail && cEmail !== cleanUserEmail;
               });
 
-              let updatedDrivers = [...otherClientsDrivers];
-              if (d.condutores.length > 0) {
-                const pulled = d.condutores.map((c: any) => ({ ...c, clienteEmail: cleanUserEmail }));
-                updatedDrivers.push(...pulled);
-              } else {
-                const localUserDrivers = currentLocalDrivers.filter(c => ((c as any).clienteEmail || '').toLowerCase().trim() === cleanUserEmail);
-                if (localUserDrivers.length > 0) {
-                  updatedDrivers.push(...localUserDrivers);
-                }
-              }
-              if (updatedDrivers.length > 0) {
-                localStorage.setItem('logusq_condutores', JSON.stringify(updatedDrivers));
-              }
+              const pulled = d.condutores.map((c: any) => ({ ...c, clienteEmail: cleanUserEmail }));
+              const updatedDrivers = [...otherClientsDrivers, ...pulled];
+              localStorage.setItem('logusq_condutores', JSON.stringify(updatedDrivers));
             }
 
-            if (d.entregas && Array.isArray(d.entregas) && d.entregas.length > 0) {
+            if (Array.isArray(d.entregas)) {
               localStorage.setItem(`logusq_entregas_${currentUserEmail}`, JSON.stringify(d.entregas));
             }
-            if (d.rotasAtivas && Object.keys(d.rotasAtivas).length > 0) {
+            if (d.rotasAtivas) {
               localStorage.setItem(`logusq_rotas_ativas_${currentUserEmail}`, JSON.stringify(d.rotasAtivas));
             }
             if (d.auditoriaLogs) localStorage.setItem('logusq_auditoria', JSON.stringify(d.auditoriaLogs));

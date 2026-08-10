@@ -747,7 +747,7 @@ app.post('/api/sync/push', async (req, res) => {
   try {
     console.log(`📤 SYNC PUSH: Recebendo ${records?.length || 0} registros da tabela "${table}" de ${email}`);
 
-    if (!records || !Array.isArray(records) || records.length === 0) {
+    if (!records || !Array.isArray(records)) {
       return res.json({ success: true, count: 0 });
     }
 
