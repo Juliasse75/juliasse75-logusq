@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { dbRepo } from '../data/mockData';
 import { Cliente, Colaborador, PlanosSaaS, PLANOS_PADRAO, RegistroPagamento } from '../types';
 import LogusQLogo from './LogusQLogo';
@@ -17,18 +17,35 @@ interface DashboardMasterProps {
 
 export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel }: DashboardMasterProps) {
   const isColab = !!colabAccessLevel;
-  const normalizedAccess = colabAccessLevel?.trim().toUpperCase() || '';
-  const isTotalAccess = !isColab || normalizedAccess === 'TOTAL' || normalizedAccess === 'ACESSO TOTAL' || normalizedAccess.includes('TOTAL');
-  const isRhAccess = isTotalAccess || normalizedAccess === 'RH' || normalizedAccess.includes('RH');
-  const isFinanceiroAccess = isTotalAccess || normalizedAccess === 'FINANCEIRO' || normalizedAccess.includes('FINAN');
+  const rawAccess = colabAccessLevel?.trim().toUpperCase() || '';
+  
+  const isRhProfile = isColab && (rawAccess.includes('RH') || rawAccess === 'PAINEL RH');
+  const isFinanceiroProfile = isColab && (rawAccess.includes('FINAN') || rawAccess === 'PAINEL FINANCEIRO');
+  
+  const isTotalAccess = !isColab || (!isRhProfile && !isFinanceiroProfile) || rawAccess.includes('TOTAL');
+  const isRhAccess = isTotalAccess || isRhProfile;
+  const isFinanceiroAccess = isTotalAccess || isFinanceiroProfile;
 
   const [activeTab, setActiveTab] = useState(() => {
     if (isColab) {
-      if (normalizedAccess === 'RH' || normalizedAccess.includes('RH')) return 'rh';
-      if (normalizedAccess === 'FINANCEIRO' || normalizedAccess.includes('FINAN')) return 'financeiro';
+      if (isRhProfile && !isFinanceiroProfile) return 'rh';
+      if (isFinanceiroProfile && !isRhProfile) return 'financeiro';
     }
     return 'clientes_base';
   });
+
+  useEffect(() => {
+    if (isColab) {
+      if (!isFinanceiroAccess && (activeTab === 'clientes_base' || activeTab === 'planos' || activeTab === 'financeiro')) {
+        setActiveTab('rh');
+      } else if (!isRhAccess && activeTab === 'rh') {
+        setActiveTab('financeiro');
+      } else if (!isTotalAccess && (activeTab === 'auditoria' || activeTab === 'masters')) {
+        if (isRhAccess) setActiveTab('rh');
+        else if (isFinanceiroAccess) setActiveTab('financeiro');
+      }
+    }
+  }, [isColab, isRhAccess, isFinanceiroAccess, isTotalAccess, activeTab]);
 
   // Global State Refresh Helper
   const [refreshKey, setRefreshKey] = useState(0);
@@ -1074,7 +1091,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
       <main className="flex-1 p-6 md:p-8 overflow-y-auto max-w-7xl mx-auto w-full">
         
         {/* TAB 1: CLIENTES BASE */}
-        {activeTab === 'clientes_base' && (
+        {activeTab === 'clientes_base' && isFinanceiroAccess && (
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
@@ -1287,7 +1304,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
         )}
 
         {/* TAB 2: CADASTRAR CLIENTE (SaaS Manual Direct) */}
-        {activeTab === 'cadastrar_cliente' && (
+        {activeTab === 'cadastrar_cliente' && (isRhAccess || isFinanceiroAccess) && (
           <div className="space-y-6">
             <div>
               <h1 className="text-xl font-extrabold text-white">Ficha de Ativação de Novo Cliente SaaS</h1>
@@ -1697,7 +1714,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
         )}
 
         {/* TAB 3: RH INTERNO */}
-        {activeTab === 'rh' && (
+        {activeTab === 'rh' && isRhAccess && (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
               <div>
@@ -1840,7 +1857,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
                     >
                       <option value="TOTAL">Acesso Total</option>
                       <option value="RH">Painel RH Apenas</option>
-                      <option value="Financeiro">Painel Financeiro Apenas</option>
+                      <option value="FINANCEIRO">Painel Financeiro Apenas</option>
                     </select>
                   </div>
 
@@ -2100,7 +2117,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
         )}
 
         {/* TAB 4: PLANOS SAAS */}
-        {activeTab === 'planos' && (
+        {activeTab === 'planos' && isFinanceiroAccess && (
           <div className="space-y-6">
             <div>
               <h1 className="text-xl font-extrabold text-white">Planos LogusQ SaaS</h1>
@@ -2199,7 +2216,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
         )}
 
         {/* TAB 5: FINANCEIRO E METRICAS */}
-        {activeTab === 'financeiro' && (
+        {activeTab === 'financeiro' && isFinanceiroAccess && (
           <div className="space-y-6">
             <div>
               <h1 className="text-xl font-extrabold text-white">Métricas Financeiras LogusQ (SaaS)</h1>
@@ -2346,7 +2363,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
         )}
 
         {/* TAB 6: EQUIPE MASTER */}
-        {activeTab === 'masters' && (
+        {activeTab === 'masters' && !isColab && (
           <div className="space-y-6">
             <div>
               <h1 className="text-xl font-extrabold text-white">Equipe Master LogusQ</h1>

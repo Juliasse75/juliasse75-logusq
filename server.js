@@ -518,7 +518,8 @@ app.post('/api/auth/login', async (req, res) => {
     // Login bem-sucedido: Reseta contador de tentativas falhas
     resetLoginAttempts(cleanEmail);
 
-    const isMasterOrTotal = user.perfil === 'MASTER' || user.perfil === 'COLABORADOR' || (user.nivel_acesso && ['TOTAL', 'ACESSO TOTAL'].includes(String(user.nivel_acesso).toUpperCase()));
+    const rawNivel = String(user.nivel_acesso || 'TOTAL').trim().toUpperCase();
+    const isMasterOrTotal = user.perfil === 'MASTER' || ['TOTAL', 'ACESSO TOTAL'].includes(rawNivel);
 
     // Retorna dados do usuário autenticado de forma profissional com contexto de administrador
     res.json({
@@ -529,7 +530,7 @@ app.post('/api/auth/login', async (req, res) => {
         perfil: user.perfil,
         empresa: user.empresa,
         veiculo: user.veiculo,
-        nivelAcesso: String(user.nivel_acesso || 'TOTAL').toUpperCase(),
+        nivelAcesso: rawNivel,
         isMasterOrTotal: isMasterOrTotal,
         isAdmin: isMasterOrTotal,
         criadoEm: user.criado_em

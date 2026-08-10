@@ -636,10 +636,11 @@ export const dbRepo = {
         });
         updated = true;
       } else {
-        const targetNivel = String(u.nivelAcesso || 'TOTAL').toUpperCase();
-        if (existing.nivelAcesso !== targetNivel) {
-          existing.nivelAcesso = targetNivel;
+        if (u.nivelAcesso && existing.nivelAcesso !== String(u.nivelAcesso).toUpperCase()) {
+          existing.nivelAcesso = String(u.nivelAcesso).toUpperCase();
           updated = true;
+        } else if (!u.nivelAcesso && existing.nivelAcesso) {
+          u.nivelAcesso = existing.nivelAcesso;
         }
       }
     });
@@ -728,18 +729,24 @@ export const dbRepo = {
   // High-Level Helper API
   getUsuario: (email: string): Usuario | undefined => {
     const cleanEmail = (email || '').toLowerCase().trim();
+    
+    // Check if there is a colaborador record for this email to get exact access level
+    const colabs = JSON.parse(localStorage.getItem(KEYS.COLABORADORES) || '[]');
+    const colab = colabs.find((c: any) => (c.email || '').toLowerCase().trim() === cleanEmail);
+
     // If we have a logged-in user cache from Supabase, prioritize it to ensure no fallback mismatches
     const cachedData = localStorage.getItem('logusq_logged_user');
     if (cachedData) {
       try {
         const u = JSON.parse(cachedData);
         if ((u.email || '').toLowerCase().trim() === cleanEmail) {
+          const finalNivel = colab?.nivelAcesso || u.nivelAcesso || u.nivel_acesso || 'TOTAL';
           return {
             email: u.email,
             nome: u.nome,
             perfil: u.perfil === 'CLIENT' || u.perfil === 'CLIENTE' ? 'CLIENTE' : u.perfil,
             empresa: u.empresa,
-            nivelAcesso: String(u.nivelAcesso || u.nivel_acesso || 'TOTAL').toUpperCase(),
+            nivelAcesso: String(finalNivel).toUpperCase(),
             veiculo: u.veiculo,
             criadoEm: u.criadoEm || u.criado_em || '19/07/2026'
           };
@@ -750,12 +757,13 @@ export const dbRepo = {
     const list = dbRepo.getUsuarios();
     const user = list.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
     if (user) {
+      const finalNivel = colab?.nivelAcesso || user.nivelAcesso || 'TOTAL';
       return {
         email: user.email,
         nome: user.nome,
         perfil: user.perfil === 'CLIENT' ? 'CLIENTE' : user.perfil,
         empresa: user.empresa,
-        nivelAcesso: String(user.nivelAcesso || 'TOTAL').toUpperCase(),
+        nivelAcesso: String(finalNivel).toUpperCase(),
         criadoEm: user.criadoEm
       };
     }

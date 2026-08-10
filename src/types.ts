@@ -80,7 +80,7 @@ export interface Colaborador {
   bairro?: string;
   cidade?: string;
   estado?: string;
-  nivelAcesso: 'Sem Acesso' | 'Visualizar' | 'Total' | 'TOTAL' | 'RH' | 'Financeiro';
+  nivelAcesso: string;
   acessoSistema: boolean;
   regime?: 'CLT' | 'PJ' | 'Jovem Aprendiz' | 'Estágio' | 'Trainee' | 'Temporário';
   salarioBase?: number;
