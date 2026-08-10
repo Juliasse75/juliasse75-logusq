@@ -518,7 +518,7 @@ app.post('/api/auth/login', async (req, res) => {
     // Login bem-sucedido: Reseta contador de tentativas falhas
     resetLoginAttempts(cleanEmail);
 
-    const isMasterOrTotal = user.perfil === 'MASTER' || (user.nivel_acesso && String(user.nivel_acesso).toUpperCase() === 'TOTAL');
+    const isMasterOrTotal = user.perfil === 'MASTER' || user.perfil === 'COLABORADOR' || (user.nivel_acesso && ['TOTAL', 'ACESSO TOTAL'].includes(String(user.nivel_acesso).toUpperCase()));
 
     // Retorna dados do usuário autenticado de forma profissional com contexto de administrador
     res.json({
@@ -529,7 +529,7 @@ app.post('/api/auth/login', async (req, res) => {
         perfil: user.perfil,
         empresa: user.empresa,
         veiculo: user.veiculo,
-        nivelAcesso: user.nivel_acesso || 'TOTAL',
+        nivelAcesso: String(user.nivel_acesso || 'TOTAL').toUpperCase(),
         isMasterOrTotal: isMasterOrTotal,
         isAdmin: isMasterOrTotal,
         criadoEm: user.criado_em
@@ -589,8 +589,8 @@ app.get('/api/sync/pull', async (req, res) => {
   }
 
   try {
-    // 0. Verifica se o usuário possui perfil MASTER ou nível de acesso TOTAL (Exceção de Admin/Master)
-    let isMasterOrTotal = (perfil === 'MASTER') || (nivelAcesso && String(nivelAcesso).toUpperCase() === 'TOTAL');
+    // 0. Verifica se o usuário possui perfil MASTER/COLABORADOR ou nível de acesso interno
+    let isMasterOrTotal = (perfil === 'MASTER' || perfil === 'COLABORADOR') || (nivelAcesso && ['TOTAL', 'RH', 'FINANCEIRO', 'ACESSO TOTAL'].includes(String(nivelAcesso).toUpperCase()));
 
     if (!isMasterOrTotal && email) {
       const { data: uFound } = await supabase
@@ -598,7 +598,7 @@ app.get('/api/sync/pull', async (req, res) => {
         .select('perfil, nivel_acesso')
         .ilike('email', email)
         .maybeSingle();
-      if (uFound && (uFound.perfil === 'MASTER' || (uFound.nivel_acesso && String(uFound.nivel_acesso).toUpperCase() === 'TOTAL'))) {
+      if (uFound && (uFound.perfil === 'MASTER' || uFound.perfil === 'COLABORADOR' || (uFound.nivel_acesso && ['TOTAL', 'RH', 'FINANCEIRO', 'ACESSO TOTAL'].includes(String(uFound.nivel_acesso).toUpperCase())))) {
         isMasterOrTotal = true;
       }
     }
@@ -933,15 +933,14 @@ app.post('/api/sync/push', async (req, res) => {
           const salt = bcrypt.genSaltSync(10);
           finalHash = bcrypt.hashSync(finalHash, salt);
         }
-        const rawNivel = (u.nivelAcesso || u.nivel_acesso || 'PARCIAL').toUpperCase();
-        const finalNivel = ['TOTAL', 'PARCIAL'].includes(rawNivel) ? rawNivel : 'PARCIAL';
+        const rawNivel = String(u.nivelAcesso || u.nivel_acesso || 'TOTAL').trim().toUpperCase();
         await supabase.from('usuarios').upsert({
           email: u.email,
           nome: u.nome,
           perfil: u.perfil,
           empresa: u.empresa || null,
           veiculo: u.veiculo || null,
-          nivel_acesso: finalNivel,
+          nivel_acesso: rawNivel || 'TOTAL',
           senha_hash: finalHash
         });
       }

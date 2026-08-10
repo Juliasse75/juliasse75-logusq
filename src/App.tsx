@@ -44,13 +44,27 @@ export default function App() {
       const user = dbRepo.getUsuario(currentUserEmail);
       if (!user) return;
 
-      fetch(`/api/sync/pull?email=${encodeURIComponent(currentUserEmail)}&perfil=${user.perfil}`)
+      fetch(`/api/sync/pull?email=${encodeURIComponent(currentUserEmail)}&perfil=${user.perfil}&nivelAcesso=${encodeURIComponent(user.nivelAcesso || '')}`)
         .then(res => res.json())
         .then(resData => {
           if (resData.success && resData.mode === 'supabase' && resData.data) {
             setDbMode('supabase');
             const d = resData.data;
-            if (d.usuarios && d.usuarios.length > 0) localStorage.setItem('logusq_usuarios', JSON.stringify(d.usuarios));
+            if (d.usuarios && d.usuarios.length > 0) {
+              localStorage.setItem('logusq_usuarios', JSON.stringify(d.usuarios));
+              const loggedUserRecord = d.usuarios.find((u: any) => (u.email || '').toLowerCase().trim() === currentUserEmail.toLowerCase().trim());
+              if (loggedUserRecord) {
+                localStorage.setItem('logusq_logged_user', JSON.stringify({
+                  email: loggedUserRecord.email,
+                  nome: loggedUserRecord.nome,
+                  perfil: loggedUserRecord.perfil,
+                  empresa: loggedUserRecord.empresa,
+                  veiculo: loggedUserRecord.veiculo,
+                  nivelAcesso: String(loggedUserRecord.nivel_acesso || loggedUserRecord.nivelAcesso || 'TOTAL').toUpperCase(),
+                  criadoEm: loggedUserRecord.criado_em || loggedUserRecord.criadoEm
+                }));
+              }
+            }
             if (d.clientes && d.clientes.length > 0) localStorage.setItem('logusq_clientes', JSON.stringify(d.clientes));
             
             // Hydrate veiculos safely

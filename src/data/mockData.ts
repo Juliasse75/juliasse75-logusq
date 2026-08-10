@@ -621,7 +621,8 @@ export const dbRepo = {
     }
     
     colabUsers.forEach(u => {
-      if (!colabs.some((c: any) => c.email === u.email)) {
+      const existing = colabs.find((c: any) => c.email.toLowerCase() === u.email.toLowerCase());
+      if (!existing) {
         colabs.push({
           idColaborador: `LOGUS-RH-${Date.now().toString().slice(-4)}`,
           nome: u.nome,
@@ -630,10 +631,16 @@ export const dbRepo = {
           telefone: '',
           dataAdmissao: new Date().toLocaleDateString('pt-BR'),
           status: 'Ativo',
-          nivelAcesso: u.nivelAcesso || 'PARCIAL',
+          nivelAcesso: String(u.nivelAcesso || 'TOTAL').toUpperCase(),
           acessoSistema: true,
         });
         updated = true;
+      } else {
+        const targetNivel = String(u.nivelAcesso || 'TOTAL').toUpperCase();
+        if (existing.nivelAcesso !== targetNivel) {
+          existing.nivelAcesso = targetNivel;
+          updated = true;
+        }
       }
     });
     
@@ -720,18 +727,19 @@ export const dbRepo = {
 
   // High-Level Helper API
   getUsuario: (email: string): Usuario | undefined => {
+    const cleanEmail = (email || '').toLowerCase().trim();
     // If we have a logged-in user cache from Supabase, prioritize it to ensure no fallback mismatches
     const cachedData = localStorage.getItem('logusq_logged_user');
     if (cachedData) {
       try {
         const u = JSON.parse(cachedData);
-        if (u.email === email) {
+        if ((u.email || '').toLowerCase().trim() === cleanEmail) {
           return {
             email: u.email,
             nome: u.nome,
             perfil: u.perfil === 'CLIENT' || u.perfil === 'CLIENTE' ? 'CLIENTE' : u.perfil,
             empresa: u.empresa,
-            nivelAcesso: u.nivelAcesso || u.nivel_acesso || 'TOTAL',
+            nivelAcesso: String(u.nivelAcesso || u.nivel_acesso || 'TOTAL').toUpperCase(),
             veiculo: u.veiculo,
             criadoEm: u.criadoEm || u.criado_em || '19/07/2026'
           };
@@ -740,14 +748,14 @@ export const dbRepo = {
     }
 
     const list = dbRepo.getUsuarios();
-    const user = list.find(u => u.email.toLowerCase() === email.toLowerCase());
+    const user = list.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
     if (user) {
       return {
         email: user.email,
         nome: user.nome,
         perfil: user.perfil === 'CLIENT' ? 'CLIENTE' : user.perfil,
         empresa: user.empresa,
-        nivelAcesso: user.nivelAcesso,
+        nivelAcesso: String(user.nivelAcesso || 'TOTAL').toUpperCase(),
         criadoEm: user.criadoEm
       };
     }
@@ -1418,6 +1426,8 @@ export const dbRepo = {
     const usuarios = dbRepo.getUsuarios();
 
     const novoId = `LOGUS-RH-${Date.now().toString().slice(-4)}`;
+    const nivelUpper = String(params.nivelAcesso || 'TOTAL').trim().toUpperCase();
+
     const novoCol: Colaborador = {
       idColaborador: novoId,
       nome: params.nome,
@@ -1437,7 +1447,7 @@ export const dbRepo = {
       salarioBase: params.salarioBase ? Number(params.salarioBase) : undefined,
       dataAdmissao: new Date().toLocaleDateString('pt-BR'),
       status: 'Ativo',
-      nivelAcesso: params.nivelAcesso || 'Total',
+      nivelAcesso: nivelUpper,
       acessoSistema: true,
     };
 
@@ -1445,7 +1455,7 @@ export const dbRepo = {
       email: params.email,
       nome: params.nome,
       perfil: 'COLABORADOR' as any,
-      nivelAcesso: params.nivelAcesso || 'TOTAL',
+      nivelAcesso: nivelUpper,
       criadoEm: new Date().toLocaleDateString('pt-BR'),
       senha_hash: params.senhaProvisoria || 'ColabLogusQ@123'
     };
@@ -1476,10 +1486,15 @@ export const dbRepo = {
     if (!oldCol) return;
 
     const oldEmail = oldCol.email;
+    const nivelUpper = params.nivelAcesso ? String(params.nivelAcesso).trim().toUpperCase() : undefined;
 
     const updated = list.map(c => {
       if (c.idColaborador === idColaborador) {
-        return { ...c, ...params };
+        return { 
+          ...c, 
+          ...params,
+          ...(nivelUpper ? { nivelAcesso: nivelUpper } : {})
+        };
       }
       return c;
     });
@@ -1492,7 +1507,7 @@ export const dbRepo = {
         if (params.email) uCopy.email = params.email;
         if (novaSenha) uCopy.senha_hash = novaSenha;
         if (params.nome) uCopy.nome = params.nome;
-        if (params.nivelAcesso) uCopy.nivelAcesso = params.nivelAcesso;
+        if (nivelUpper) uCopy.nivelAcesso = nivelUpper;
         return uCopy;
       }
       return u;
