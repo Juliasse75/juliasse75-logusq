@@ -17,13 +17,15 @@ interface DashboardMasterProps {
 
 export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel }: DashboardMasterProps) {
   const isColab = !!colabAccessLevel;
-  const normalizedAccess = colabAccessLevel?.toUpperCase() || '';
-  const isTotalAccess = !isColab || normalizedAccess === 'TOTAL' || normalizedAccess === 'ACESSO TOTAL';
+  const normalizedAccess = colabAccessLevel?.trim().toUpperCase() || '';
+  const isTotalAccess = !isColab || normalizedAccess === 'TOTAL' || normalizedAccess === 'ACESSO TOTAL' || normalizedAccess.includes('TOTAL');
+  const isRhAccess = isTotalAccess || normalizedAccess === 'RH' || normalizedAccess.includes('RH');
+  const isFinanceiroAccess = isTotalAccess || normalizedAccess === 'FINANCEIRO' || normalizedAccess.includes('FINAN');
 
   const [activeTab, setActiveTab] = useState(() => {
     if (isColab) {
-      if (normalizedAccess === 'RH') return 'rh';
-      if (normalizedAccess === 'FINANCEIRO') return 'financeiro';
+      if (normalizedAccess === 'RH' || normalizedAccess.includes('RH')) return 'rh';
+      if (normalizedAccess === 'FINANCEIRO' || normalizedAccess.includes('FINAN')) return 'financeiro';
     }
     return 'clientes_base';
   });
@@ -803,28 +805,29 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
 
           {/* Menu Items */}
           <nav className="p-4 space-y-1">
-            {isTotalAccess && (
-              <>
-                <button
-                  onClick={() => setActiveTab('clientes_base')}
-                  className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-3 transition-colors ${
-                    activeTab === 'clientes_base' ? 'bg-violet-600 text-white shadow-lg shadow-violet-900/20' : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
-                  }`}
-                >
-                  <Users className="w-4 h-4" /> Base de Clientes
-                </button>
-                <button
-                  onClick={() => setActiveTab('cadastrar_cliente')}
-                  className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-3 transition-colors ${
-                    activeTab === 'cadastrar_cliente' ? 'bg-violet-600 text-white shadow-lg shadow-violet-900/20' : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
-                  }`}
-                >
-                  <UserPlus className="w-4 h-4" /> Cadastrar Cliente
-                </button>
-              </>
+            {isFinanceiroAccess && (
+              <button
+                onClick={() => setActiveTab('clientes_base')}
+                className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-3 transition-colors ${
+                  activeTab === 'clientes_base' ? 'bg-violet-600 text-white shadow-lg shadow-violet-900/20' : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
+                }`}
+              >
+                <Users className="w-4 h-4" /> Base de Clientes
+              </button>
             )}
 
-            {(isTotalAccess || normalizedAccess === 'RH') && (
+            {(isRhAccess || isFinanceiroAccess) && (
+              <button
+                onClick={() => setActiveTab('cadastrar_cliente')}
+                className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-3 transition-colors ${
+                  activeTab === 'cadastrar_cliente' ? 'bg-violet-600 text-white shadow-lg shadow-violet-900/20' : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
+                }`}
+              >
+                <UserPlus className="w-4 h-4" /> Cadastrar Cliente
+              </button>
+            )}
+
+            {isRhAccess && (
               <button
                 onClick={() => setActiveTab('rh')}
                 className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-3 transition-colors ${
@@ -835,7 +838,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
               </button>
             )}
 
-            {isTotalAccess && (
+            {isFinanceiroAccess && (
               <button
                 onClick={() => setActiveTab('planos')}
                 className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-3 transition-colors ${
@@ -846,7 +849,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
               </button>
             )}
 
-            {(isTotalAccess || normalizedAccess === 'FINANCEIRO') && (
+            {isFinanceiroAccess && (
               <button
                 onClick={() => setActiveTab('financeiro')}
                 className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-3 transition-colors ${
