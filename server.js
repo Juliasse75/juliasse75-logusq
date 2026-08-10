@@ -518,7 +518,9 @@ app.post('/api/auth/login', async (req, res) => {
     // Login bem-sucedido: Reseta contador de tentativas falhas
     resetLoginAttempts(cleanEmail);
 
-    // Retorna dados do usuário autenticado de forma profissional
+    const isMasterOrTotal = user.perfil === 'MASTER' || (user.nivel_acesso && String(user.nivel_acesso).toUpperCase() === 'TOTAL');
+
+    // Retorna dados do usuário autenticado de forma profissional com contexto de administrador
     res.json({
       success: true,
       user: {
@@ -528,6 +530,8 @@ app.post('/api/auth/login', async (req, res) => {
         empresa: user.empresa,
         veiculo: user.veiculo,
         nivelAcesso: user.nivel_acesso || 'TOTAL',
+        isMasterOrTotal: isMasterOrTotal,
+        isAdmin: isMasterOrTotal,
         criadoEm: user.criado_em
       }
     });
@@ -575,7 +579,7 @@ app.post('/api/auth/change-password', async (req, res) => {
 
 // Pull Sync: Carrega todos os dados do banco Supabase para hidratar o LocalStorage do cliente
 app.get('/api/sync/pull', async (req, res) => {
-  const { email, perfil } = req.query;
+  const { email, perfil, nivelAcesso } = req.query;
 
   if (!supabase) {
     return res.status(503).json({ error: 'DATABASE_OFFLINE', message: 'Sincronização de dados indisponível sem conexão com o banco de dados.' });
@@ -585,7 +589,21 @@ app.get('/api/sync/pull', async (req, res) => {
   }
 
   try {
-    console.log(`📥 SYNC PULL: Sincronizando dados para ${email} (${perfil})`);
+    // 0. Verifica se o usuário possui perfil MASTER ou nível de acesso TOTAL (Exceção de Admin/Master)
+    let isMasterOrTotal = (perfil === 'MASTER') || (nivelAcesso && String(nivelAcesso).toUpperCase() === 'TOTAL');
+
+    if (!isMasterOrTotal && email) {
+      const { data: uFound } = await supabase
+        .from('usuarios')
+        .select('perfil, nivel_acesso')
+        .ilike('email', email)
+        .maybeSingle();
+      if (uFound && (uFound.perfil === 'MASTER' || (uFound.nivel_acesso && String(uFound.nivel_acesso).toUpperCase() === 'TOTAL'))) {
+        isMasterOrTotal = true;
+      }
+    }
+
+    console.log(`📥 SYNC PULL: Sincronizando dados para ${email} (Perfil: ${perfil}, Exceção Master/Total: ${isMasterOrTotal})`);
 
     let payload = {
       usuarios: [],
@@ -598,8 +616,8 @@ app.get('/api/sync/pull', async (req, res) => {
       rotasAtivas: {}
     };
 
-    // 1. Clientes & Usuários (Se for master, pega todos, se for cliente pega o seu)
-    if (perfil === 'MASTER') {
+    // 1. Clientes, Usuários, Logs e Mensagens Suporte (Acesso total para Master ou Nível Total)
+    if (isMasterOrTotal) {
       const { data: users } = await supabase.from('usuarios').select('*');
       const { data: clients } = await supabase.from('clientes').select('*');
       const { data: logs } = await supabase.from('auditoria_logs').select('*').order('data_hora', { ascending: false });
@@ -622,18 +640,19 @@ app.get('/api/sync/pull', async (req, res) => {
       payload.mensagensSuporte = msgs || [];
     }
 
-    // 2. Se for CLIENTE ou se puxarmos escopo específico, carregamos frotas, motoristas, entregas e rotas
+    // 2. Se for CLIENTE/MOTORISTA normal, busca do seu tenant. Se for Master/Total, traz globalmente.
     let queryEmail = email;
-    if (perfil === 'MOTORISTA') {
-      // Find associated client email
+    if (!isMasterOrTotal && perfil === 'MOTORISTA') {
       const { data: driver } = await supabase.from('condutores').select('cliente_email').eq('email', email).single();
       if (driver) {
         queryEmail = driver.cliente_email;
       }
     }
 
-    // Carrega veículos do cliente
-    const { data: veiculos } = await supabase.from('veiculos').select('*').eq('cliente_email', queryEmail);
+    // Carrega veículos
+    let veiculosQuery = supabase.from('veiculos').select('*');
+    if (!isMasterOrTotal) veiculosQuery = veiculosQuery.eq('cliente_email', queryEmail);
+    const { data: veiculos } = await veiculosQuery;
     payload.veiculos = (veiculos || []).map(v => ({
       idVeiculo: v.id_veiculo,
       placa: v.placa,
@@ -649,8 +668,10 @@ app.get('/api/sync/pull', async (req, res) => {
       tipoCombustivel: v.tipo_combustivel || v.tipoCombustivel || 'Flex'
     }));
 
-    // Carrega condutores do cliente
-    const { data: condutores } = await supabase.from('condutores').select('*').eq('cliente_email', queryEmail);
+    // Carrega condutores
+    let condutoresQuery = supabase.from('condutores').select('*');
+    if (!isMasterOrTotal) condutoresQuery = condutoresQuery.eq('cliente_email', queryEmail);
+    const { data: condutores } = await condutoresQuery;
     payload.condutores = (condutores || []).map(c => ({
       id: c.id,
       nome: c.nome,
@@ -667,8 +688,10 @@ app.get('/api/sync/pull', async (req, res) => {
       clienteEmail: c.cliente_email
     }));
 
-    // Carrega entregas do cliente
-    const { data: entregas } = await supabase.from('entregas').select('*').eq('cliente_email', queryEmail);
+    // Carrega entregas
+    let entregasQuery = supabase.from('entregas').select('*');
+    if (!isMasterOrTotal) entregasQuery = entregasQuery.eq('cliente_email', queryEmail);
+    const { data: entregas } = await entregasQuery;
     payload.entregas = (entregas || []).map(e => ({
       id: e.id,
       chave: e.chave,
@@ -691,15 +714,18 @@ app.get('/api/sync/pull', async (req, res) => {
     }));
 
     // Carrega rotas ativas
-    const { data: activeRouteRecord } = await supabase
-      .from('rotas_ativas')
-      .select('rotas_json')
-      .eq('cliente_email', queryEmail)
-      .order('id', { ascending: false })
-      .limit(1);
+    let rotasQuery = supabase.from('rotas_ativas').select('rotas_json');
+    if (!isMasterOrTotal) {
+      rotasQuery = rotasQuery.eq('cliente_email', queryEmail).order('id', { ascending: false }).limit(1);
+    }
+    const { data: activeRouteRecords } = await rotasQuery;
 
-    if (activeRouteRecord && activeRouteRecord.length > 0) {
-      payload.rotasAtivas = activeRouteRecord[0].rotas_json;
+    if (activeRouteRecords && activeRouteRecords.length > 0) {
+      if (isMasterOrTotal) {
+        payload.rotasAtivas = activeRouteRecords.reduce((acc, curr) => ({ ...acc, ...(curr.rotas_json || {}) }), {});
+      } else {
+        payload.rotasAtivas = activeRouteRecords[0].rotas_json;
+      }
     }
 
     res.json({ success: true, mode: 'supabase', data: payload });
