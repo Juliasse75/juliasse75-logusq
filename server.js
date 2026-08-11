@@ -590,21 +590,21 @@ app.get('/api/sync/pull', async (req, res) => {
   }
 
   try {
-    // 0. Verifica se o usuário possui perfil MASTER/COLABORADOR ou nível de acesso interno
-    let isMasterOrTotal = (perfil === 'MASTER' || perfil === 'COLABORADOR') || (nivelAcesso && ['TOTAL', 'RH', 'FINANCEIRO', 'ACESSO TOTAL'].includes(String(nivelAcesso).toUpperCase()));
+    // 0. Verifica se o usuário possui perfil MASTER ou COLABORADOR (gestão global do sistema)
+    let isMasterAdmin = (perfil === 'MASTER' || perfil === 'COLABORADOR');
 
-    if (!isMasterOrTotal && email) {
+    if (!isMasterAdmin && email) {
       const { data: uFound } = await supabase
         .from('usuarios')
-        .select('perfil, nivel_acesso')
+        .select('perfil')
         .ilike('email', email)
         .maybeSingle();
-      if (uFound && (uFound.perfil === 'MASTER' || uFound.perfil === 'COLABORADOR' || (uFound.nivel_acesso && ['TOTAL', 'RH', 'FINANCEIRO', 'ACESSO TOTAL'].includes(String(uFound.nivel_acesso).toUpperCase())))) {
-        isMasterOrTotal = true;
+      if (uFound && (uFound.perfil === 'MASTER' || uFound.perfil === 'COLABORADOR')) {
+        isMasterAdmin = true;
       }
     }
 
-    console.log(`📥 SYNC PULL: Sincronizando dados para ${email} (Perfil: ${perfil}, Exceção Master/Total: ${isMasterOrTotal})`);
+    console.log(`📥 SYNC PULL: Sincronizando dados para ${email} (Perfil: ${perfil}, Master Admin: ${isMasterAdmin})`);
 
     let payload = {
       usuarios: [],
@@ -617,8 +617,8 @@ app.get('/api/sync/pull', async (req, res) => {
       rotasAtivas: {}
     };
 
-    // 1. Clientes, Usuários, Logs e Mensagens Suporte (Acesso total para Master ou Nível Total)
-    if (isMasterOrTotal) {
+    // 1. Clientes, Usuários, Logs e Mensagens Suporte (Acesso total somente para MASTER/COLABORADOR)
+    if (isMasterAdmin) {
       const { data: users } = await supabase.from('usuarios').select('*');
       const { data: clients } = await supabase.from('clientes').select('*');
       const { data: logs } = await supabase.from('auditoria_logs').select('*').order('data_hora', { ascending: false });
@@ -641,9 +641,9 @@ app.get('/api/sync/pull', async (req, res) => {
       payload.mensagensSuporte = msgs || [];
     }
 
-    // 2. Se for CLIENTE/MOTORISTA normal, busca do seu tenant. Se for Master/Total, traz globalmente.
+    // 2. Se for CLIENTE/MOTORISTA normal, busca do seu tenant. Se for Master Admin, traz globalmente.
     let queryEmail = email;
-    if (!isMasterOrTotal && perfil === 'MOTORISTA') {
+    if (!isMasterAdmin && perfil === 'MOTORISTA') {
       const { data: driver } = await supabase.from('condutores').select('cliente_email').eq('email', email).single();
       if (driver) {
         queryEmail = driver.cliente_email;
@@ -652,7 +652,7 @@ app.get('/api/sync/pull', async (req, res) => {
 
     // Carrega veículos
     let veiculosQuery = supabase.from('veiculos').select('*');
-    if (!isMasterOrTotal) veiculosQuery = veiculosQuery.eq('cliente_email', queryEmail);
+    if (!isMasterAdmin) veiculosQuery = veiculosQuery.eq('cliente_email', queryEmail);
     const { data: veiculos } = await veiculosQuery;
     payload.veiculos = (veiculos || []).map(v => ({
       idVeiculo: v.id_veiculo,
@@ -666,12 +666,13 @@ app.get('/api/sync/pull', async (req, res) => {
       capacidadeKg: v.capacidade_kg,
       status: v.status,
       defeito: v.defeito,
-      tipoCombustivel: v.tipo_combustivel || v.tipoCombustivel || 'Flex'
+      tipoCombustivel: v.tipo_combustivel || v.tipoCombustivel || 'Flex',
+      clienteEmail: v.cliente_email
     }));
 
     // Carrega condutores
     let condutoresQuery = supabase.from('condutores').select('*');
-    if (!isMasterOrTotal) condutoresQuery = condutoresQuery.eq('cliente_email', queryEmail);
+    if (!isMasterAdmin) condutoresQuery = condutoresQuery.eq('cliente_email', queryEmail);
     const { data: condutores } = await condutoresQuery;
     payload.condutores = (condutores || []).map(c => ({
       id: c.id,
@@ -691,7 +692,7 @@ app.get('/api/sync/pull', async (req, res) => {
 
     // Carrega entregas
     let entregasQuery = supabase.from('entregas').select('*');
-    if (!isMasterOrTotal) entregasQuery = entregasQuery.eq('cliente_email', queryEmail);
+    if (!isMasterAdmin) entregasQuery = entregasQuery.eq('cliente_email', queryEmail);
     const { data: entregas } = await entregasQuery;
     payload.entregas = (entregas || []).map(e => ({
       id: e.id,
@@ -716,13 +717,13 @@ app.get('/api/sync/pull', async (req, res) => {
 
     // Carrega rotas ativas
     let rotasQuery = supabase.from('rotas_ativas').select('rotas_json');
-    if (!isMasterOrTotal) {
+    if (!isMasterAdmin) {
       rotasQuery = rotasQuery.eq('cliente_email', queryEmail).order('id', { ascending: false }).limit(1);
     }
     const { data: activeRouteRecords } = await rotasQuery;
 
     if (activeRouteRecords && activeRouteRecords.length > 0) {
-      if (isMasterOrTotal) {
+      if (isMasterAdmin) {
         payload.rotasAtivas = activeRouteRecords.reduce((acc, curr) => ({ ...acc, ...(curr.rotas_json || {}) }), {});
       } else {
         payload.rotasAtivas = activeRouteRecords[0].rotas_json;
@@ -758,7 +759,11 @@ app.post('/api/sync/push', async (req, res) => {
     }
 
     if (table === 'veiculos') {
-      const vehiclePlatesToKeep = records.map(v => v.placa).filter(Boolean);
+      const userVehicles = records.filter(v => {
+        const vEmail = (v.clienteEmail || v.cliente_email || '').toLowerCase().trim();
+        return !vEmail || vEmail === queryEmail.toLowerCase().trim();
+      });
+      const vehiclePlatesToKeep = userVehicles.map(v => v.placa).filter(Boolean);
       const { data: dbVehicles } = await supabase.from('veiculos').select('placa').eq('cliente_email', queryEmail);
       if (dbVehicles && dbVehicles.length > 0) {
         const platesToDelete = dbVehicles
@@ -767,11 +772,11 @@ app.post('/api/sync/push', async (req, res) => {
         if (platesToDelete.length > 0) {
           await supabase.from('veiculos').delete().eq('cliente_email', queryEmail).in('placa', platesToDelete);
         }
-      } else if (!records || records.length === 0) {
+      } else if (!userVehicles || userVehicles.length === 0) {
         await supabase.from('veiculos').delete().eq('cliente_email', queryEmail);
       }
 
-      for (const v of records) {
+      for (const v of userVehicles) {
         await supabase.from('veiculos').upsert({
           id_veiculo: v.idVeiculo,
           placa: v.placa,
@@ -789,7 +794,11 @@ app.post('/api/sync/push', async (req, res) => {
         });
       }
     } else if (table === 'condutores') {
-      const driverEmailsToKeep = records.map(c => c.email.toLowerCase()).filter(Boolean);
+      const userDrivers = records.filter(c => {
+        const cEmail = (c.clienteEmail || c.cliente_email || '').toLowerCase().trim();
+        return !cEmail || cEmail === queryEmail.toLowerCase().trim();
+      });
+      const driverEmailsToKeep = userDrivers.map(c => c.email.toLowerCase()).filter(Boolean);
       const { data: dbDrivers } = await supabase.from('condutores').select('email').eq('cliente_email', queryEmail);
       
       if (dbDrivers && dbDrivers.length > 0) {
@@ -803,7 +812,7 @@ app.post('/api/sync/push', async (req, res) => {
           }
           await supabase.from('condutores').delete().eq('cliente_email', queryEmail).in('email', driversToDelete);
         }
-      } else if (!records || records.length === 0) {
+      } else if (!userDrivers || userDrivers.length === 0) {
         const { data: dbDriversToDelete } = await supabase.from('condutores').select('email').eq('cliente_email', queryEmail);
         if (dbDriversToDelete && dbDriversToDelete.length > 0) {
           for (const d of dbDriversToDelete) {
@@ -813,7 +822,7 @@ app.post('/api/sync/push', async (req, res) => {
         await supabase.from('condutores').delete().eq('cliente_email', queryEmail);
       }
 
-      for (const c of records) {
+      for (const c of userDrivers) {
         // Ensure user exists in usuarios first due to foreign key references
         const { data: existingUser } = await supabase.from('usuarios').select('email').eq('email', c.email).maybeSingle();
         if (!existingUser) {

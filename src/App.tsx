@@ -71,13 +71,18 @@ export default function App() {
             if (Array.isArray(d.veiculos)) {
               const currentLocalVehicles = dbRepo.getVeiculos();
               const cleanUserEmail = currentUserEmail.toLowerCase().trim();
+              const isMasterRole = userRole === 'MASTER' || userRole === 'COLABORADOR';
+
               const otherClientsVehicles = currentLocalVehicles.filter(v => {
                 const vEmail = ((v as any).clienteEmail || '').toLowerCase().trim();
                 return vEmail && vEmail !== cleanUserEmail;
               });
 
-              const pulled = d.veiculos.map((v: any) => ({ ...v, clienteEmail: cleanUserEmail }));
-              const updatedVehicles = [...otherClientsVehicles, ...pulled];
+              const pulled = d.veiculos.map((v: any) => ({
+                ...v,
+                clienteEmail: isMasterRole ? (v.clienteEmail || v.cliente_email || '') : cleanUserEmail
+              }));
+              const updatedVehicles = isMasterRole ? pulled : [...otherClientsVehicles, ...pulled];
               localStorage.setItem('logusq_veiculos', JSON.stringify(updatedVehicles));
             }
 
@@ -85,13 +90,18 @@ export default function App() {
             if (Array.isArray(d.condutores)) {
               const currentLocalDrivers = dbRepo.getCondutoresRaw();
               const cleanUserEmail = currentUserEmail.toLowerCase().trim();
+              const isMasterRole = userRole === 'MASTER' || userRole === 'COLABORADOR';
+
               const otherClientsDrivers = currentLocalDrivers.filter(c => {
                 const cEmail = ((c as any).clienteEmail || '').toLowerCase().trim();
                 return cEmail && cEmail !== cleanUserEmail;
               });
 
-              const pulled = d.condutores.map((c: any) => ({ ...c, clienteEmail: cleanUserEmail }));
-              const updatedDrivers = [...otherClientsDrivers, ...pulled];
+              const pulled = d.condutores.map((c: any) => ({
+                ...c,
+                clienteEmail: isMasterRole ? (c.clienteEmail || c.cliente_email || '') : cleanUserEmail
+              }));
+              const updatedDrivers = isMasterRole ? pulled : [...otherClientsDrivers, ...pulled];
               localStorage.setItem('logusq_condutores', JSON.stringify(updatedDrivers));
             }
 
