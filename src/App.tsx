@@ -71,7 +71,7 @@ export default function App() {
             if (Array.isArray(d.veiculos)) {
               const currentLocalVehicles = dbRepo.getVeiculos();
               const cleanUserEmail = currentUserEmail.toLowerCase().trim();
-              const isMasterRole = userRole === 'MASTER' || userRole === 'COLABORADOR';
+              const isMasterRole = user.perfil === 'MASTER' || user.perfil === 'COLABORADOR';
 
               const otherClientsVehicles = currentLocalVehicles.filter(v => {
                 const vEmail = ((v as any).clienteEmail || '').toLowerCase().trim();
@@ -90,7 +90,7 @@ export default function App() {
             if (Array.isArray(d.condutores)) {
               const currentLocalDrivers = dbRepo.getCondutoresRaw();
               const cleanUserEmail = currentUserEmail.toLowerCase().trim();
-              const isMasterRole = userRole === 'MASTER' || userRole === 'COLABORADOR';
+              const isMasterRole = user.perfil === 'MASTER' || user.perfil === 'COLABORADOR';
 
               const otherClientsDrivers = currentLocalDrivers.filter(c => {
                 const cEmail = ((c as any).clienteEmail || '').toLowerCase().trim();
