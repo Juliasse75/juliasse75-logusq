@@ -636,12 +636,17 @@ app.get('/api/sync/pull', async (req, res) => {
             }
           } catch (e) {}
         }
+        const cleanOpEmail = (l.operador_email || l.operadorEmail || '').toLowerCase().trim();
+        const opUser = (users || []).find(u => (u.email || '').toLowerCase().trim() === cleanOpEmail);
+        const opNome = l.operador_nome || l.operadorNome || opUser?.nome || (cleanOpEmail === 'ceo@logusq.com.br' ? 'Diretoria CEO' : cleanOpEmail || 'Operador LogusQ');
+        const opCargo = l.operador_cargo || l.operadorCargo || opUser?.nivelAcesso || (cleanOpEmail === 'ceo@logusq.com.br' ? 'CEO Master' : 'Gestor');
+
         return {
           id: l.id,
           dataHora: formattedDate || l.data_hora || new Date().toLocaleString('pt-BR'),
           operadorEmail: l.operador_email || l.operadorEmail || '',
-          operadorNome: l.operador_nome || l.operadorNome || l.operador_email || 'Operador LogusQ',
-          operadorCargo: l.operador_cargo || l.operadorCargo || 'Operador',
+          operadorNome: opNome,
+          operadorCargo: opCargo,
           acao: l.acao || 'Ação do Sistema',
           descricao: l.descricao || '',
           modulo: l.modulo || 'Geral',
@@ -924,13 +929,10 @@ app.post('/api/sync/push', async (req, res) => {
             id: log.id,
             data_hora: rawDate,
             operador_email: log.operador_email || log.operadorEmail || email,
-            operador_nome: log.operador_nome || log.operadorNome || 'Operador LogusQ',
-            operador_cargo: log.operador_cargo || log.operadorCargo || 'Operador',
             acao: log.acao,
             descricao: log.descricao || '',
             modulo: log.modulo || 'Geral',
-            status: log.status || 'Sucesso',
-            detalhes: typeof log.detalhes === 'object' ? JSON.stringify(log.detalhes) : (log.detalhes || null)
+            status: log.status || 'Sucesso'
           });
           if (upsertErr) {
             console.error('Erro ao salvar auditoria_logs no Supabase:', upsertErr);
