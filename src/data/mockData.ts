@@ -1263,11 +1263,12 @@ export const dbRepo = {
 
   cadastrarVeiculo: (email: string, params: Partial<Veiculo>) => {
     const list = dbRepo.getVeiculos();
+    const cleanPlaca = (params.placa || 'AAA-0000').trim().toUpperCase();
     const novo: Veiculo = {
       id: `V-${Date.now()}-${Math.floor(Math.random() * 1000000)}`,
-      idVeiculo: params.idVeiculo || '',
-      placa: params.placa || '',
-      modelo: params.modelo || '',
+      idVeiculo: params.idVeiculo || `VEIC-${cleanPlaca.replace(/\W/g, '') || Math.floor(Math.random() * 9000 + 1000)}`,
+      placa: cleanPlaca,
+      modelo: params.modelo || 'Modelo Importado',
       fabricante: params.fabricante || '',
       anoFabricacao: params.anoFabricacao || '',
       anoModelo: params.anoFabricacao || '',

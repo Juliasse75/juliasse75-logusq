@@ -82,7 +82,16 @@ export default function App() {
                 ...v,
                 clienteEmail: isMasterRole ? (v.clienteEmail || v.cliente_email || '') : cleanUserEmail
               }));
-              const updatedVehicles = isMasterRole ? pulled : [...otherClientsVehicles, ...pulled];
+
+              const myLocalVehicles = currentLocalVehicles.filter(v => {
+                const vEmail = ((v as any).clienteEmail || '').toLowerCase().trim();
+                return !vEmail || vEmail === cleanUserEmail;
+              });
+              const pulledPlacas = new Set(pulled.map((v: any) => (v.placa || '').toUpperCase().trim()));
+              const pendingLocal = myLocalVehicles.filter(v => v.placa && !pulledPlacas.has(v.placa.toUpperCase().trim()));
+
+              const myMergedVehicles = [...pulled, ...pendingLocal];
+              const updatedVehicles = isMasterRole ? myMergedVehicles : [...otherClientsVehicles, ...myMergedVehicles];
               localStorage.setItem('logusq_veiculos', JSON.stringify(updatedVehicles));
             }
 
@@ -101,7 +110,16 @@ export default function App() {
                 ...c,
                 clienteEmail: isMasterRole ? (c.clienteEmail || c.cliente_email || '') : cleanUserEmail
               }));
-              const updatedDrivers = isMasterRole ? pulled : [...otherClientsDrivers, ...pulled];
+
+              const myLocalDrivers = currentLocalDrivers.filter(c => {
+                const cEmail = ((c as any).clienteEmail || '').toLowerCase().trim();
+                return !cEmail || cEmail === cleanUserEmail;
+              });
+              const pulledEmails = new Set(pulled.map((c: any) => (c.email || '').toLowerCase().trim()));
+              const pendingLocal = myLocalDrivers.filter(c => c.email && !pulledEmails.has(c.email.toLowerCase().trim()));
+
+              const myMergedDrivers = [...pulled, ...pendingLocal];
+              const updatedDrivers = isMasterRole ? myMergedDrivers : [...otherClientsDrivers, ...myMergedDrivers];
               localStorage.setItem('logusq_condutores', JSON.stringify(updatedDrivers));
             }
 

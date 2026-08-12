@@ -774,11 +774,34 @@ app.post('/api/sync/push', async (req, res) => {
       if (driver) queryEmail = driver.cliente_email;
     }
 
+function normalizeTipoVeiculo(tipoRaw) {
+  if (!tipoRaw) return 'Van';
+  const t = String(tipoRaw).toLowerCase().trim();
+  if (t.includes('moto')) return 'Motocicleta';
+  if (t.includes('picape') || t.includes('pickup') || t.includes('4x4') || t.includes('utilita') || t.includes('fiorino') || t.includes('kombi')) return 'Picape 4x4';
+  if (t.includes('van') || t.includes('furgao') || t.includes('furgão') || t.includes('vuc') || t.includes('3/4') || t.includes('bau') || t.includes('baú')) return 'Van';
+  if (t.includes('caminha') || t.includes('caminhão') || t.includes('truck') || t.includes('toco') || t.includes('carreta') || t.includes('bitrem') || t.includes('pesado')) return 'Caminhão Pesado';
+  if (t.includes('carro') || t.includes('leve') || t.includes('passeio')) return 'Carro Leve';
+  return 'Van';
+}
+
     if (table === 'veiculos') {
       const userVehicles = records.filter(v => {
         const vEmail = (v.clienteEmail || v.cliente_email || '').toLowerCase().trim();
         return !vEmail || vEmail === queryEmail.toLowerCase().trim();
       });
+
+      // Ensure user exists in usuarios first due to foreign key references
+      const { data: existingUser } = await supabase.from('usuarios').select('email').eq('email', queryEmail).maybeSingle();
+      if (!existingUser) {
+        await supabase.from('usuarios').insert({
+          email: queryEmail,
+          nome: queryEmail.split('@')[0],
+          perfil: 'CLIENTE',
+          nivel_acesso: 'COMPLETO'
+        });
+      }
+
       const vehiclePlatesToKeep = userVehicles.map(v => v.placa).filter(Boolean);
       const { data: dbVehicles } = await supabase.from('veiculos').select('placa').eq('cliente_email', queryEmail);
       if (dbVehicles && dbVehicles.length > 0) {
@@ -788,38 +811,47 @@ app.post('/api/sync/push', async (req, res) => {
         if (platesToDelete.length > 0) {
           await supabase.from('veiculos').delete().eq('cliente_email', queryEmail).in('placa', platesToDelete);
         }
-      } else if (!userVehicles || userVehicles.length === 0) {
-        await supabase.from('veiculos').delete().eq('cliente_email', queryEmail);
       }
 
       for (const v of userVehicles) {
+        const cleanPlaca = (v.placa || 'AAA-0000').trim().toUpperCase();
         await supabase.from('veiculos').upsert({
-          id_veiculo: v.idVeiculo,
-          placa: v.placa,
-          modelo: v.modelo,
+          id_veiculo: v.idVeiculo || `VEIC-${cleanPlaca.replace(/\W/g, '') || Math.floor(Math.random() * 9000 + 1000)}`,
+          placa: cleanPlaca,
+          modelo: v.modelo || 'Modelo Importado',
           fabricante: v.fabricante || null,
           ano_fabricacao: v.anoFabricacao || null,
           ano_modelo: v.anoModelo || null,
           cor: v.cor || null,
-          tipo: v.tipo,
-          capacidade_kg: v.capacidadeKg,
+          tipo: normalizeTipoVeiculo(v.tipo),
+          capacidade_kg: parseInt(v.capacidadeKg) || 1000,
           status: v.status || 'Disponivel',
           defeito: v.defeito || null,
-          tipo_combustivel: v.tipoCombustivel || 'Flex',
           cliente_email: queryEmail
-        });
+        }, { onConflict: 'placa' });
       }
     } else if (table === 'condutores') {
       const userDrivers = records.filter(c => {
         const cEmail = (c.clienteEmail || c.cliente_email || '').toLowerCase().trim();
         return !cEmail || cEmail === queryEmail.toLowerCase().trim();
       });
-      const driverEmailsToKeep = userDrivers.map(c => c.email.toLowerCase()).filter(Boolean);
+
+      const { data: existingUser } = await supabase.from('usuarios').select('email').eq('email', queryEmail).maybeSingle();
+      if (!existingUser) {
+        await supabase.from('usuarios').insert({
+          email: queryEmail,
+          nome: queryEmail.split('@')[0],
+          perfil: 'CLIENTE',
+          nivel_acesso: 'COMPLETO'
+        });
+      }
+
+      const driverEmailsToKeep = userDrivers.map(c => (c.email || '').toLowerCase()).filter(Boolean);
       const { data: dbDrivers } = await supabase.from('condutores').select('email').eq('cliente_email', queryEmail);
       
       if (dbDrivers && dbDrivers.length > 0) {
         const driversToDelete = dbDrivers
-          .map(d => d.email.toLowerCase())
+          .map(d => (d.email || '').toLowerCase())
           .filter(emailToDelete => emailToDelete && !driverEmailsToKeep.includes(emailToDelete));
         
         if (driversToDelete.length > 0) {
@@ -828,28 +860,21 @@ app.post('/api/sync/push', async (req, res) => {
           }
           await supabase.from('condutores').delete().eq('cliente_email', queryEmail).in('email', driversToDelete);
         }
-      } else if (!userDrivers || userDrivers.length === 0) {
-        const { data: dbDriversToDelete } = await supabase.from('condutores').select('email').eq('cliente_email', queryEmail);
-        if (dbDriversToDelete && dbDriversToDelete.length > 0) {
-          for (const d of dbDriversToDelete) {
-            await supabase.from('usuarios').delete().eq('email', d.email);
-          }
-        }
-        await supabase.from('condutores').delete().eq('cliente_email', queryEmail);
       }
 
       for (const c of userDrivers) {
-        // Ensure user exists in usuarios first due to foreign key references
-        const { data: existingUser } = await supabase.from('usuarios').select('email').eq('email', c.email).maybeSingle();
-        if (!existingUser) {
+        if (!c.email) continue;
+        const cleanDriverEmail = c.email.toLowerCase().trim();
+        const { data: existingDriverUser } = await supabase.from('usuarios').select('email').eq('email', cleanDriverEmail).maybeSingle();
+        if (!existingDriverUser) {
           let finalHash = c.senha || 'MotoristaLog@123';
           if (finalHash && !finalHash.startsWith('$2')) {
             const salt = bcrypt.genSaltSync(10);
             finalHash = bcrypt.hashSync(finalHash, salt);
           }
           await supabase.from('usuarios').insert({
-            email: c.email,
-            nome: c.nome,
+            email: cleanDriverEmail,
+            nome: c.nome || 'Motorista',
             perfil: 'MOTORISTA',
             veiculo: c.veiculo || null,
             nivel_acesso: 'PARCIAL',
@@ -857,28 +882,39 @@ app.post('/api/sync/push', async (req, res) => {
           });
         }
         await supabase.from('condutores').upsert({
-          id: c.id,
-          nome: c.nome,
-          cpf: c.cpf,
+          id: c.id || `COND-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          nome: c.nome || 'Motorista',
+          cpf: c.cpf || '000.000.000-00',
           rg: c.rg || null,
           nascimento: c.nascimento || null,
           telefone: c.telefone || null,
-          email: c.email,
-          cnh: c.cnh,
-          categoria_cnh: c.categoriaCnh,
-          venc_cnh: c.vencCnh,
-          veiculo: c.veiculo || '',
+          email: cleanDriverEmail,
+          cnh: c.cnh || null,
+          categoria_cnh: c.categoriaCnh || c.categoria_cnh || null,
+          venc_cnh: c.vencCnh || c.venc_cnh || null,
+          veiculo: c.veiculo || null,
           status: c.status || 'Ativo',
           cliente_email: queryEmail
-        });
+        }, { onConflict: 'email' });
       }
     } else if (table === 'entregas') {
+      const { data: existingUser } = await supabase.from('usuarios').select('email').eq('email', queryEmail).maybeSingle();
+      if (!existingUser) {
+        await supabase.from('usuarios').insert({
+          email: queryEmail,
+          nome: queryEmail.split('@')[0],
+          perfil: 'CLIENTE',
+          nivel_acesso: 'COMPLETO'
+        });
+      }
+
       for (const e of records) {
+        const cleanChave = e.chave || e.id || `ENT-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
         await supabase.from('entregas').upsert({
-          id: e.id,
-          chave: e.chave,
-          cliente: e.cliente,
-          endereco: e.endereco,
+          chave: cleanChave,
+          id: e.id || cleanChave,
+          cliente: e.cliente || e.clienteDestino || 'Cliente Destino',
+          endereco: e.endereco || 'Endereço Indefinido',
           endereco_coleta: e.enderecoColeta || null,
           ponto_referencia: e.pontoReferencia || null,
           telefone: e.telefone || null,
@@ -886,15 +922,15 @@ app.post('/api/sync/push', async (req, res) => {
           nota_fiscal: e.notaFiscal || null,
           foto_comprovante: e.fotoComprovante || null,
           data_entregue: e.dataEntregue || null,
-          latitude: e.latitude,
-          longitude: e.longitude,
-          peso_mercadoria_kg: e.pesoMercadoriaKg || 10,
+          latitude: parseFloat(e.latitude) || 0,
+          longitude: parseFloat(e.longitude) || 0,
+          peso_mercadoria_kg: parseFloat(e.pesoMercadoriaKg || e.peso_mercadoria_kg) || 10,
           tipo_operacao: e.tipoOperacao || 'Entrega',
           status: e.status || 'Pendente',
-          observacao: e.observacao || null,
-          motorista_nome: e.motoristaNome || null,
+          observacao: e.observacao || e.observacoes || null,
+          motorista_nome: e.motoristaNome || e.motoristaAtribuido || null,
           cliente_email: queryEmail
-        });
+        }, { onConflict: 'chave' });
       }
     } else if (table === 'rotas_ativas') {
       // Rotas ativas é salva como um único documento JSON por cliente
