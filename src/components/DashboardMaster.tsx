@@ -455,6 +455,12 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
     }
 
     if (editingColabId) {
+      // Find old collaborator state before updating
+      const oldCol = colaboradores.find(c => c.idColaborador === editingColabId);
+      const oldSalario = oldCol ? oldCol.salarioBase : undefined;
+      const newSalario = cSalarioBase !== '' && cSalarioBase !== null && cSalarioBase !== undefined ? Number(cSalarioBase) : undefined;
+      const isSalarioChanged = oldSalario !== newSalario && (oldSalario !== undefined || newSalario !== undefined);
+
       // Edit mode
       dbRepo.editarColaborador(editingColabId, {
         nome: cNome,
@@ -465,7 +471,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
         cargo: cCargo,
         regime: cRegime,
         nivelAcesso: cAccess as any,
-        salarioBase: cSalarioBase !== '' ? Number(cSalarioBase) : undefined,
+        salarioBase: newSalario,
         cep: cCep,
         endereco: cEndereco,
         numero: cNumero,
@@ -474,19 +480,53 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
         cidade: cCidade,
         estado: cEstado
       }, cSenha);
-      dbRepo.registrarLog(
-        userEmail,
-        activeOperator.nome,
-        'Atualização de Colaborador',
-        `Atualizou as informações cadastrais e permissões do colaborador "${cNome}" (${cEmail}).`,
-        'RH',
-        'Sucesso',
-        JSON.stringify({ idColaborador: editingColabId, nome: cNome, cargo: cCargo, nivelAcesso: cAccess, salarioBase: cSalarioBase })
-      );
+
+      const oldSalStr = (oldSalario !== undefined && oldSalario !== null && !isNaN(Number(oldSalario))) 
+        ? `R$ ${Number(oldSalario).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+        : 'não definido';
+      const newSalStr = (newSalario !== undefined && newSalario !== null && !isNaN(Number(newSalario))) 
+        ? `R$ ${Number(newSalario).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+        : 'não definido';
+
+      if (isSalarioChanged) {
+        dbRepo.registrarLog(
+          userEmail,
+          activeOperator.nome,
+          'Alteração de Salário',
+          `Alterou o salário base do colaborador "${cNome}" (${cEmail}) de ${oldSalStr} para ${newSalStr}.`,
+          'RH',
+          'Sucesso',
+          JSON.stringify({ 
+            idColaborador: editingColabId, 
+            nome: cNome, 
+            email: cEmail,
+            cargo: cCargo, 
+            nivelAcesso: cAccess, 
+            salarioAnterior: oldSalario, 
+            salarioNovo: newSalario 
+          })
+        );
+      } else {
+        dbRepo.registrarLog(
+          userEmail,
+          activeOperator.nome,
+          'Atualização de Colaborador',
+          `Atualizou as informações cadastrais e permissões do colaborador "${cNome}" (${cEmail}).`,
+          'RH',
+          'Sucesso',
+          JSON.stringify({ idColaborador: editingColabId, nome: cNome, cargo: cCargo, nivelAcesso: cAccess, salarioBase: newSalario })
+        );
+      }
+
       setEditingColabId(null);
       alert('Cadastro do colaborador atualizado com sucesso!');
     } else {
       // Create mode
+      const newSalario = cSalarioBase !== '' && cSalarioBase !== null && cSalarioBase !== undefined ? Number(cSalarioBase) : undefined;
+      const newSalStr = (newSalario !== undefined && newSalario !== null && !isNaN(Number(newSalario))) 
+        ? ` com salário base de R$ ${Number(newSalario).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+        : '';
+
       dbRepo.cadastrarColaborador({
         nome: cNome,
         cpf: cCpf,
@@ -494,7 +534,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
         telefone: cTel,
         regime: cRegime,
         cargo: cCargo,
-        salarioBase: cSalarioBase !== '' ? Number(cSalarioBase) : undefined,
+        salarioBase: newSalario,
         email: cEmail,
         senhaProvisoria: cSenha,
         nivelAcesso: cAccess,
@@ -510,10 +550,10 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
         userEmail,
         activeOperator.nome,
         'Cadastro de Colaborador',
-        `Cadastrou o novo colaborador interno "${cNome}" (${cEmail}) sob o regime ${cRegime}.`,
+        `Cadastrou o novo colaborador interno "${cNome}" (${cEmail}) sob o regime ${cRegime}${newSalStr}.`,
         'RH',
         'Sucesso',
-        JSON.stringify({ nome: cNome, cargo: cCargo, nivelAcesso: cAccess, regime: cRegime, salarioBase: cSalarioBase })
+        JSON.stringify({ nome: cNome, cargo: cCargo, nivelAcesso: cAccess, regime: cRegime, salarioBase: newSalario })
       );
       alert('Colaborador cadastrado com sucesso!');
     }

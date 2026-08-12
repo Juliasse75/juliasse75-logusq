@@ -309,6 +309,18 @@ const SEED_AUDITORIA: AuditLog[] = [
     descricao: 'Alterou as tarifas e limites do Plano Pro de R$ 999 para R$ 1099 mensais.',
     modulo: 'Financeiro',
     status: 'Sucesso'
+  },
+  {
+    id: 'AUD-007',
+    dataHora: '10/08/2026 14:10:00',
+    operadorEmail: 'anaclara@logusq.com.br',
+    operadorNome: 'Ana Clara Neves',
+    operadorCargo: 'Gerente de Customer Success',
+    acao: 'Alteração de Salário',
+    descricao: 'Alterou o salário base do colaborador "Pedro Henrique Martins" (pedro@logusq.com.br) de R$ 4.800,00 para R$ 5.500,00.',
+    modulo: 'RH',
+    status: 'Sucesso',
+    detalhes: '{"idColaborador": "LOGUS-RH-1002", "salarioAnterior": 4800, "salarioNovo": 5500}'
   }
 ];
 
@@ -1593,16 +1605,21 @@ export const dbRepo = {
     status: 'Sucesso' | 'Erro' = 'Sucesso',
     detalhes?: string
   ) => {
+    const cleanEmail = (operadorEmail || '').toLowerCase().trim();
     const logs = dbRepo.getLogs();
     const colaboradores = dbRepo.getColaboradores();
-    const colab = colaboradores.find(c => c.email === operadorEmail);
-    const cargo = colab ? colab.cargo : (operadorEmail === 'ceo@logusq.com.br' ? 'CEO Master' : 'Gestor Cliente');
+    const colab = colaboradores.find(c => (c.email || '').toLowerCase().trim() === cleanEmail);
+    const usuarios = dbRepo.getUsuarios();
+    const usr = usuarios.find(u => (u.email || '').toLowerCase().trim() === cleanEmail);
+
+    const resolvedNome = operadorNome || colab?.nome || usr?.nome || operadorEmail;
+    const cargo = colab ? colab.cargo : (usr?.nivelAcesso || (cleanEmail === 'ceo@logusq.com.br' ? 'CEO Master' : 'Gestor Cliente'));
     
     const novo: AuditLog = {
       id: `AUD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       dataHora: new Date().toLocaleString('pt-BR'),
-      operadorEmail,
-      operadorNome,
+      operadorEmail: operadorEmail || cleanEmail,
+      operadorNome: resolvedNome,
       operadorCargo: cargo,
       acao,
       descricao,

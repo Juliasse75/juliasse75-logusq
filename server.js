@@ -888,17 +888,31 @@ app.post('/api/sync/push', async (req, res) => {
       }, { onConflict: 'cliente_email' });
     } else if (table === 'auditoria_logs') {
       for (const log of records) {
+        let rawDate = log.data_hora || log.dataHora || new Date().toISOString();
+        if (typeof rawDate === 'string' && rawDate.includes('/')) {
+          try {
+            const parts = rawDate.split(',');
+            const dateParts = parts[0].trim().split('/');
+            if (dateParts.length === 3) {
+              const timePart = parts[1] ? parts[1].trim() : '00:00:00';
+              rawDate = `${dateParts[2]}-${dateParts[1].padStart(2, '0')}-${dateParts[0].padStart(2, '0')}T${timePart}`;
+            }
+          } catch (e) {
+            console.error('Erro ao converter data do log:', e);
+          }
+        }
+
         await supabase.from('auditoria_logs').upsert({
           id: log.id,
-          data_hora: log.dataHora || new Date().toISOString(),
-          operador_email: log.operadorEmail || email,
-          operador_nome: log.operadorNome || 'Operador LogusQ',
-          operador_cargo: log.operadorCargo || 'Operador',
+          data_hora: rawDate,
+          operador_email: log.operador_email || log.operadorEmail || email,
+          operador_nome: log.operador_nome || log.operadorNome || 'Operador LogusQ',
+          operador_cargo: log.operador_cargo || log.operadorCargo || 'Operador',
           acao: log.acao,
           descricao: log.descricao || '',
           modulo: log.modulo || 'Geral',
           status: log.status || 'Sucesso',
-          detalhes: log.detalhes || null
+          detalhes: typeof log.detalhes === 'object' ? JSON.stringify(log.detalhes) : (log.detalhes || null)
         });
       }
     } else if (table === 'mensagens_suporte') {
