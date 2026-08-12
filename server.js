@@ -626,18 +626,29 @@ app.get('/api/sync/pull', async (req, res) => {
       
       payload.usuarios = users || [];
       payload.clientes = clients || [];
-      payload.auditoriaLogs = (logs || []).map(l => ({
-        id: l.id,
-        dataHora: l.data_hora || l.dataHora || new Date().toISOString(),
-        operadorEmail: l.operador_email || l.operadorEmail || '',
-        operadorNome: l.operador_nome || l.operadorNome || l.operador_email || 'Operador LogusQ',
-        operadorCargo: l.operador_cargo || l.operadorCargo || 'Operador',
-        acao: l.acao || 'Ação do Sistema',
-        descricao: l.descricao || '',
-        modulo: l.modulo || 'Geral',
-        status: l.status || 'Sucesso',
-        detalhes: l.detalhes || null
-      }));
+      payload.auditoriaLogs = (logs || []).map(l => {
+        let formattedDate = l.data_hora;
+        if (l.data_hora && typeof l.data_hora === 'string' && (l.data_hora.includes('T') || l.data_hora.includes('-'))) {
+          try {
+            const d = new Date(l.data_hora);
+            if (!isNaN(d.getTime())) {
+              formattedDate = d.toLocaleString('pt-BR');
+            }
+          } catch (e) {}
+        }
+        return {
+          id: l.id,
+          dataHora: formattedDate || l.data_hora || new Date().toLocaleString('pt-BR'),
+          operadorEmail: l.operador_email || l.operadorEmail || '',
+          operadorNome: l.operador_nome || l.operadorNome || l.operador_email || 'Operador LogusQ',
+          operadorCargo: l.operador_cargo || l.operadorCargo || 'Operador',
+          acao: l.acao || 'Ação do Sistema',
+          descricao: l.descricao || '',
+          modulo: l.modulo || 'Geral',
+          status: l.status || 'Sucesso',
+          detalhes: typeof l.detalhes === 'object' ? JSON.stringify(l.detalhes) : (l.detalhes || null)
+        };
+      });
       payload.mensagensSuporte = msgs || [];
     }
 
@@ -891,29 +902,42 @@ app.post('/api/sync/push', async (req, res) => {
         let rawDate = log.data_hora || log.dataHora || new Date().toISOString();
         if (typeof rawDate === 'string' && rawDate.includes('/')) {
           try {
-            const parts = rawDate.split(',');
-            const dateParts = parts[0].trim().split('/');
+            const cleanStr = rawDate.replace(',', ' ').trim();
+            const tokens = cleanStr.split(/\s+/);
+            const dateStr = tokens[0];
+            const timeStr = tokens[1] || '00:00:00';
+            const dateParts = dateStr.split('/');
             if (dateParts.length === 3) {
-              const timePart = parts[1] ? parts[1].trim() : '00:00:00';
-              rawDate = `${dateParts[2]}-${dateParts[1].padStart(2, '0')}-${dateParts[0].padStart(2, '0')}T${timePart}`;
+              const day = dateParts[0].padStart(2, '0');
+              const month = dateParts[1].padStart(2, '0');
+              const year = dateParts[2];
+              rawDate = `${year}-${month}-${day}T${timeStr}`;
             }
           } catch (e) {
             console.error('Erro ao converter data do log:', e);
+            rawDate = new Date().toISOString();
           }
         }
 
-        await supabase.from('auditoria_logs').upsert({
-          id: log.id,
-          data_hora: rawDate,
-          operador_email: log.operador_email || log.operadorEmail || email,
-          operador_nome: log.operador_nome || log.operadorNome || 'Operador LogusQ',
-          operador_cargo: log.operador_cargo || log.operadorCargo || 'Operador',
-          acao: log.acao,
-          descricao: log.descricao || '',
-          modulo: log.modulo || 'Geral',
-          status: log.status || 'Sucesso',
-          detalhes: typeof log.detalhes === 'object' ? JSON.stringify(log.detalhes) : (log.detalhes || null)
-        });
+        try {
+          const { error: upsertErr } = await supabase.from('auditoria_logs').upsert({
+            id: log.id,
+            data_hora: rawDate,
+            operador_email: log.operador_email || log.operadorEmail || email,
+            operador_nome: log.operador_nome || log.operadorNome || 'Operador LogusQ',
+            operador_cargo: log.operador_cargo || log.operadorCargo || 'Operador',
+            acao: log.acao,
+            descricao: log.descricao || '',
+            modulo: log.modulo || 'Geral',
+            status: log.status || 'Sucesso',
+            detalhes: typeof log.detalhes === 'object' ? JSON.stringify(log.detalhes) : (log.detalhes || null)
+          });
+          if (upsertErr) {
+            console.error('Erro ao salvar auditoria_logs no Supabase:', upsertErr);
+          }
+        } catch (err) {
+          console.error('Exceção ao salvar auditoria_logs no Supabase:', err);
+        }
       }
     } else if (table === 'mensagens_suporte') {
       for (const msg of records) {

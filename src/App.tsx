@@ -111,7 +111,16 @@ export default function App() {
             if (d.rotasAtivas) {
               localStorage.setItem(`logusq_rotas_ativas_${currentUserEmail}`, JSON.stringify(d.rotasAtivas));
             }
-            if (d.auditoriaLogs) localStorage.setItem('logusq_auditoria', JSON.stringify(d.auditoriaLogs));
+            if (Array.isArray(d.auditoriaLogs)) {
+              const isMasterRole = user.perfil === 'MASTER' || user.perfil === 'COLABORADOR';
+              if (isMasterRole) {
+                const currentLocalLogs = dbRepo.getLogs();
+                const serverLogIds = new Set(d.auditoriaLogs.map((l: any) => l.id));
+                const pendingLocalLogs = currentLocalLogs.filter(l => !serverLogIds.has(l.id));
+                const combined = [...d.auditoriaLogs, ...pendingLocalLogs];
+                localStorage.setItem('logusq_auditoria', JSON.stringify(combined));
+              }
+            }
             if (d.mensagensSuporte) localStorage.setItem('logusq_mensagens', JSON.stringify(d.mensagensSuporte));
             
             // Dispatch sync event for active dashboards
