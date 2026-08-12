@@ -490,7 +490,11 @@ export function clusterAndOptimize(
     }
   }
 
-  // 2. Map back to Entregas and optimize each cluster with TSP starting from base CD Hub
+  // 2. Post-process: Balance cluster sizes so no driver is overloaded while others are idle
+  const targetAvg = Math.ceil(entregas.length / k);
+  equalizeClusterSizes(clusters, entregas, k, targetAvg);
+
+  // 3. Map back to Entregas and optimize each cluster with TSP starting from base CD Hub
   const result: Record<number, Entrega[]> = {};
   Object.entries(clusters).forEach(([cId, idxs]) => {
     if (idxs.length === 0) return;
