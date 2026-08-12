@@ -1679,44 +1679,71 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   };
 
   const handleOptimize = () => {
-    const selectedVehs = frota.filter(v => {
-      const hasDriver = condutores.some(c => c.veiculo === v.idVeiculo && c.status === 'Ativo');
+    // 1. Find vehicles matching available status and active drivers
+    let selectedVehs = frota.filter(v => {
+      const hasDriver = condutores.some(c => 
+        c.status === 'Ativo' && (
+          c.veiculo === v.idVeiculo || 
+          c.veiculo === v.placa || 
+          (c as any).placaVeiculo === v.placa || 
+          c.veiculo === `${v.modelo} (${v.placa})`
+        )
+      );
       return v.status === 'Disponivel' && hasDriver;
     });
+
+    // Fallback: If no vehicle has explicit driver link, but there are available vehicles
     if (selectedVehs.length === 0) {
-      alert('Nenhum veículo disponível com motorista ativo vinculado para roteirização! Por favor, vincule motoristas ativos aos veículos na aba "Gestão de Frota".');
+      const availableVehs = frota.filter(v => v.status === 'Disponivel');
+      if (availableVehs.length > 0) {
+        selectedVehs = availableVehs;
+      } else if (frota.length > 0) {
+        selectedVehs = frota;
+      }
+    }
+
+    if (selectedVehs.length === 0) {
+      alert('Nenhum veículo disponível na frota para roteirização! Por favor, cadastre ao menos um veículo na aba "Gestão de Frota".');
       return;
     }
+
     if (entregasPendentes.length === 0) {
-      alert('Nenhuma entrega pendente para roteirizar. Adicione entregas na primeira aba.');
+      alert('Nenhuma entrega pendente para roteirizar. Adicione ou importe um romaneio de entregas.');
       return;
     }
 
     // Call routing engine K-Means + TSP Clustering
     const clusters = clusterAndOptimize(entregasPendentes, selectedVehs.length, clientBaseCoords.lat, clientBaseCoords.lng);
 
-    // Map clusters to vehicles
+    // Map clusters to vehicles & drivers
     const routesObj: Record<string, { driver: string; driverEmail?: string; vehicle: string; path: Entrega[]; km: number; duration: number }> = {};
     const mapRoutesObj: Record<number, Entrega[]> = {};
 
+    const activeDrivers = condutores.filter(c => c.status === 'Ativo');
+
     Object.entries(clusters).forEach(([clusterId, points], idx) => {
       const v = selectedVehs[idx % selectedVehs.length];
+      
       // Find driver for this vehicle
-      const cond = condutores.find(c => c.veiculo === v.idVeiculo);
-      const driver = cond?.nome || 'Motorista Eventual';
+      const cond = condutores.find(c => 
+        c.veiculo === v.idVeiculo || 
+        c.veiculo === v.placa || 
+        (c as any).placaVeiculo === v.placa || 
+        c.veiculo === `${v.modelo} (${v.placa})`
+      ) || activeDrivers[idx % Math.max(1, activeDrivers.length)] || condutores[0];
+
+      const driver = cond?.nome || `Motorista ${idx + 1}`;
       const driverEmail = cond?.email || '';
       
-      // Calculate distances: simple simulated scale (each node average 2.5km)
       const distance = points.length * 3.2 + 4.0; 
-      // Calculate duration dynamically using learned service times (AI autonomous adjustment)
       const totalServiceTime = points.reduce((acc: number, p: Entrega) => acc + dbRepo.getAverageServiceTime(userEmail, p.cliente), 0);
-      const travelTime = points.length * 10 + 20; // 10 min average per delivery leg + 20 min overhead
+      const travelTime = points.length * 10 + 20; 
       const duration = totalServiceTime + travelTime;
 
       routesObj[`ROTA-${idx + 1}`] = {
         driver,
         driverEmail,
-        vehicle: `${v.modelo} (${v.placa})`,
+        vehicle: `${v.modelo || 'Veículo'} (${v.placa || 'Sem Placa'})`,
         path: points,
         km: parseFloat(distance.toFixed(1)),
         duration: Math.round(duration)
@@ -1728,7 +1755,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     setActiveRoutes(routesObj);
     setMapRoutes(mapRoutesObj);
     dbRepo.saveRotasAtivas(userEmail, routesObj);
-    alert(`Otimização concluída! ${Object.keys(routesObj).length} rotas geradas de forma científica.`);
+    alert(`Otimização concluída com sucesso! ${Object.keys(routesObj).length} rota(s) gerada(s).`);
   };
 
   const downloadDriverRouteTxt = (routeId: string) => {
@@ -2740,6 +2767,34 @@ Assinatura do Expedidor: _______________________________`;
                               <div>Distância: <span className="text-blue-400">{r.km} KM</span></div>
                               <div>Duração: <span className="text-slate-300">{Math.floor(r.duration / 60)}h {r.duration % 60}min</span></div>
                             </div>
+
+                            {/* Expandable stops details */}
+                            {r.path && r.path.length > 0 && (
+                              <details className="mt-3 border-t border-slate-800/80 pt-2 text-[10px]">
+                                <summary className="cursor-pointer text-slate-400 hover:text-white font-mono font-bold flex items-center justify-between select-none">
+                                  <span>Ver Clientes / Paradas ({r.path.length})</span>
+                                  <span className="text-[9px] text-violet-400">▼ Expandir</span>
+                                </summary>
+                                <div className="mt-2 space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                                  {r.path.map((p: any, idx: number) => (
+                                    <div key={p.id || p.chave || idx} className="bg-slate-900 border border-slate-800/80 p-2 rounded flex items-center justify-between gap-2">
+                                      <div className="min-w-0 flex-1">
+                                        <div className="font-bold text-white truncate">{idx + 1}. {p.cliente || 'Cliente'}</div>
+                                        <div className="text-[9px] text-slate-400 truncate">{p.endereco || 'Endereço'}</div>
+                                      </div>
+                                      <div className="text-right shrink-0">
+                                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${
+                                          p.tipoOperacao === 'Coleta' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                                        }`}>
+                                          {p.tipoOperacao || 'Entrega'}
+                                        </span>
+                                        <div className="text-[8px] font-mono text-slate-500 mt-0.5">{p.pesoMercadoriaKg || 0} kg</div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </details>
+                            )}
                           </div>
 
                           <div className="mt-4 pt-3 border-t border-slate-800/60 flex justify-between">

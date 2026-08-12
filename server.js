@@ -955,11 +955,18 @@ function normalizeTipoVeiculo(tipoRaw) {
         }
       }
     } else if (table === 'rotas_ativas') {
-      // Rotas ativas é salva como um único documento JSON por cliente
-      await supabase.from('rotas_ativas').upsert({
-        cliente_email: queryEmail,
-        rotas_json: records[0] // contains active routes map
-      }, { onConflict: 'cliente_email' });
+      try {
+        await supabase.from('rotas_ativas').delete().eq('cliente_email', queryEmail);
+        if (records && records.length > 0 && records[0] && Object.keys(records[0]).length > 0) {
+          const { error: rErr } = await supabase.from('rotas_ativas').insert({
+            cliente_email: queryEmail,
+            rotas_json: records[0] // contains active routes map
+          });
+          if (rErr) console.error('Aviso ao salvar rotas_ativas no Supabase:', rErr.message);
+        }
+      } catch (errRotas) {
+        console.error('Erro na gravação de rotas_ativas:', errRotas);
+      }
     } else if (table === 'auditoria_logs') {
       for (const log of records) {
         let rawDate = log.data_hora || log.dataHora || new Date().toISOString();

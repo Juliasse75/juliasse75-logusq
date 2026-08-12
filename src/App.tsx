@@ -153,7 +153,11 @@ export default function App() {
               localStorage.setItem(`logusq_entregas_${currentUserEmail}`, JSON.stringify(updatedEntregas));
             }
             if (d.rotasAtivas) {
-              localStorage.setItem(`logusq_rotas_ativas_${currentUserEmail}`, JSON.stringify(d.rotasAtivas));
+              const serverRotas = d.rotasAtivas;
+              const localRotas = dbRepo.getRotasAtivas(currentUserEmail);
+              if (Object.keys(serverRotas).length > 0 || Object.keys(localRotas).length === 0) {
+                localStorage.setItem(`logusq_rotas_ativas_${currentUserEmail}`, JSON.stringify(serverRotas));
+              }
             }
             if (Array.isArray(d.auditoriaLogs)) {
               const isMasterRole = user.perfil === 'MASTER' || user.perfil === 'COLABORADOR';
