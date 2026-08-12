@@ -124,7 +124,33 @@ export default function App() {
             }
 
             if (Array.isArray(d.entregas)) {
-              localStorage.setItem(`logusq_entregas_${currentUserEmail}`, JSON.stringify(d.entregas));
+              const cleanUserEmail = currentUserEmail.toLowerCase().trim();
+              const currentLocalEntregas = dbRepo.getEntregas(cleanUserEmail);
+              const isMasterRole = user.perfil === 'MASTER' || user.perfil === 'COLABORADOR';
+
+              const otherClientsEntregas = currentLocalEntregas.filter(e => {
+                const eEmail = ((e as any).clienteEmail || '').toLowerCase().trim();
+                return eEmail && eEmail !== cleanUserEmail;
+              });
+
+              const pulled = d.entregas.map((e: any) => ({
+                ...e,
+                clienteEmail: isMasterRole ? (e.clienteEmail || e.cliente_email || '') : cleanUserEmail
+              }));
+
+              const myLocalEntregas = currentLocalEntregas.filter(e => {
+                const eEmail = ((e as any).clienteEmail || '').toLowerCase().trim();
+                return !eEmail || eEmail === cleanUserEmail;
+              });
+              const pulledKeys = new Set(pulled.map((e: any) => e.id || e.chave));
+              const pendingLocal = myLocalEntregas.filter(e => {
+                const k = e.id || e.chave;
+                return k && !pulledKeys.has(k);
+              });
+
+              const myMergedEntregas = [...pulled, ...pendingLocal];
+              const updatedEntregas = isMasterRole ? myMergedEntregas : [...otherClientsEntregas, ...myMergedEntregas];
+              localStorage.setItem(`logusq_entregas_${currentUserEmail}`, JSON.stringify(updatedEntregas));
             }
             if (d.rotasAtivas) {
               localStorage.setItem(`logusq_rotas_ativas_${currentUserEmail}`, JSON.stringify(d.rotasAtivas));

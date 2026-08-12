@@ -722,13 +722,14 @@ app.get('/api/sync/pull', async (req, res) => {
       notaFiscal: e.nota_fiscal,
       fotoComprovante: e.foto_comprovante,
       dataEntregue: e.data_entregue,
-      latitude: parseFloat(e.latitude),
-      longitude: parseFloat(e.longitude),
+      latitude: isNaN(parseFloat(e.latitude)) || parseFloat(e.latitude) === 0 ? -19.9208 : parseFloat(e.latitude),
+      longitude: isNaN(parseFloat(e.longitude)) || parseFloat(e.longitude) === 0 ? -43.9378 : parseFloat(e.longitude),
       pesoMercadoriaKg: e.peso_mercadoria_kg,
       tipoOperacao: e.tipo_operacao,
       status: e.status,
       observacao: e.observacao,
-      motoristaNome: e.motorista_nome
+      motoristaNome: e.motorista_nome,
+      clienteEmail: e.cliente_email
     }));
 
     // Carrega rotas ativas
@@ -908,29 +909,50 @@ function normalizeTipoVeiculo(tipoRaw) {
         });
       }
 
-      for (const e of records) {
-        const cleanChave = e.chave || e.id || `ENT-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
-        await supabase.from('entregas').upsert({
-          chave: cleanChave,
-          id: e.id || cleanChave,
-          cliente: e.cliente || e.clienteDestino || 'Cliente Destino',
-          endereco: e.endereco || 'Endereço Indefinido',
-          endereco_coleta: e.enderecoColeta || null,
-          ponto_referencia: e.pontoReferencia || null,
-          telefone: e.telefone || null,
-          whatsapp: e.whatsapp || null,
-          nota_fiscal: e.notaFiscal || null,
-          foto_comprovante: e.fotoComprovante || null,
-          data_entregue: e.dataEntregue || null,
-          latitude: parseFloat(e.latitude) || 0,
-          longitude: parseFloat(e.longitude) || 0,
-          peso_mercadoria_kg: parseFloat(e.pesoMercadoriaKg || e.peso_mercadoria_kg) || 10,
-          tipo_operacao: e.tipoOperacao || 'Entrega',
-          status: e.status || 'Pendente',
-          observacao: e.observacao || e.observacoes || null,
-          motorista_nome: e.motoristaNome || e.motoristaAtribuido || null,
-          cliente_email: queryEmail
-        }, { onConflict: 'chave' });
+      if (!records || !Array.isArray(records) || records.length === 0) {
+        await supabase.from('entregas').delete().eq('cliente_email', queryEmail);
+      } else {
+        const idsToKeep = records.map(e => e.id || e.chave).filter(Boolean);
+        const { data: dbEntregas } = await supabase.from('entregas').select('id').eq('cliente_email', queryEmail);
+        if (dbEntregas && dbEntregas.length > 0) {
+          const idsToDelete = dbEntregas
+            .map(e => e.id)
+            .filter(id => id && !idsToKeep.includes(id));
+          if (idsToDelete.length > 0) {
+            await supabase.from('entregas').delete().eq('cliente_email', queryEmail).in('id', idsToDelete);
+          }
+        }
+
+        for (const e of records) {
+          const cleanId = e.id || e.chave || `ENT-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+          const cleanChave = e.chave || cleanId;
+          let lat = parseFloat(e.latitude);
+          let lng = parseFloat(e.longitude);
+          if (isNaN(lat) || lat === 0) lat = -19.9208;
+          if (isNaN(lng) || lng === 0) lng = -43.9378;
+
+          await supabase.from('entregas').upsert({
+            id: cleanId,
+            chave: cleanChave,
+            cliente: e.cliente || e.clienteDestino || 'Cliente Destino',
+            endereco: e.endereco || 'Endereço Indefinido',
+            endereco_coleta: e.enderecoColeta || null,
+            ponto_referencia: e.pontoReferencia || null,
+            telefone: e.telefone || null,
+            whatsapp: e.whatsapp || null,
+            nota_fiscal: e.notaFiscal || null,
+            foto_comprovante: e.fotoComprovante || null,
+            data_entregue: e.dataEntregue || null,
+            latitude: lat,
+            longitude: lng,
+            peso_mercadoria_kg: parseFloat(e.pesoMercadoriaKg || e.peso_mercadoria_kg) || 10,
+            tipo_operacao: e.tipoOperacao || 'Entrega',
+            status: e.status || 'Pendente',
+            observacao: e.observacao || e.observacoes || null,
+            motorista_nome: e.motoristaNome || e.motoristaAtribuido || null,
+            cliente_email: queryEmail
+          }, { onConflict: 'id' });
+        }
       }
     } else if (table === 'rotas_ativas') {
       // Rotas ativas é salva como um único documento JSON por cliente

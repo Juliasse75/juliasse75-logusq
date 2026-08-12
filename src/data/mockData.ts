@@ -927,11 +927,13 @@ export const dbRepo = {
 
   cadastrarEntrega: (email: string, params: Partial<Entrega>) => {
     const list = dbRepo.getEntregas(email);
+    const cleanChave = params.chave || params.id || `ROM-${Math.floor(Math.random() * 1000000)}`;
+    const cleanId = params.id || `ENT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const nova: Entrega = {
-      id: `ENT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      chave: params.chave || '',
-      cliente: params.cliente || '',
-      endereco: params.endereco || '',
+      id: cleanId,
+      chave: cleanChave,
+      cliente: params.cliente || 'Cliente Importado',
+      endereco: params.endereco || 'Endereço Indefinido',
       enderecoColeta: params.enderecoColeta || '',
       pontoReferencia: params.pontoReferencia || '',
       telefone: params.telefone || '',
@@ -939,8 +941,8 @@ export const dbRepo = {
       notaFiscal: params.notaFiscal || '',
       fotoComprovante: params.fotoComprovante || '',
       dataEntregue: params.dataEntregue || '',
-      latitude: params.latitude !== undefined ? params.latitude : -19.93 + (Math.random() - 0.5) * 0.05, // simulated/real coordinates near BH
-      longitude: params.longitude !== undefined ? params.longitude : -43.93 + (Math.random() - 0.5) * 0.05,
+      latitude: params.latitude !== undefined && !isNaN(params.latitude) ? params.latitude : -19.93 + (Math.random() - 0.5) * 0.05,
+      longitude: params.longitude !== undefined && !isNaN(params.longitude) ? params.longitude : -43.93 + (Math.random() - 0.5) * 0.05,
       pesoMercadoriaKg: params.pesoMercadoriaKg || 10,
       tipoOperacao: params.tipoOperacao || 'Entrega',
       status: params.status || 'Pendente',

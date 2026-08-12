@@ -590,10 +590,7 @@ export default function ImportadorUniversal({
         // Fallback default
       }
 
-      // If importing entregas, reset old pending deliveries so new spreadsheet equals exact count (e.g. 80 points)
-      if (type === 'entregas') {
-        dbRepo.saveEntregas(userEmail, []);
-      }
+      const batchEntregas: any[] = [];
 
       for (let i = 0; i < total; i++) {
         const item = toImport[i];
@@ -658,22 +655,33 @@ export default function ImportadorUniversal({
             lng = parseFloat(item.longitude);
           }
 
-          dbRepo.cadastrarEntrega(userEmail, {
-            chave: item.chave || `ENT-${Math.floor(Math.random() * 1000000)}`,
+          const cleanChave = item.chave || item.id || `ROM-${Math.floor(Math.random() * 1000000)}`;
+          const cleanId = item.id || `ENT-${Date.now()}-${i + 1}-${Math.floor(Math.random() * 1000)}`;
+
+          batchEntregas.push({
+            id: cleanId,
+            chave: cleanChave,
             cliente: item.cliente || 'Cliente Importado',
             endereco: addressToGeocode || 'Endereço Indefinido',
             enderecoColeta: item.enderecoColeta || '',
             pontoReferencia: item.pontoReferencia || '',
             telefone: item.telefone || '',
             whatsapp: item.whatsapp || '',
-            pesoMercadoriaKg: parseInt(item.pesoMercadoriaKg) || 15,
+            pesoMercadoriaKg: parseFloat(item.pesoMercadoriaKg) || 15,
             tipoOperacao: item.tipoOperacao === 'Coleta' ? 'Coleta' : 'Entrega',
             notaFiscal: item.notaFiscal || '',
+            fotoComprovante: '',
+            dataEntregue: '',
             latitude: lat,
-            longitude: lng
+            longitude: lng,
+            status: 'Pendente'
           });
           successCount++;
         }
+      }
+
+      if (type === 'entregas' && batchEntregas.length > 0) {
+        dbRepo.saveEntregas(userEmail, batchEntregas);
       }
 
       alert(`✅ Sucesso! Foram importados e validados ${successCount} registros no sistema com sucesso.`);
