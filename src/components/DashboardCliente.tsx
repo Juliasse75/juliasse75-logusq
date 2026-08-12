@@ -2782,13 +2782,23 @@ Assinatura do Expedidor: _______________________________`;
                                         <div className="font-bold text-white truncate">{idx + 1}. {p.cliente || 'Cliente'}</div>
                                         <div className="text-[9px] text-slate-400 truncate">{p.endereco || 'Endereço'}</div>
                                       </div>
-                                      <div className="text-right shrink-0">
+                                      <div className="text-right shrink-0 flex flex-col items-end gap-1">
                                         <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${
                                           p.tipoOperacao === 'Coleta' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
                                         }`}>
                                           {p.tipoOperacao || 'Entrega'}
                                         </span>
-                                        <div className="text-[8px] font-mono text-slate-500 mt-0.5">{p.pesoMercadoriaKg || 0} kg</div>
+                                        <a
+                                          href={p.latitude && p.longitude
+                                            ? `https://waze.com/ul?ll=${p.latitude},${p.longitude}&navigate=yes`
+                                            : `https://waze.com/ul?q=${encodeURIComponent(p.endereco || '')}&navigate=yes`
+                                          }
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-[8px] text-cyan-300 hover:text-white font-mono font-bold flex items-center gap-0.5 bg-cyan-950/80 px-1.5 py-0.5 rounded border border-cyan-700/50 transition-colors"
+                                        >
+                                          🚙 Waze
+                                        </a>
                                       </div>
                                     </div>
                                   ))}

@@ -579,6 +579,15 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
   const completedDeliveries = allPathDeliveries.filter(d => d.status === 'Entregue');
   const canceledDeliveries = allPathDeliveries.filter(d => d.status === 'Cancelado');
 
+  // Find next active pending stop for immediate Waze navigation
+  const nextPendingStop = (() => {
+    for (const route of activeDriverRoutes) {
+      const pending = route.path.find(p => p.status === 'Pendente');
+      if (pending) return { stop: pending, routeId: route.routeId };
+    }
+    return null;
+  })();
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       {/* Mobile Top Header */}
@@ -994,6 +1003,73 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
           </div>
         </div>
 
+        {/* Next Stop Navigation Hero Banner (Waze Priority) */}
+        {nextPendingStop && (
+          <div className="bg-gradient-to-r from-cyan-950 via-slate-900 to-indigo-950 border-2 border-cyan-400 p-4.5 rounded-2xl shadow-2xl shadow-cyan-950/40 space-y-3 relative overflow-hidden">
+            <div className="flex justify-between items-start">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 bg-cyan-400 rounded-full animate-ping"></span>
+                <span className="text-[10px] font-mono font-extrabold text-cyan-300 uppercase tracking-widest bg-cyan-500/20 px-2.5 py-0.5 rounded-full border border-cyan-400/30">
+                  📍 PRÓXIMO DESTINO COM NAVEGAÇÃO
+                </span>
+              </div>
+              <span className="text-[9px] font-mono font-bold text-slate-300 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                {nextPendingStop.routeId}
+              </span>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-black text-white">{nextPendingStop.stop.cliente}</h3>
+                <span className={`text-[8px] px-1.5 py-0.2 rounded font-mono font-bold ${
+                  nextPendingStop.stop.tipoOperacao === 'Coleta' ? 'bg-orange-500/20 text-orange-400' : 'bg-emerald-500/20 text-emerald-400'
+                }`}>
+                  {nextPendingStop.stop.tipoOperacao === 'Coleta' ? 'COLETA' : 'ENTREGA'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 flex items-start gap-1">
+                <MapPin className="w-3 h-3 text-cyan-400 mt-0.5 shrink-0" />
+                <span>{nextPendingStop.stop.tipoOperacao === 'Coleta' && nextPendingStop.stop.enderecoColeta ? nextPendingStop.stop.enderecoColeta : nextPendingStop.stop.endereco}</span>
+              </p>
+            </div>
+
+            {(() => {
+              const dest = nextPendingStop.stop.tipoOperacao === 'Coleta' && nextPendingStop.stop.enderecoColeta ? nextPendingStop.stop.enderecoColeta : nextPendingStop.stop.endereco;
+              const wazeUrl = nextPendingStop.stop.latitude && nextPendingStop.stop.longitude
+                ? `https://waze.com/ul?ll=${nextPendingStop.stop.latitude},${nextPendingStop.stop.longitude}&navigate=yes`
+                : `https://waze.com/ul?q=${encodeURIComponent(dest)}&navigate=yes`;
+              
+              const mapsUrl = nextPendingStop.stop.latitude && nextPendingStop.stop.longitude
+                ? `https://www.google.com/maps/dir/?api=1&destination=${nextPendingStop.stop.latitude},${nextPendingStop.stop.longitude}`
+                : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}`;
+
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  <a
+                    href={wazeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/30 transition-all cursor-pointer"
+                  >
+                    <Navigation className="w-4 h-4 fill-slate-950" />
+                    <span>🚙 ABRIR NO WAZE AGORA</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                  <a
+                    href={mapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <Compass className="w-4 h-4 text-sky-400" />
+                    <span>Abrir no Google Maps</span>
+                  </a>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
         {/* Stop lists container */}
         <div className="space-y-4">
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">Seu Cronograma de Rotas</h3>
@@ -1033,21 +1109,39 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
                       ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originAddress)}&destination=${encodeURIComponent(targetEnd)}`
                       : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(originAddress)}`;
 
+                    const wazeRouteUrl = firstPending && firstPending.latitude && firstPending.longitude
+                      ? `https://waze.com/ul?ll=${firstPending.latitude},${firstPending.longitude}&navigate=yes`
+                      : targetEnd
+                      ? `https://waze.com/ul?q=${encodeURIComponent(targetEnd)}&navigate=yes`
+                      : `https://waze.com/ul?q=${encodeURIComponent(originAddress)}&navigate=yes`;
+
                     return (
                       <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/60">
                         <span className="text-[10px] font-mono text-slate-400 font-bold uppercase flex items-center gap-1">
                           <Navigation className="w-3 h-3 text-sky-400 animate-pulse" /> GPS Saída do CD:
                         </span>
-                        <a
-                          href={googleRouteUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="bg-sky-950/80 hover:bg-sky-900 text-sky-300 border border-sky-600/50 text-[11px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors shadow-sm"
-                        >
-                          <Compass className="w-3.5 h-3.5 text-sky-400" />
-                          <span>Abrir Rota do CD para {firstPending ? firstPending.cliente : 'Destino'}</span>
-                          <ExternalLink className="w-3 h-3 opacity-70" />
-                        </a>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <a
+                            href={wazeRouteUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-[11px] px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-md shadow-cyan-950/50 cursor-pointer"
+                          >
+                            <Navigation className="w-3.5 h-3.5 fill-slate-950" />
+                            <span>🚙 Abrir Rota no Waze</span>
+                            <ExternalLink className="w-3 h-3 text-slate-950 opacity-80" />
+                          </a>
+                          <a
+                            href={googleRouteUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/60 text-[11px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                          >
+                            <Compass className="w-3.5 h-3.5 text-sky-400" />
+                            <span>Google Maps</span>
+                            <ExternalLink className="w-3 h-3 opacity-70" />
+                          </a>
+                        </div>
                       </div>
                     );
                   })()}
@@ -1163,10 +1257,10 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
                             }
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex-1 bg-cyan-950/80 hover:bg-cyan-900 text-cyan-200 border border-cyan-700/50 py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                            className="flex-1 bg-cyan-500 hover:bg-cyan-400 text-slate-950 border border-cyan-400 py-1.5 px-2.5 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-md shadow-cyan-950/40 cursor-pointer"
                           >
-                            <span>🚙 Waze</span>
-                            <ExternalLink className="w-3 h-3 text-cyan-400" />
+                            <span>🚙 Abrir no Waze</span>
+                            <ExternalLink className="w-3 h-3 text-slate-950" />
                           </a>
                         </div>
 
