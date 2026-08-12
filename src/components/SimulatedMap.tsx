@@ -16,6 +16,50 @@ function calculateHaversineDistance(lat1: number, lon1: number, lat2: number, lo
   return R * c;
 }
 
+/**
+ * Computes dispersed coordinates for delivery points that share identical or near-identical coordinates,
+ * ensuring every stop pin (#1, #2, #3, ...) is distinctly placed and numbered on the Leaflet map.
+ */
+function getDispersedPointCoords(
+  point: Entrega,
+  indexInRoute: number,
+  allPointsInRoute: Entrega[],
+  baseCoords: { lat: number; lng: number }
+): { lat: number; lng: number } {
+  const rawLat = point.latitude || baseCoords.lat;
+  const rawLng = point.longitude || baseCoords.lng;
+
+  if (!allPointsInRoute || allPointsInRoute.length === 0) {
+    return { lat: rawLat, lng: rawLng };
+  }
+
+  // Find duplicate points sharing identical/near-identical lat/lng (within ~30m)
+  const duplicates = allPointsInRoute.filter(
+    other => Math.abs((other.latitude || baseCoords.lat) - rawLat) < 0.0003 &&
+             Math.abs((other.longitude || baseCoords.lng) - rawLng) < 0.0003
+  );
+
+  const isOnBase = Math.abs(baseCoords.lat - rawLat) < 0.0003 && Math.abs(baseCoords.lng - rawLng) < 0.0003;
+
+  if (duplicates.length <= 1 && !isOnBase) {
+    return { lat: rawLat, lng: rawLng };
+  }
+
+  // Find index position among duplicate group or route sequence
+  const dupIdx = duplicates.findIndex(other => (other.id && other.id === point.id) || (other.chave && other.chave === point.chave));
+  const pos = dupIdx !== -1 ? dupIdx : indexInRoute;
+  const totalDups = Math.max(duplicates.length, allPointsInRoute.length);
+
+  // Spiral dispersion formula (~300m - 1.2km radius)
+  const angle = (pos * (2 * Math.PI / Math.min(totalDups, 12))) + (pos * 0.4);
+  const radius = 0.0035 + (Math.floor(pos / 12) * 0.0025);
+
+  return {
+    lat: rawLat + Math.sin(angle) * radius,
+    lng: rawLng + Math.cos(angle) * radius * 1.15
+  };
+}
+
 interface SimulatedMapProps {
   baseCoords?: { lat: number; lng: number };
   baseName?: string;
@@ -250,6 +294,7 @@ export default function SimulatedMap({
 
     // Filter points and display
     const isFilterActive = selectedDriverFilter !== 'all' || selectedVehicleFilter !== 'all';
+    const visibleCoords: { lat: number; lng: number }[] = [baseCoords];
 
     entregas.forEach((ent) => {
       // Hide completed delivery points when route is finished or showCompleted is off
@@ -306,6 +351,22 @@ export default function SimulatedMap({
         });
       }
 
+      // If a driver or vehicle filter is active, hide markers that belong to other routes/drivers
+      if (isFilterActive && !isPointMatch) {
+        return;
+      }
+
+      // Get dispersed coordinates so markers never stack directly on top of each other
+      const dispersed = getDispersedPointCoords(
+        ent, 
+        indexInPath >= 0 ? indexInPath : 0, 
+        pathArray.length > 0 ? pathArray : entregas, 
+        baseCoords
+      );
+      const markerLat = dispersed.lat;
+      const markerLng = dispersed.lng;
+      visibleCoords.push({ lat: markerLat, lng: markerLng });
+
       // Compute coordinate segment details from the previous point in sequence
       let prevLat = baseCoords.lat;
       let prevLng = baseCoords.lng;
@@ -314,18 +375,16 @@ export default function SimulatedMap({
       if (indexInPath !== -1 && pathArray.length > 0) {
         if (indexInPath > 0) {
           const prevStop = pathArray[indexInPath - 1];
-          prevLat = prevStop.latitude;
-          prevLng = prevStop.longitude;
+          const prevDispersed = getDispersedPointCoords(prevStop, indexInPath - 1, pathArray, baseCoords);
+          prevLat = prevDispersed.lat;
+          prevLng = prevDispersed.lng;
           prevPointName = prevStop.cliente;
         }
       }
 
       // Calculate distance and traffic-aware transit estimate
-      const distFromPrev = calculateHaversineDistance(prevLat, prevLng, ent.latitude, ent.longitude);
+      const distFromPrev = calculateHaversineDistance(prevLat, prevLng, markerLat, markerLng);
       const transitTimeEst = Math.max(2, Math.round(distFromPrev * 1.8 * 1.25)); // City speed multiplier + traffic factor
-
-      // If filter is active and this point does not match, either fade it out or hide it.
-      const opacity = isPointMatch ? 1.0 : 0.15;
 
       // Overrides pointColor with green for delivered and red for cancelled/failed
       let markerColor = pointColor;
@@ -337,7 +396,7 @@ export default function SimulatedMap({
 
       const pinIcon = L.divIcon({
         html: `<div class="w-6 h-6 rounded-full border-2 border-white flex items-center justify-center shadow-lg transition-all hover:scale-125 font-sans font-black text-[10px] text-white" 
-          style="background-color: ${markerColor}; opacity: ${opacity};">
+          style="background-color: ${markerColor}; opacity: 1.0;">
           ${sequenceNum || '•'}
         </div>`,
         className: '',
@@ -345,7 +404,7 @@ export default function SimulatedMap({
         iconAnchor: [12, 12]
       });
 
-      const marker = L.marker([ent.latitude, ent.longitude], { icon: pinIcon })
+      const marker = L.marker([markerLat, markerLng], { icon: pinIcon })
         .addTo(map)
         .bindPopup(`
           <div style="font-family: sans-serif; font-size: 11px; color: #1e293b; line-height: 1.4; min-width: 195px;">
@@ -385,10 +444,13 @@ export default function SimulatedMap({
       const color = routeColors[idx % routeColors.length];
       if (!points || points.length === 0) return;
 
-      // Draw real OSRM street-aligned route if available, otherwise fallback to straight lines
+      // Draw real OSRM street-aligned route if available, otherwise fallback to dispersed point line
       const pathLatLngs = realStreetRoutes[clusterId] || [
         [baseCoords.lat, baseCoords.lng],
-        ...points.map(p => [p.latitude, p.longitude]),
+        ...points.map((p, pIdx) => {
+          const disp = getDispersedPointCoords(p, pIdx, points, baseCoords);
+          return [disp.lat, disp.lng];
+        }),
         [baseCoords.lat, baseCoords.lng]
       ];
 
@@ -459,21 +521,7 @@ export default function SimulatedMap({
 
     // Auto fit map bounds to cover visible filtered points
     const activeCoords = [
-      baseCoords,
-      ...entregas.map(e => {
-        // Only include if matches active filters
-        let isMatch = !isFilterActive;
-        if (activeRoutes && Object.keys(activeRoutes).length > 0) {
-          Object.values(activeRoutes).forEach(r => {
-            const matchDriver = selectedDriverFilter === 'all' || r.driver === selectedDriverFilter;
-            const matchVehicle = selectedVehicleFilter === 'all' || r.vehicle === selectedVehicleFilter;
-            if (matchDriver && matchVehicle && r.path.some(p => p.id === e.id || p.chave === e.id)) {
-              isMatch = true;
-            }
-          });
-        }
-        return isMatch ? { lat: e.latitude, lng: e.longitude } : null;
-      }).filter(Boolean) as { lat: number; lng: number }[],
+      ...visibleCoords,
       ...emergencias.map(em => {
         const matchDriver = selectedDriverFilter === 'all' || em.driverName === selectedDriverFilter;
         const matchVehicle = selectedVehicleFilter === 'all' || em.vehicle === selectedVehicleFilter;

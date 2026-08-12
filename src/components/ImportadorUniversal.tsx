@@ -649,10 +649,20 @@ export default function ImportadorUniversal({
             }
           }
 
+          let hasExplicitCoords = false;
           // 3. Override with explicit latitude/longitude if provided in file
           if (item.latitude && item.longitude && !isNaN(parseFloat(item.latitude)) && !isNaN(parseFloat(item.longitude))) {
             lat = parseFloat(item.latitude);
             lng = parseFloat(item.longitude);
+            hasExplicitCoords = true;
+          }
+
+          // If no explicit lat/lng columns in spreadsheet, apply deterministic spatial dispersion to prevent point overlap
+          if (!hasExplicitCoords) {
+            const angle = i * (2 * Math.PI / 12) + (i * 0.35);
+            const radius = 0.0035 + (Math.floor(i / 12) * 0.0025); // ~350m to 1.5km spread
+            lat = lat + Math.sin(angle) * radius;
+            lng = lng + Math.cos(angle) * radius * 1.15;
           }
 
           const cleanChave = item.chave || item.id || `ROM-${Math.floor(Math.random() * 1000000)}`;
