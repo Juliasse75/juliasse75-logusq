@@ -2722,103 +2722,154 @@ Assinatura do Expedidor: _______________________________`;
                     <h3 className="text-xs font-bold text-white uppercase tracking-wider">Rotas Ativas & Expedição</h3>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {Object.entries(activeRoutes).map(([rId, r]: [string, any]) => (
-                        <div key={rId} className="bg-slate-950 border border-slate-800 p-4 rounded-xl flex flex-col justify-between">
-                          <div>
-                            <div className="flex justify-between items-start border-b border-slate-800 pb-2">
-                              <div>
-                                <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full uppercase">
-                                  {rId}
-                                </span>
-                                <h4 className="font-extrabold text-white text-xs mt-1.5">{r.driver}</h4>
-                                <p className="text-[11px] text-slate-500">{r.vehicle}</p>
-                              </div>
-                              {(() => {
-                                const isRouteFinished = r.path && r.path.length > 0 && r.path.every((p: any) => p.status === 'Entregue' || p.status === 'Cancelado');
-                                return (
-                                  <div className="flex flex-col items-end gap-1.5">
-                                    <button 
-                                      onClick={() => handleCompleteRoute(rId)}
-                                      className={`text-[10px] font-bold px-2.5 py-1 rounded transition-all cursor-pointer ${
-                                        isRouteFinished 
-                                          ? 'bg-emerald-600 hover:bg-emerald-500 text-white font-black' 
-                                          : 'bg-violet-600/20 hover:bg-violet-600 text-violet-300 hover:text-white'
-                                      }`}
-                                    >
-                                      Concluir Rota
-                                    </button>
-                                    {isRouteFinished && (
-                                      <button
-                                        onClick={() => handleCompleteRoute(rId)}
-                                        className="text-[9px] font-black uppercase tracking-wider bg-emerald-500 text-slate-950 px-2.5 py-0.5 rounded text-center border border-emerald-400 font-sans shadow-lg shadow-emerald-500/20 hover:bg-emerald-400 cursor-pointer"
-                                        style={{ animation: 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite' }}
-                                        title="Clique para arquivar e finalizar a rota"
-                                      >
-                                        Atividades Concluídas
-                                      </button>
-                                    )}
+                      {Object.entries(activeRoutes).map(([rId, r]: [string, any]) => {
+                        const totalStops = r.path?.length || 0;
+                        const completedStops = r.path?.filter((p: any) => p.status === 'Entregue').length || 0;
+                        const cancelledStops = r.path?.filter((p: any) => p.status === 'Cancelado').length || 0;
+                        const finishedStops = completedStops + cancelledStops;
+                        const progressPercent = totalStops > 0 ? Math.round((finishedStops / totalStops) * 100) : 0;
+                        const isRouteFinished = totalStops > 0 && finishedStops === totalStops;
+
+                        return (
+                          <div key={rId} className="bg-slate-950 border border-slate-800 p-4 rounded-xl flex flex-col justify-between">
+                            <div>
+                              <div className="flex justify-between items-start border-b border-slate-800 pb-2">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full uppercase border border-emerald-500/20">
+                                      {rId}
+                                    </span>
+                                    <span className={`text-[9px] font-mono font-black px-2 py-0.5 rounded-full uppercase ${
+                                      isRouteFinished
+                                        ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/30'
+                                        : finishedStops > 0
+                                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/30'
+                                        : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                    }`}>
+                                      {isRouteFinished ? '100% CONCLUÍDA' : `${completedStops}/${totalStops} CONCLUÍDAS (${progressPercent}%)`}
+                                    </span>
                                   </div>
-                                );
-                              })()}
-                            </div>
-
-                            <div className="mt-3 space-y-1 text-[11px] font-mono text-slate-400">
-                              <div>Paradas: <span className="text-white font-bold">{r.path.length}</span></div>
-                              <div>Distância: <span className="text-blue-400">{r.km} KM</span></div>
-                              <div>Duração: <span className="text-slate-300">{Math.floor(r.duration / 60)}h {r.duration % 60}min</span></div>
-                            </div>
-
-                            {/* Expandable stops details */}
-                            {r.path && r.path.length > 0 && (
-                              <details className="mt-3 border-t border-slate-800/80 pt-2 text-[10px]">
-                                <summary className="cursor-pointer text-slate-400 hover:text-white font-mono font-bold flex items-center justify-between select-none">
-                                  <span>Ver Clientes / Paradas ({r.path.length})</span>
-                                  <span className="text-[9px] text-violet-400">▼ Expandir</span>
-                                </summary>
-                                <div className="mt-2 space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                                  {r.path.map((p: any, idx: number) => (
-                                    <div key={p.id || p.chave || idx} className="bg-slate-900 border border-slate-800/80 p-2 rounded flex items-center justify-between gap-2">
-                                      <div className="min-w-0 flex-1">
-                                        <div className="font-bold text-white truncate">{idx + 1}. {p.cliente || 'Cliente'}</div>
-                                        <div className="text-[9px] text-slate-400 truncate">{p.endereco || 'Endereço'}</div>
-                                      </div>
-                                      <div className="text-right shrink-0 flex flex-col items-end gap-1">
-                                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${
-                                          p.tipoOperacao === 'Coleta' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                                        }`}>
-                                          {p.tipoOperacao || 'Entrega'}
-                                        </span>
-                                        <a
-                                          href={p.latitude && p.longitude
-                                            ? `https://waze.com/ul?ll=${p.latitude},${p.longitude}&navigate=yes`
-                                            : `https://waze.com/ul?q=${encodeURIComponent(p.endereco || '')}&navigate=yes`
-                                          }
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="text-[8px] text-cyan-300 hover:text-white font-mono font-bold flex items-center gap-0.5 bg-cyan-950/80 px-1.5 py-0.5 rounded border border-cyan-700/50 transition-colors"
-                                        >
-                                          🚙 Waze
-                                        </a>
-                                      </div>
-                                    </div>
-                                  ))}
+                                  <h4 className="font-extrabold text-white text-xs mt-1.5">{r.driver}</h4>
+                                  <p className="text-[11px] text-slate-500">{r.vehicle}</p>
                                 </div>
-                              </details>
-                            )}
-                          </div>
+                                <div className="flex flex-col items-end gap-1.5">
+                                  <button 
+                                    onClick={() => handleCompleteRoute(rId)}
+                                    className={`text-[10px] font-bold px-2.5 py-1 rounded transition-all cursor-pointer ${
+                                      isRouteFinished 
+                                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow-lg shadow-emerald-600/30 animate-pulse' 
+                                        : 'bg-violet-600/20 hover:bg-violet-600 text-violet-300 hover:text-white'
+                                    }`}
+                                  >
+                                    {isRouteFinished ? '✓ Finalizar & Arquivar Rota' : 'Concluir Rota'}
+                                  </button>
+                                </div>
+                              </div>
 
-                          <div className="mt-4 pt-3 border-t border-slate-800/60 flex justify-between">
-                            <button
-                              onClick={() => downloadDriverRouteTxt(rId)}
-                              className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1.5 font-mono"
-                            >
-                              <Download className="w-3.5 h-3.5 text-violet-400" />
-                              Baixar Folha de Rota (TXT)
-                            </button>
-                            <span className="text-[10px] text-emerald-500 font-bold uppercase tracking-wider animate-pulse">● em trânsito</span>
+                              {/* Progress bar */}
+                              <div className="mt-3 space-y-1">
+                                <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                                  <span>Progresso do Atendimento:</span>
+                                  <span className="text-emerald-400 font-bold">{finishedStops}/{totalStops} Paradas ({progressPercent}%)</span>
+                                </div>
+                                <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
+                                  <div 
+                                    className="bg-gradient-to-r from-emerald-500 to-cyan-400 h-full transition-all duration-500 rounded-full"
+                                    style={{ width: `${progressPercent}%` }}
+                                  ></div>
+                                </div>
+                              </div>
+
+                              <div className="mt-2 space-y-1 text-[11px] font-mono text-slate-400">
+                                <div>Paradas Totais: <span className="text-white font-bold">{totalStops}</span> (<span className="text-emerald-400 font-bold">{completedStops} entregues</span>{cancelledStops > 0 ? `, ${cancelledStops} recusadas` : ''})</div>
+                                <div>Distância: <span className="text-blue-400">{r.km} KM</span></div>
+                                <div>Duração: <span className="text-slate-300">{Math.floor(r.duration / 60)}h {r.duration % 60}min</span></div>
+                              </div>
+
+                              {/* Expandable stops details */}
+                              {r.path && r.path.length > 0 && (
+                                <details className="mt-3 border-t border-slate-800/80 pt-2 text-[10px]" open={finishedStops > 0}>
+                                  <summary className="cursor-pointer text-slate-400 hover:text-white font-mono font-bold flex items-center justify-between select-none">
+                                    <span>Ver Clientes / Paradas ({r.path.length}) — {completedStops} Concluídas</span>
+                                    <span className="text-[9px] text-violet-400">▼ Expandir</span>
+                                  </summary>
+                                  <div className="mt-2 space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                                    {r.path.map((p: any, idx: number) => (
+                                      <div key={p.id || p.chave || idx} className={`p-2 rounded border flex items-center justify-between gap-2 transition-all ${
+                                        p.status === 'Entregue'
+                                          ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-100 shadow-sm'
+                                          : p.status === 'Cancelado'
+                                          ? 'bg-rose-950/40 border-rose-500/50 text-rose-100'
+                                          : 'bg-slate-900 border-slate-800/80'
+                                      }`}>
+                                        <div className="min-w-0 flex-1">
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="font-bold text-white truncate">{idx + 1}. {p.cliente || 'Cliente'}</span>
+                                            {p.status === 'Entregue' && (
+                                              <span className="bg-emerald-500 text-slate-950 text-[8px] font-black px-1.5 py-0.2 rounded font-mono uppercase tracking-wider">
+                                                ✓ CONCLUÍDO
+                                              </span>
+                                            )}
+                                            {p.status === 'Cancelado' && (
+                                              <span className="bg-rose-600 text-white text-[8px] font-black px-1.5 py-0.2 rounded font-mono uppercase tracking-wider">
+                                                ✕ RECUSADO
+                                              </span>
+                                            )}
+                                            {p.status === 'Pendente' && (
+                                              <span className="bg-amber-500/20 text-amber-300 text-[8px] font-bold px-1.5 py-0.2 rounded font-mono uppercase border border-amber-500/30">
+                                                ⏳ PENDENTE
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="text-[9px] text-slate-400 truncate">{p.endereco || 'Endereço'}</div>
+                                          {p.dataEntregue && (
+                                            <div className="text-[8px] text-emerald-400 font-mono mt-0.5">
+                                              ✓ Concluído em: {p.dataEntregue} {p.duracaoAtendimentoMinutos ? `(${p.duracaoAtendimentoMinutos} min parado)` : ''}
+                                            </div>
+                                          )}
+                                        </div>
+                                        <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                                          <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${
+                                            p.tipoOperacao === 'Coleta' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                                          }`}>
+                                            {p.tipoOperacao || 'Entrega'}
+                                          </span>
+                                          <a
+                                            href={p.latitude && p.longitude
+                                              ? `https://waze.com/ul?ll=${p.latitude},${p.longitude}&navigate=yes`
+                                              : `https://waze.com/ul?q=${encodeURIComponent(p.endereco || '')}&navigate=yes`
+                                            }
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-[8px] text-cyan-300 hover:text-white font-mono font-bold flex items-center gap-0.5 bg-cyan-950/80 px-1.5 py-0.5 rounded border border-cyan-700/50 transition-colors"
+                                          >
+                                            🚙 Waze
+                                          </a>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </details>
+                              )}
+                            </div>
+
+                            <div className="mt-4 pt-3 border-t border-slate-800/60 flex justify-between items-center">
+                              <button
+                                onClick={() => downloadDriverRouteTxt(rId)}
+                                className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1.5 font-mono"
+                              >
+                                <Download className="w-3.5 h-3.5 text-violet-400" />
+                                Baixar Folha de Rota (TXT)
+                              </button>
+                              <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                                isRouteFinished ? 'text-emerald-400 font-extrabold' : finishedStops > 0 ? 'text-cyan-400' : 'text-emerald-500 animate-pulse'
+                              }`}>
+                                {isRouteFinished ? '● ROTA TOTALMENTE CONCLUÍDA' : finishedStops > 0 ? `● ${completedStops}/${totalStops} ENTREGUES` : '● EM TRÂNSITO'}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}

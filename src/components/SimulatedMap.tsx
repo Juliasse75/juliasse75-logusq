@@ -96,7 +96,7 @@ export default function SimulatedMap({
   const [selectedVehicleFilter, setSelectedVehicleFilter] = useState<string>('all');
   const [mapStyle, setMapStyle] = useState<'dark' | 'osm' | 'voyager'>('dark');
   const [showRoutesPanel, setShowRoutesPanel] = useState(false);
-  const [showCompleted, setShowCompleted] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(true);
 
   // Distinct bright colors for routes to maximize contrast on both dark and light tiles
   const routeColors = [
@@ -388,51 +388,58 @@ export default function SimulatedMap({
 
       // Overrides pointColor with green for delivered and red for cancelled/failed
       let markerColor = pointColor;
+      let displayBadge = sequenceNum || '•';
       if (ent.status === 'Entregue') {
-        markerColor = '#22c55e'; // Green for success
+        markerColor = '#10b981'; // Vibrant Emerald Green
+        displayBadge = `✓${sequenceNum ? sequenceNum : ''}`;
       } else if (ent.status === 'Cancelado') {
         markerColor = '#ef4444'; // Red for failure
+        displayBadge = `✕${sequenceNum ? sequenceNum : ''}`;
       }
 
       const pinIcon = L.divIcon({
-        html: `<div class="w-6 h-6 rounded-full border-2 border-white flex items-center justify-center shadow-lg transition-all hover:scale-125 font-sans font-black text-[10px] text-white" 
-          style="background-color: ${markerColor}; opacity: 1.0;">
-          ${sequenceNum || '•'}
+        html: `<div class="w-7 h-7 rounded-full border-2 border-white flex items-center justify-center shadow-xl transition-all hover:scale-125 font-sans font-black text-[10px] text-white" 
+          style="background-color: ${markerColor}; opacity: 1.0; ${ent.status === 'Entregue' ? 'box-shadow: 0 0 12px #10b981; border-color: #ecfdf5;' : ''}">
+          ${displayBadge}
         </div>`,
         className: '',
-        iconSize: [24, 24],
-        iconAnchor: [12, 12]
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
       });
 
       const marker = L.marker([markerLat, markerLng], { icon: pinIcon })
         .addTo(map)
         .bindPopup(`
-          <div style="font-family: sans-serif; font-size: 11px; color: #1e293b; line-height: 1.4; min-width: 195px;">
+          <div style="font-family: sans-serif; font-size: 11px; color: #1e293b; line-height: 1.4; min-width: 210px;">
             <b style="font-size: 12px; color: #0f172a; display: block; margin-bottom: 3px;">${ent.cliente}</b>
             
-            <div style="margin-bottom: 4px;">
-              <span style="background-color: ${markerColor}; color: white; font-weight: bold; font-size: 9px; padding: 1px 5px; border-radius: 3px; text-transform: uppercase;">
+            <div style="margin-bottom: 6px; display: flex; items-center; gap: 4px;">
+              <span style="background-color: ${pointColor}; color: white; font-weight: bold; font-size: 9px; padding: 1px 6px; border-radius: 3px; text-transform: uppercase;">
                 ${ent.tipoOperacao} ${sequenceNum ? `#${sequenceNum}` : ''}
               </span>
-              <span style="font-weight: bold; margin-left: 5px; color: ${ent.status === 'Pendente' ? '#d97706' : ent.status === 'Cancelado' ? '#ef4444' : '#22c55e'}">${ent.status === 'Pendente' ? 'Pendente' : ent.status === 'Cancelado' ? 'Cancelada' : 'Entregue'}</span>
+              <span style="background-color: ${ent.status === 'Entregue' ? '#10b981' : ent.status === 'Cancelado' ? '#ef4444' : '#f59e0b'}; color: white; font-weight: bold; font-size: 9px; padding: 1px 6px; border-radius: 3px; text-transform: uppercase;">
+                ${ent.status === 'Entregue' ? '✓ CONCLUÍDA / ENTREGUE' : ent.status === 'Cancelado' ? '✕ CANCELADA / RECUSADA' : '⏳ PENDENTE'}
+              </span>
             </div>
 
-            <div style="border-top: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9; padding: 4px 0; margin: 4px 0;">
+            <div style="border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; padding: 5px 0; margin: 4px 0;">
               <div><b>📍 Ponto Anterior:</b> ${prevPointName}</div>
               <div><b>🛣️ Trecho:</b> ${distFromPrev.toFixed(1)} km (${transitTimeEst} min c/ trânsito)</div>
-              <div><b>⏱️ Tempo de Parada:</b> 
+              <div><b>⏱️ Status Atendimento:</b> 
                 ${ent.status === 'Entregue' 
-                  ? `<span style="color: #059669; font-weight: bold;">✓ ${ent.duracaoAtendimentoMinutos || 5} min parado</span>` 
+                  ? `<span style="color: #059669; font-weight: bold;">✓ Finalizado (${ent.dataEntregue || 'Hoje'} - ${ent.duracaoAtendimentoMinutos || 5} min)</span>` 
+                  : ent.status === 'Cancelado'
+                  ? `<span style="color: #dc2626; font-weight: bold;">✕ Recusado pelo motorista</span>`
                   : ent.tempoInicioAtendimento 
-                    ? `<span style="color: #d97706; font-weight: bold; animation: pulse 1s infinite;">⚡ Em atendimento...</span>`
-                    : `<span style="color: #64748b;">Aguardando (Est: 10 min)</span>`
+                    ? `<span style="color: #d97706; font-weight: bold; animation: pulse 1s infinite;">⚡ Em atendimento no cliente...</span>`
+                    : `<span style="color: #64748b;">Aguardando chegada do motorista</span>`
                 }
               </div>
             </div>
 
             <b>Chave NF:</b> <code style="background: #f1f5f9; padding: 1px 4px; border-radius: 3px;">${ent.chave}</code><br/>
             <b>Peso Carga:</b> ${ent.pesoMercadoriaKg} kg<br/>
-            <b>Rota:</b> <span style="color: ${pointColor}; font-weight: bold;">${routeLabel}</span><br/>
+            <b>Motorista Responsável:</b> <span style="color: #0f172a; font-weight: bold;">${ent.motoristaNome || routeLabel}</span><br/>
             <span style="display: block; margin-top: 4px; color: #64748b; font-size: 10px;">${ent.endereco}</span>
           </div>
         `);
