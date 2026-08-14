@@ -1,295 +1,408 @@
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
-
-// Augment jsPDF interface for TypeScript
-declare module 'jspdf' {
-  interface jsPDF {
-    autoTable: (options: any) => jsPDF;
-    lastAutoTable: {
-      finalY: number;
-    };
-  }
-}
+import autoTable from 'jspdf-autotable';
 
 export function generateAuditReportPDF() {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4'
-  });
+  try {
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
 
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
 
-  // Color Palette - Institutional Navy & Slate
-  const primaryColor = [15, 23, 42]; // #0f172a (Slate 900)
-  const secondaryColor = [79, 70, 229]; // #4f46e5 (Indigo 600)
-  const darkTextColor = [30, 41, 59]; // #1e293b
-  const mutedTextColor = [100, 116, 139]; // #64748b
-  const lightBg = [248, 250, 252]; // #f8fafc
+    // Color Palette - Institutional Navy & Slate
+    const primaryColor = [15, 23, 42]; // #0f172a (Slate 900)
+    const secondaryColor = [79, 70, 229]; // #4f46e5 (Indigo 600)
+    const darkTextColor = [30, 41, 59]; // #1e293b
+    const mutedTextColor = [100, 116, 139]; // #64748b
 
-  let currentY = 15;
+    let currentY = 15;
 
-  // Header Banner
-  doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-  doc.rect(0, 0, pageWidth, 28, 'F');
+    // ==========================================
+    // PÁGINA 1: CAPA & SUMÁRIO EXECUTIVO
+    // ==========================================
+    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.rect(0, 0, pageWidth, 32, 'F');
 
-  // Brand Name & Title
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.text('LOGUSQ — SISTEMA OPERACIONAL INTEGRADO DE LOGÍSTICA', 14, 12);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(15);
+    doc.text('LOGUSQ — SISTEMA OPERACIONAL INTEGRADO DE LOGÍSTICA', 14, 13);
 
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(199, 210, 254);
-  doc.text('DOSSIÊ DE AUDITORIA EXTERNA, ARQUITETURA TÉCNICA E DIRETRIZES DO SISTEMA', 14, 18);
-  doc.text(`Data de Emissão: ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')} | Versão: 2.6.4 Enterprise`, 14, 23);
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(199, 210, 254);
+    doc.text('DOSSIÊ TÉCNICO OFICIAL DE AUDITORIA DE SISTEMA E ESCOPO FUNCIONAL', 14, 20);
+    doc.text(`Emissão: ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')} | Versão: 2.6.4 Enterprise | Ref: AUD-LOGUSQ-2026`, 14, 26);
 
-  currentY = 36;
+    currentY = 40;
 
-  // Section 1: Sumário Executivo
-  doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text('1. SUMÁRIO EXECUTIVO & ESCOPO DA PLATAFORMA', 14, currentY);
-  currentY += 2;
+    // Section 1: Escopo e Identificação do Sistema
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('1. ESCOPO DA AUDITORIA, OBJETIVO & IDENTIFICAÇÃO DO PRODUTO', 14, currentY);
+    currentY += 2;
 
-  doc.setDrawColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
-  doc.setLineWidth(0.8);
-  doc.line(14, currentY, pageWidth - 14, currentY);
-  currentY += 5;
+    doc.setDrawColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
+    doc.setLineWidth(0.8);
+    doc.line(14, currentY, pageWidth - 14, currentY);
+    currentY += 5;
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
-  const execSummary = 
-    'O LogusQ é uma plataforma SaaS Full-Stack de missão crítica voltada para gestão de frotas, roteirização científica e comprovação digital de entregas em tempo real. O sistema é estruturado em três níveis de acesso complementares e interligados com sincronismo de baixa latência: Painel Master (Governança & SaaS), Painel do Gestor (Torre de Controle Operacional) e Painel do Motorista (Terminal de Campo).';
-  const splitSummary = doc.splitTextToSize(execSummary, pageWidth - 28);
-  doc.text(splitSummary, 14, currentY);
-  currentY += splitSummary.length * 4.5 + 4;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
+    const execSummary = 
+      'O presente documento constitui o dossiê técnico e funcional do ecossistema LOGUSQ, elaborado para fins de auditoria de sistemas, certificação de conformidade e verificação de processos operacionais e de governança. O LOGUSQ é uma solução SaaS Full-Stack desenhada para centralizar a gestão de fretes, roteirização científica, telemetria de tráfego em tempo real, auditoria de jornada trabalhista e comprovação digital de entregas.';
+    const splitSummary = doc.splitTextToSize(execSummary, pageWidth - 28);
+    doc.text(splitSummary, 14, currentY);
+    currentY += splitSummary.length * 4.2 + 4;
 
-  // Section 2: Arquitetura em 3 Níveis
-  doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text('2. MATRIZ DE ARQUITETURA E MÓDULOS DO ECOSSISTEMA', 14, currentY);
-  currentY += 2;
-  doc.line(14, currentY, pageWidth - 14, currentY);
-  currentY += 4;
+    // Section 2: Arquitetura em 3 Camadas
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('2. ARQUITETURA EM TRÊS NÍVEIS & MATRIZ DE RESPONSABILIDADES', 14, currentY);
+    currentY += 2;
+    doc.line(14, currentY, pageWidth - 14, currentY);
+    currentY += 4;
 
-  doc.autoTable({
-    startY: currentY,
-    head: [['Módulo / Camada', 'Público Alvo', 'Principais Recursos e Responsabilidades', 'Interligação & Comunicação']],
-    body: [
-      [
-        'PAINEL MASTER\n(Governança Global)',
-        'Diretoria Executiva,\nControladoria,\nRH e Suporte SaaS',
-        '• Gestão de Clientes / Tenants (Assinantes)\n• Gestão de Planos SaaS (POC, Starter, Enterprise)\n• Controle Financeiro Global, MRR e Faturamento\n• Gestão de RH Interno, Folha e Níveis de Acesso\n• Trilha Imutável de Auditoria de Ações',
-        'Controle central de ativação/bloqueio de empresas assinantes e auditoria global de conformidade.'
+    autoTable(doc, {
+      startY: currentY,
+      head: [['Camada / Nível', 'Perfil de Usuário', 'Responsabilidades & Funções Centrais', 'Interligação & Protocolo']],
+      body: [
+        [
+          'PAINEL MASTER\n(Governança & SaaS)',
+          'Diretoria Executiva,\nControladoria,\nRH e Suporte SaaS',
+          '• Gestão Multi-Tenancy (Empresas/Assinantes)\n• Parametrização de Planos SaaS & Franquias\n• Gestão Financeira, MRR e Faturamento\n• RH Interno, Salários e Níveis de Permissão\n• Trilha Imutável de Auditoria de Ações',
+          'Administração e controle de acessos em nível global.'
+        ],
+        [
+          'PAINEL DO GESTOR\n(Torre de Controle)',
+          'Gerentes de Logística,\nControladores de Tráfego,\nExpedição',
+          '• Importação Multiformato (XML NF-e, Excel, OCR)\n• Roteirização Matemática TSP com Clusterização\n• Telemetria no Mapa com Traçado Viário Real\n• Módulo de Contingência e Transbordo de Pane\n• Auditoria de Jornada de Trabalho (Lei 13.103)',
+          'Gera romaneios, transmite aos motoristas e monitora execução.'
+        ],
+        [
+          'PAINEL DO MOTORISTA\n(Terminal de Campo)',
+          'Motoristas,\nCondutores de Frota,\nAjudantes',
+          '• Manifesto Sequenciado com Navegação (Waze/Maps)\n• Comprovação Digital de Entrega (POD com Foto e Assinatura)\n• Controle Digital de Jornada (Início, Pausa, Almoço)\n• Botão de Pânico & Alerta de Emergência',
+          'Transmite telemetria, ocorrências e baixas em tempo real.'
+        ]
       ],
-      [
-        'PAINEL DO GESTOR\n(Torre de Controle)',
-        'Gestores de Logística,\nControladores de Tráfego,\nExpedição',
-        '• Importação Inteligente (XML NF-e, Excel, OCR)\n• Roteirização Matemática TSP com Clusterização\n• Monitoramento em Tempo Real por GPS e Mapas\n• Painel Crítico de Emergência & Transbordo\n• Auditoria de Jornada de Trabalho (Lei 13.103)',
-        'Transmite romaneios e ordens aos motoristas; recebe ocorrências, telemetria e PODs instantaneamente.'
-      ],
-      [
-        'PAINEL DO MOTORISTA\n(Terminal de Campo)',
-        'Motoristas, Condutores,\nAjudantes de Entrega',
-        '• Manifesto Eletrônico Sequenciado por Paradas\n• Comprovante Digital (Foto, Assinatura e Coordenadas)\n• Navegação com Waze / Google Maps integrado\n• Ponto Digital de Jornada (Início, Pausa, Almoço)\n• Botão de Pânico / Acionamento de Emergência',
-        'Envia confirmações de entrega, timestamps e alertas de pane em tempo real para a Torre do Gestor.'
-      ]
-    ],
-    theme: 'grid',
-    headStyles: {
-      fillColor: [15, 23, 42],
-      textColor: [255, 255, 255],
-      fontStyle: 'bold',
-      fontSize: 8.5
-    },
-    styles: {
-      fontSize: 7.5,
-      cellPadding: 2.5,
-      textColor: [30, 41, 59],
-      lineColor: [226, 232, 240]
-    },
-    columnStyles: {
-      0: { cellWidth: 36, fontStyle: 'bold' },
-      1: { cellWidth: 32 },
-      2: { cellWidth: 70 },
-      3: { cellWidth: 46 }
-    }
-  });
+      theme: 'grid',
+      headStyles: {
+        fillColor: [15, 23, 42],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 8
+      },
+      styles: {
+        fontSize: 7.5,
+        cellPadding: 2.2,
+        textColor: [30, 41, 59],
+        lineColor: [226, 232, 240]
+      },
+      columnStyles: {
+        0: { cellWidth: 36, fontStyle: 'bold' },
+        1: { cellWidth: 32 },
+        2: { cellWidth: 70 },
+        3: { cellWidth: 46 }
+      }
+    });
 
-  currentY = doc.lastAutoTable.finalY + 6;
+    currentY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 6 : currentY + 65;
 
-  // Check page break
-  if (currentY > pageHeight - 45) {
+    // Section 3: Inventário Completo do Painel Master
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('3. INVENTÁRIO FUNCIONAL DO PAINEL MASTER (GOVERNANÇA SAAS)', 14, currentY);
+    currentY += 2;
+    doc.line(14, currentY, pageWidth - 14, currentY);
+    currentY += 4;
+
+    const masterItems = [
+      '• Módulo de Clientes (Tenancy): Cadastro completo com Razão Social, CNPJ, Inscrição Estadual, contatos, dados de faturamento e bloqueio/desbloqueio instantâneo de acesso.',
+      '• Módulo de Planos: Criação de planos de assinatura (POC, Starter, Pro, Enterprise), precificação recorrente e franquia de veículos permitidos.',
+      '• Módulo Financeiro & MRR: Acompanhamento de receita recorrente mensal, controle de faturas, registro de recebimentos e emissão de recibos.',
+      '• Módulo de RH Interno: Gestão da equipe da mantenedora com controle de salários, regimes (CLT/PJ) e permissões de acesso (TOTAL, RH, Financeiro).',
+      '• Trilha Imutável de Auditoria: Log cronológico de ações administrativas críticas com carimbo de data/hora, operador e detalhes da alteração.'
+    ];
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
+    masterItems.forEach(item => {
+      const lines = doc.splitTextToSize(item, pageWidth - 28);
+      doc.text(lines, 14, currentY);
+      currentY += lines.length * 3.8;
+    });
+
+    // ==========================================
+    // PÁGINA 2: PAINEL DO GESTOR, ROTEIRIZAÇÃO & TRANSBORDO
+    // ==========================================
     doc.addPage();
     currentY = 20;
-  }
 
-  // Section 3: Detalhamento do Painel Master
-  doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text('3. DETALHAMENTO DO PAINEL MASTER (GOVERNANÇA SAAS)', 14, currentY);
-  currentY += 2;
-  doc.line(14, currentY, pageWidth - 14, currentY);
-  currentY += 4;
+    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.rect(0, 0, pageWidth, 16, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text('LOGUSQ — DOSSIÊ DE AUDITORIA: TORRE DO GESTOR & ROTEIRIZAÇÃO (PÁG 2)', 14, 11);
 
-  const masterDetails = [
-    '• Base de Clientes (Tenancy): Cadastro completo de empresas assinantes com CNPJ, Inscrição Estadual, contatos, dados de faturamento, bloqueio/desbloqueio e personalização de limites de frota.',
-    '• Catálogo de Planos SaaS: Parametrização de planos (POC, Padrão, Pro, Enterprise), precificação recorrente, franquia de veículos permitidos e recursos habilitados.',
-    '• Módulo Financeiro & MRR: Acompanhamento de receita mensal recorrente, controle de inadimplência, registro de pagamentos e emissão de recibos.',
-    '• RH Interno & Gestão de Colaboradores: Cadastro de analistas, suporte e gerentes, com regimes de contratação (CLT/PJ), controle de salários e níveis granulares de permissão (TOTAL, RH, Financeiro).',
-    '• Trilha Imutável de Auditoria: Registro rigoroso de todas as operações administrativas críticas com timestamp, operador, IP simulado, payload de modificação e status de conformidade.'
-  ];
+    currentY = 24;
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
-  masterDetails.forEach(item => {
-    const lines = doc.splitTextToSize(item, pageWidth - 28);
-    doc.text(lines, 14, currentY);
-    currentY += lines.length * 4.2;
-  });
+    // Section 4: Funcionalidades do Painel do Gestor
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('4. INVENTÁRIO FUNCIONAL DA TORRE DO GESTOR (OPERAÇÕES LOGÍSTICAS)', 14, currentY);
+    currentY += 2;
+    doc.line(14, currentY, pageWidth - 14, currentY);
+    currentY += 4;
 
-  currentY += 4;
-
-  // Check page break for Page 2
-  doc.addPage();
-  currentY = 20;
-
-  // Header Page 2
-  doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-  doc.rect(0, 0, pageWidth, 16, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.text('LOGUSQ — DOSSIÊ TÉCNICO & RELATÓRIO DE AUDITORIA (CONTINUAÇÃO)', 14, 11);
-
-  currentY = 24;
-
-  // Section 4: Protocolos de Emergência e Transbordo
-  doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text('4. PROTOCOLOS DE EMERGÊNCIA, PANE E TRANSBORDO DE CARGA', 14, currentY);
-  currentY += 2;
-  doc.line(14, currentY, pageWidth - 14, currentY);
-  currentY += 4;
-
-  doc.autoTable({
-    startY: currentY,
-    head: [['Comando de Contingência', 'Gatilho Operacional', 'Processamento Algorítmico', 'Resultado no Sistema']],
-    body: [
-      [
-        '1. Recolher Pendentes ao CD',
-        'Veículo inoperante com carga a bordo que precisa retornar à base.',
-        'Busca o veículo mais próximo com capacidade ociosa e calcula rota até o local da pane.',
-        'Insere ponto de coleta emergencial na rota do motorista de apoio e retorna carga ao CD.'
+    autoTable(doc, {
+      startY: currentY,
+      head: [['Módulo Operacional', 'Recursos e Metodologia Técnica']],
+      body: [
+        [
+          'Importação Inteligente',
+          'Processamento de XML de NF-e/CT-e, planilhas Excel/CSV e digitação manual com geocodificação de endereços e validação de duplicidade.'
+        ],
+        [
+          'Motor de Roteirização Matemática',
+          'Clusterização K-Means de entregas por setores e resolução de TSP (Traveling Salesperson Problem), calculando KM total, consumo de combustível e emissão de CO2.'
+        ],
+        [
+          'Telemetria e Mapa de Operações',
+          'Visualização Leaflet com traçados viários reais (OSRM), camadas de satélite/mapa e marcadores dinâmicos de status (Pendente, Trânsito, Atendimento, Entregue).'
+        ],
+        [
+          'Auditoria de Jornada (Lei 13.103/15)',
+          'Controle dos tempos de saída da base, trânsito, atendimento, repouso e almoço com cálculo de horas líquidas trabalhadas e relatórios para impressão.'
+        ],
+        [
+          'Gestão de Frota e Condutores',
+          'Cadastro de veículos (Placa, Modelo, Capacidade em kg e m³), controle de validade de CNH e histórico de rotas por motorista.'
+        ]
       ],
-      [
-        '2. Redistribuir Cargas Pendentes',
-        'Necessidade de cumprir as entregas no mesmo dia sem retorno ao CD.',
-        'Particiona os pacotes restantes entre os veículos ativos mais próximos e executa otimização TSP.',
-        'As paradas são reordenadas dinamicamente nas rotas dos veículos de apoio.'
+      theme: 'grid',
+      headStyles: {
+        fillColor: [15, 23, 42],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 8
+      },
+      styles: {
+        fontSize: 7.5,
+        cellPadding: 2,
+        textColor: [30, 41, 59],
+        lineColor: [226, 232, 240]
+      },
+      columnStyles: {
+        0: { cellWidth: 50, fontStyle: 'bold' },
+        1: { cellWidth: 134 }
+      }
+    });
+
+    currentY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 6 : currentY + 50;
+
+    // Section 5: Protocolos de Emergência e Transbordo
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('5. PROTOCOLOS DE EMERGÊNCIA, PANE E TRANSBORDO DE CARGAS', 14, currentY);
+    currentY += 2;
+    doc.line(14, currentY, pageWidth - 14, currentY);
+    currentY += 4;
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [['Comando de Contingência', 'Gatilho Operacional', 'Processamento Algorítmico', 'Resultado no Sistema']],
+      body: [
+        [
+          '1. Recolher Pendentes ao CD',
+          'Veículo inoperante com carga a bordo que precisa retornar à base.',
+          'Busca o veículo operacional mais próximo com capacidade de carga ociosa e calcula rota até o local da pane.',
+          'Insere ponto de coleta emergencial na rota do motorista de apoio e retorna a carga ao CD.'
+        ],
+        [
+          '2. Redistribuir Cargas Pendentes',
+          'Necessidade de cumprir as entregas no mesmo dia sem retorno à base.',
+          'Particiona os pacotes restantes entre os veículos ativos mais próximos e executa nova otimização TSP.',
+          'As paradas são reordenadas dinamicamente nas rotas dos veículos de apoio.'
+        ],
+        [
+          '3. Direcionar para Motorista Específico',
+          'Decisão do gestor de designar um condutor reserva ou de plantão.',
+          'Permite a seleção direta de qualquer condutor cadastrado com verificação em tempo real de capacidade de peso.',
+          'Transfere o manifesto para o condutor selecionado com traçado automático de resgate.'
+        ],
+        [
+          'Marcar como Resolvido / Apoio Enviado',
+          'Socorro ou guincho enviado com sucesso.',
+          'Arquiva o chamado crítico no banco de auditoria e normaliza os indicadores da frota.',
+          'Encerra a sirene e o banner vermelho na Torre de Controle.'
+        ]
       ],
-      [
-        '3. Direcionar para Motorista Específico',
-        'Decisão do gestor de designar um condutor reserva ou de plantão.',
-        'Permite a seleção direta de qualquer condutor cadastrado com verificação de capacidade.',
-        'Transfere o manifesto para o condutor selecionado com traçado automático de resgate.'
-      ],
-      [
-        'Marcar como Resolvido / Apoio Enviado',
-        'Socorro ou guincho enviado com sucesso.',
-        'Arquiva o chamado crítico no banco de auditoria e normaliza os indicadores da frota.',
-        'Encerra a sirene e o banner vermelho na Torre de Controle.'
-      ]
-    ],
-    theme: 'grid',
-    headStyles: {
-      fillColor: [15, 23, 42],
-      textColor: [255, 255, 255],
-      fontStyle: 'bold',
-      fontSize: 8.5
-    },
-    styles: {
-      fontSize: 7.5,
-      cellPadding: 2.5,
-      textColor: [30, 41, 59],
-      lineColor: [226, 232, 240]
-    },
-    columnStyles: {
-      0: { cellWidth: 42, fontStyle: 'bold' },
-      1: { cellWidth: 42 },
-      2: { cellWidth: 54 },
-      3: { cellWidth: 46 }
-    }
-  });
+      theme: 'grid',
+      headStyles: {
+        fillColor: [15, 23, 42],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 8
+      },
+      styles: {
+        fontSize: 7.2,
+        cellPadding: 2,
+        textColor: [30, 41, 59],
+        lineColor: [226, 232, 240]
+      },
+      columnStyles: {
+        0: { cellWidth: 42, fontStyle: 'bold' },
+        1: { cellWidth: 40 },
+        2: { cellWidth: 54 },
+        3: { cellWidth: 48 }
+      }
+    });
 
-  currentY = doc.lastAutoTable.finalY + 6;
-
-  // Section 5: Diretrizes de Idealização & Como o Sistema Deve Ser
-  doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text('5. DIRETRIZES DE IDEALIZAÇÃO DO SISTEMA (COMO DEVE SER)', 14, currentY);
-  currentY += 2;
-  doc.line(14, currentY, pageWidth - 14, currentY);
-  currentY += 4;
-
-  const idealizacaoItems = [
-    '• Sincronismo Fiel & Latência Zero: O sistema opera com atualização bidirecional imediata (BroadcastChannel + Storage Events). Nenhum usuário precisa atualizar páginas (F5) para visualizar alterações.',
-    '• Rigor Matemático nas Rotas: O cálculo de rotas não é geométrico linear; ele utiliza modelos de redes viárias (OSRM), otimização combinatória (TSP) e validação de pesos/volumes antes do despacho.',
-    '• Comprovação Jurídica Irrefutável: Toda baixa de entrega exige POD completo (foto da mercadoria/canhoto, assinatura digital do recebedor, CPF/Documento e carimbo GPS com timestamp imutável).',
-    '• Conformidade com a Lei do Motorista (Lei nº 13.103/2015): Registro inviolável de jornadas, tempo de direção contínua, paradas de descanso e intervalos de refeição.',
-    '• Alta Disponibilidade e Resiliência Operacional: Capacidade de operar offline no terminal do motorista com sincronização automática assim que a conectividade for restabelecida.'
-  ];
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
-  idealizacaoItems.forEach(item => {
-    const lines = doc.splitTextToSize(item, pageWidth - 28);
-    doc.text(lines, 14, currentY);
-    currentY += lines.length * 4.2;
-  });
-
-  currentY += 6;
-
-  // Signature Block
-  if (currentY > pageHeight - 40) {
+    // ==========================================
+    // PÁGINA 3: TERMINAL DO MOTORISTA, COMPROVAÇÃO DIGITAL & CONFORMIDADE
+    // ==========================================
     doc.addPage();
-    currentY = 30;
-  }
+    currentY = 20;
 
-  doc.setDrawColor(203, 213, 225);
-  doc.setLineWidth(0.5);
-  doc.line(14, currentY + 15, 90, currentY + 15);
-  doc.line(110, currentY + 15, 186, currentY + 15);
+    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.rect(0, 0, pageWidth, 16, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text('LOGUSQ — DOSSIÊ DE AUDITORIA: TERMINAL DO MOTORISTA & AUDITORIA (PÁG 3)', 14, 11);
 
-  doc.setFontSize(8);
-  doc.setTextColor(mutedTextColor[0], mutedTextColor[1], mutedTextColor[2]);
-  doc.text('Comitê de Arquitetura & Engenharia LogusQ', 14, currentY + 19);
-  doc.text('Auditoria de Conformidade e Segurança da Informação', 110, currentY + 19);
+    currentY = 24;
 
-  // Footer on all pages
-  const totalPages = (doc as any).getNumberOfPages ? (doc as any).getNumberOfPages() : (doc.internal.pages.length - 1);
-  for (let i = 1; i <= totalPages; i++) {
-    doc.setPage(i);
+    // Section 6: Terminal do Motorista
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('6. INVENTÁRIO DO TERMINAL DO MOTORISTA & COMPROVAÇÃO DIGITAL (POD)', 14, currentY);
+    currentY += 2;
+    doc.line(14, currentY, pageWidth - 14, currentY);
+    currentY += 4;
+
+    const driverItems = [
+      '• Cockpit de Entregas Sequenciado: Lista de paradas organizada pela ordem ótima calculada pela Torre, com botão de navegação direta via Waze e Google Maps.',
+      '• Comprovante Digital de Entrega (POD): Captura obrigatória de foto do canhoto/mercadoria, coleta de assinatura digital na tela, registro do nome e documento do recebedor e carimbo de geolocalização com timestamp.',
+      '• Registro de Insucessos: Menu estruturado para apontamento de recusas (Cliente Ausente, Endereço Incorreto, Avaria, etc.) com registro de foto comprobatória.',
+      '• Ponto Digital de Jornada: Botões para registro de início de viagem, pausas, intervalo de refeição e encerramento com transmissão imediata à Torre.',
+      '• Botão de Pânico / Pane Mecânica: Envio de alerta de emergência com coordenadas GPS para a Torre do Gestor.'
+    ];
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
+    driverItems.forEach(item => {
+      const lines = doc.splitTextToSize(item, pageWidth - 28);
+      doc.text(lines, 14, currentY);
+      currentY += lines.length * 3.8;
+    });
+
+    currentY += 4;
+
+    // Section 7: Checklist de Auditoria & Conformidade
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('7. CHECKLIST DE CONFORMIDADE PARA AUDITORIA EXTERNA', 14, currentY);
+    currentY += 2;
+    doc.line(14, currentY, pageWidth - 14, currentY);
+    currentY += 4;
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [['Item de Auditoria', 'Requisito Auditado', 'Mecanismo de Validação no LogusQ', 'Status']],
+      body: [
+        ['AUD-01', 'Integridade e Trilha de Auditoria', 'Logs imutáveis de ações administrativas com data/hora e operador no Painel Master.', 'CONFORME'],
+        ['AUD-02', 'Segurança Jurídica na Entrega (POD)', 'Foto, assinatura, documento e GPS registrados na conclusão de cada parada.', 'CONFORME'],
+        ['AUD-03', 'Controle da Lei do Motorista', 'Registro eletrônico de paradas, intervalos e jornada conforme Lei nº 13.103/2015.', 'CONFORME'],
+        ['AUD-04', 'Resiliência Operacional (Plano B)', 'Algoritmos automatizados de transbordo e contingência em caso de pane do veículo.', 'CONFORME'],
+        ['AUD-05', 'Isolamento de Dados (Multi-Tenancy)', 'Separação estrutural de dados por identificador de cliente (idCliente / Tenant).', 'CONFORME']
+      ],
+      theme: 'grid',
+      headStyles: {
+        fillColor: [15, 23, 42],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 8
+      },
+      styles: {
+        fontSize: 7.2,
+        cellPadding: 2,
+        textColor: [30, 41, 59],
+        lineColor: [226, 232, 240]
+      },
+      columnStyles: {
+        0: { cellWidth: 20, fontStyle: 'bold' },
+        1: { cellWidth: 54 },
+        2: { cellWidth: 84 },
+        3: { cellWidth: 26, textColor: [16, 185, 129], fontStyle: 'bold' }
+      }
+    });
+
+    currentY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 8 : currentY + 45;
+
+    // Signature Block
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.5);
+    doc.line(14, currentY + 12, 90, currentY + 12);
+    doc.line(110, currentY + 12, 186, currentY + 12);
+
     doc.setFontSize(7.5);
-    doc.setTextColor(148, 163, 184);
-    doc.text(
-      `LogusQ Enterprise Logistics System — Documento Confidencial para Fins de Auditoria e Certificação — Página ${i} de ${totalPages}`,
-      pageWidth / 2,
-      pageHeight - 8,
-      { align: 'center' }
-    );
-  }
+    doc.setTextColor(mutedTextColor[0], mutedTextColor[1], mutedTextColor[2]);
+    doc.text('Engenharia de Software & Arquitetura LogusQ', 14, currentY + 16);
+    doc.text('Auditoria de Conformidade e Segurança da Informação', 110, currentY + 16);
 
-  doc.save('Dossie_Completo_Auditoria_LogusQ.pdf');
+    // Footer on all pages
+    const totalPages = (doc as any).getNumberOfPages ? (doc as any).getNumberOfPages() : (doc.internal.pages.length - 1);
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(
+        `LogusQ Enterprise Logistics System — Documento Oficial de Auditoria — Página ${i} de ${totalPages}`,
+        pageWidth / 2,
+        pageHeight - 8,
+        { align: 'center' }
+      );
+    }
+
+    // MULTI-TIER ROBUST DOWNLOAD STRATEGY
+    // Strategy 1: Blob URL with explicit hidden <a> click
+    const pdfBlob = doc.output('blob');
+    const blobUrl = URL.createObjectURL(pdfBlob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = 'Dossie_Completo_Auditoria_LogusQ.pdf';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    }, 1000);
+
+    // Strategy 2: In case popup / iframe blocks standard download link, also trigger doc.save
+    try {
+      doc.save('Dossie_Completo_Auditoria_LogusQ.pdf');
+    } catch (e) {
+      console.log('doc.save fallback handled:', e);
+    }
+
+  } catch (error) {
+    console.error('Erro ao gerar PDF de Auditoria:', error);
+    alert('Não foi possível gerar o PDF diretamente pelo navegador. Verifique se o bloqueador de downloads/popups está ativo.');
+  }
 }

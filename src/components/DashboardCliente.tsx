@@ -8,6 +8,7 @@ import {
   Info, RotateCcw, Clock, Bell, Printer, UserCheck, Building2, Save, Phone, Mail, User, Search, Edit3, FileCheck
 } from 'lucide-react';
 import { generateAuditReportPDF } from '../utils/generateAuditPDF';
+import { DossierModal } from './DossierModal';
 import SimulatedMap from './SimulatedMap';
 import { clusterAndOptimize, DEFAULT_BASE, geocodeAddress, fetchDirectNominatimGeocode, haversineDistance, optimizeTSP } from '../utils/routingEngine';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
@@ -21,6 +22,7 @@ interface DashboardClienteProps {
 export default function DashboardCliente({ userEmail, onLogout }: DashboardClienteProps) {
   const [activeTab, setActiveTab] = useState<'roteiro' | 'frota' | 'condutores' | 'custos' | 'comprovantes' | 'jornadas' | 'meus_dados'>('roteiro');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [showDossierModal, setShowDossierModal] = useState(false);
   const triggerRefresh = () => setRefreshKey(prev => prev + 1);
 
   // Client info
@@ -2089,9 +2091,12 @@ Assinatura do Expedidor: _______________________________`;
             ID: {clientData?.idCliente || 'CLI-DEMO'}
           </div>
           <button
-            onClick={() => generateAuditReportPDF()}
+            onClick={() => {
+              generateAuditReportPDF();
+              setShowDossierModal(true);
+            }}
             className="w-full bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-700/50 text-emerald-300 py-1.5 rounded-lg font-semibold transition-colors flex items-center justify-center gap-1.5 text-[11px] shadow cursor-pointer"
-            title="Baixar Dossiê Completo de Auditoria em PDF"
+            title="Visualizar e Baixar Dossiê Completo de Auditoria em PDF"
           >
             <FileCheck className="w-3.5 h-3.5 text-emerald-400" /> Dossiê Auditoria (PDF)
           </button>
@@ -4944,6 +4949,11 @@ Assinatura do Expedidor: _______________________________`;
         userEmail={userEmail}
         onImportComplete={triggerRefresh}
         dbRepo={dbRepo}
+      />
+
+      <DossierModal 
+        isOpen={showDossierModal} 
+        onClose={() => setShowDossierModal(false)} 
       />
     </div>
   );

@@ -8,6 +8,7 @@ import {
   ShieldCheck, Filter, ShieldAlert, AlertTriangle, Eye, RefreshCw, Lock, Key, FileCheck
 } from 'lucide-react';
 import { generateAuditReportPDF } from '../utils/generateAuditPDF';
+import { DossierModal } from './DossierModal';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 interface DashboardMasterProps {
@@ -52,6 +53,7 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
   const [refreshKey, setRefreshKey] = useState(0);
   const triggerRefresh = () => setRefreshKey(prev => prev + 1);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showDossierModal, setShowDossierModal] = useState(false);
   const [showPasswordChangeModal, setShowPasswordChangeModal] = useState(false);
   const [newPasswordValue, setNewPasswordValue] = useState('');
   const [confirmPasswordValue, setConfirmPasswordValue] = useState('');
@@ -948,9 +950,12 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
             User: {userEmail}
           </div>
           <button
-            onClick={() => generateAuditReportPDF()}
-            className="w-full bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-700/50 text-emerald-300 py-1.5 rounded-lg font-semibold transition-colors flex items-center justify-center gap-1.5 text-[11px] shadow"
-            title="Baixar Dossiê Completo de Auditoria em PDF"
+            onClick={() => {
+              generateAuditReportPDF();
+              setShowDossierModal(true);
+            }}
+            className="w-full bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-700/50 text-emerald-300 py-1.5 rounded-lg font-semibold transition-colors flex items-center justify-center gap-1.5 text-[11px] shadow cursor-pointer"
+            title="Visualizar e Baixar Dossiê Completo de Auditoria em PDF"
           >
             <FileCheck className="w-3.5 h-3.5 text-emerald-400" /> Baixar Dossiê em PDF
           </button>
@@ -3519,6 +3524,10 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
           </div>
         )}
 
+        <DossierModal 
+          isOpen={showDossierModal} 
+          onClose={() => setShowDossierModal(false)} 
+        />
       </main>
     </div>
   );
