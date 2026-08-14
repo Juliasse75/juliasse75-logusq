@@ -5,8 +5,9 @@ import LogusQLogo from './LogusQLogo';
 import { 
   Users, UserPlus, Layers, DollarSign, Award, Settings, 
   Trash2, UserCheck, Edit3, Check, Search, Download, Plus, Play, Info, FileText,
-  ShieldCheck, Filter, ShieldAlert, AlertTriangle, Eye, RefreshCw, Lock, Key
+  ShieldCheck, Filter, ShieldAlert, AlertTriangle, Eye, RefreshCw, Lock, Key, FileCheck
 } from 'lucide-react';
+import { generateAuditReportPDF } from '../utils/generateAuditPDF';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 interface DashboardMasterProps {
@@ -946,6 +947,13 @@ export default function DashboardMaster({ userEmail, onLogout, colabAccessLevel 
           <div className="text-[10px] text-slate-500 font-mono truncate">
             User: {userEmail}
           </div>
+          <button
+            onClick={() => generateAuditReportPDF()}
+            className="w-full bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-700/50 text-emerald-300 py-1.5 rounded-lg font-semibold transition-colors flex items-center justify-center gap-1.5 text-[11px] shadow"
+            title="Baixar Dossiê Completo de Auditoria em PDF"
+          >
+            <FileCheck className="w-3.5 h-3.5 text-emerald-400" /> Baixar Dossiê em PDF
+          </button>
           <button
             onClick={() => {
               setNewPasswordValue('');

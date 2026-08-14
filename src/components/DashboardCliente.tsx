@@ -5,8 +5,9 @@ import LogusQLogo from './LogusQLogo';
 import { 
   Truck, Users, MapPin, Calculator, Plus, Upload, Download, Play, 
   Map, CheckCircle, Trash2, Calendar, FileText, Clipboard, Settings, ShieldAlert, Sparkles,
-  Info, RotateCcw, Clock, Bell, Printer, UserCheck, Building2, Save, Phone, Mail, User, Search, Edit3
+  Info, RotateCcw, Clock, Bell, Printer, UserCheck, Building2, Save, Phone, Mail, User, Search, Edit3, FileCheck
 } from 'lucide-react';
+import { generateAuditReportPDF } from '../utils/generateAuditPDF';
 import SimulatedMap from './SimulatedMap';
 import { clusterAndOptimize, DEFAULT_BASE, geocodeAddress, fetchDirectNominatimGeocode, haversineDistance, optimizeTSP } from '../utils/routingEngine';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
@@ -2083,13 +2084,20 @@ Assinatura do Expedidor: _______________________________`;
         </div>
 
         {/* Footer info & Logout */}
-        <div className="p-4 border-t border-slate-800/60 bg-slate-950/20 text-xs">
-          <div className="text-[10px] text-slate-500 font-mono truncate mb-2">
+        <div className="p-4 border-t border-slate-800/60 bg-slate-950/20 text-xs space-y-2">
+          <div className="text-[10px] text-slate-500 font-mono truncate">
             ID: {clientData?.idCliente || 'CLI-DEMO'}
           </div>
           <button
+            onClick={() => generateAuditReportPDF()}
+            className="w-full bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-700/50 text-emerald-300 py-1.5 rounded-lg font-semibold transition-colors flex items-center justify-center gap-1.5 text-[11px] shadow cursor-pointer"
+            title="Baixar Dossiê Completo de Auditoria em PDF"
+          >
+            <FileCheck className="w-3.5 h-3.5 text-emerald-400" /> Dossiê Auditoria (PDF)
+          </button>
+          <button
             onClick={onLogout}
-            className="w-full bg-slate-800 hover:bg-slate-700 hover:text-white text-slate-300 py-2 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2"
+            className="w-full bg-slate-800 hover:bg-slate-700 hover:text-white text-slate-300 py-2 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer"
           >
             Sair do Painel
           </button>
