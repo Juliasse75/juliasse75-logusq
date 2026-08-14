@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Entrega, Veiculo } from '../types';
 import { DEFAULT_BASE } from '../utils/routingEngine';
-import { MapPin, Navigation, Truck, RefreshCw, Eye, EyeOff, Layers, Filter, Clock } from 'lucide-react';
+import { MapPin, Navigation, Truck, RefreshCw, Eye, EyeOff, Layers, Filter, Clock, Compass } from 'lucide-react';
 
 // Haversine formula to compute exact distance in kilometers
 function calculateHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -88,8 +88,19 @@ export default function SimulatedMap({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const tileLayerRef = useRef<any>(null);
+  const currentTileStyleRef = useRef<string | null>(null);
   const markersRef = useRef<any[]>([]);
   const routesRef = useRef<any[]>([]);
+
+  // Track user manual pan/zoom interactions to avoid overriding user's view on background syncs
+  const userInteractedRef = useRef(false);
+  const isFirstLoadRef = useRef(true);
+  const prevFilterRef = useRef({
+    driver: 'all',
+    vehicle: 'all',
+    showCompleted: true,
+    baseKey: `${baseCoords.lat}_${baseCoords.lng}`
+  });
 
   // Filters and Styles state
   const [selectedDriverFilter, setSelectedDriverFilter] = useState<string>('all');
@@ -232,33 +243,51 @@ export default function SimulatedMap({
 
     // Initialize map if not already done
     if (!mapRef.current) {
-      mapRef.current = L.map(mapContainerRef.current).setView(
+      const newMap = L.map(mapContainerRef.current, {
+        zoomControl: true,
+        scrollWheelZoom: true,
+        dragging: true,
+        touchZoom: true,
+        doubleClickZoom: true,
+        boxZoom: true
+      }).setView(
         [baseCoords.lat, baseCoords.lng],
         12
       );
+
+      // Register interaction events to detect when the user intentionally moves or zooms the map
+      newMap.on('dragstart zoomstart movestart', () => {
+        userInteractedRef.current = true;
+      });
+
+      mapRef.current = newMap;
     }
 
     const map = mapRef.current;
 
-    // Update Tile Layer on mapStyle change
-    if (tileLayerRef.current) {
-      tileLayerRef.current.remove();
-    }
+    // Update Tile Layer only if mapStyle changed or tileLayer not yet created
+    if (currentTileStyleRef.current !== mapStyle || !tileLayerRef.current) {
+      if (tileLayerRef.current) {
+        tileLayerRef.current.remove();
+      }
 
-    let tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'; // dark high-contrast (Default)
-    if (mapStyle === 'osm') {
-      // Use CartoDB Voyager as the "Rua" style - detailed colorful street map that uses a high-performance CDN to prevent loading blocks
-      tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'; 
-    } else if (mapStyle === 'voyager') {
-      // Use CartoDB Positron as the "Claro" style - clean, light-grey, high-contrast minimalist layout
-      tileUrl = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'; 
-    }
+      let tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'; // dark high-contrast (Default)
+      if (mapStyle === 'osm') {
+        // Use CartoDB Voyager as the "Rua" style - detailed colorful street map that uses a high-performance CDN to prevent loading blocks
+        tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'; 
+      } else if (mapStyle === 'voyager') {
+        // Use CartoDB Positron as the "Claro" style - clean, light-grey, high-contrast minimalist layout
+        tileUrl = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'; 
+      }
 
-    tileLayerRef.current = L.tileLayer(tileUrl, {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd',
-      maxZoom: 20
-    }).addTo(map);
+      tileLayerRef.current = L.tileLayer(tileUrl, {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 20
+      }).addTo(map);
+
+      currentTileStyleRef.current = mapStyle;
+    }
 
     // Clear existing markers
     markersRef.current.forEach(m => m.remove());
@@ -526,7 +555,27 @@ export default function SimulatedMap({
       });
     }
 
-    // Auto fit map bounds to cover visible filtered points
+    // Check if user changed filters explicitly
+    const filtersChanged = 
+      prevFilterRef.current.driver !== selectedDriverFilter ||
+      prevFilterRef.current.vehicle !== selectedVehicleFilter ||
+      prevFilterRef.current.showCompleted !== showCompleted ||
+      prevFilterRef.current.baseKey !== `${baseCoords.lat}_${baseCoords.lng}`;
+
+    if (filtersChanged) {
+      prevFilterRef.current = {
+        driver: selectedDriverFilter,
+        vehicle: selectedVehicleFilter,
+        showCompleted: showCompleted,
+        baseKey: `${baseCoords.lat}_${baseCoords.lng}`
+      };
+      // Reset user interaction flag when explicit filter criteria change
+      userInteractedRef.current = false;
+    }
+
+    // Auto fit map bounds ONLY on first load, when filters change, or if user hasn't manually panned/zoomed
+    const shouldFitBounds = isFirstLoadRef.current || filtersChanged || !userInteractedRef.current;
+
     const activeCoords = [
       ...visibleCoords,
       ...emergencias.map(em => {
@@ -541,13 +590,38 @@ export default function SimulatedMap({
       }).filter(Boolean) as { lat: number; lng: number }[]
     ];
 
-    if (activeCoords.length > 1) {
-      const bounds = L.latLngBounds(activeCoords.map(c => [c.lat, c.lng]));
-      map.fitBounds(bounds, { padding: [50, 50] });
-    } else {
-      map.setView([baseCoords.lat, baseCoords.lng], 13);
+    if (shouldFitBounds) {
+      if (activeCoords.length > 1) {
+        const bounds = L.latLngBounds(activeCoords.map(c => [c.lat, c.lng]));
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+      } else {
+        map.setView([baseCoords.lat, baseCoords.lng], 13);
+      }
+      isFirstLoadRef.current = false;
     }
-  }, [leafletLoaded, entregas, displayedRotas, baseCoords, mapStyle, selectedDriverFilter, selectedVehicleFilter, activeRoutes, emergencias, realStreetRoutes]);
+  }, [leafletLoaded, entregas, displayedRotas, baseCoords, mapStyle, selectedDriverFilter, selectedVehicleFilter, showCompleted, activeRoutes, emergencias, realStreetRoutes]);
+
+  // Centralize / Reset View handler
+  const handleResetView = () => {
+    if (!mapRef.current || !(window as any).L) return;
+    const L = (window as any).L;
+    userInteractedRef.current = false;
+
+    const allPoints: { lat: number; lng: number }[] = [baseCoords];
+    entregas.forEach(ent => {
+      if (!showCompleted && ent.status === 'Entregue') return;
+      if (ent.latitude && ent.longitude) {
+        allPoints.push({ lat: ent.latitude, lng: ent.longitude });
+      }
+    });
+
+    if (allPoints.length > 1) {
+      const bounds = L.latLngBounds(allPoints.map(p => [p.lat, p.lng]));
+      mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+    } else {
+      mapRef.current.setView([baseCoords.lat, baseCoords.lng], 13);
+    }
+  };
 
   if (!leafletLoaded) {
     return (
@@ -673,6 +747,16 @@ export default function SimulatedMap({
 
           {/* Resumo de Rotas Toggle */}
           <div className="flex items-center gap-1.5 border-l border-slate-800 pl-2.5">
+            <button
+              type="button"
+              onClick={handleResetView}
+              className="px-2.5 py-1 rounded text-[10px] font-mono font-bold transition-all flex items-center gap-1 border bg-slate-950 border-slate-800 text-slate-300 hover:text-white hover:border-violet-500 cursor-pointer shadow-sm"
+              title="Centralizar e re-enquadrar todos os pontos e rotas do mapa"
+            >
+              <Compass className="w-3.5 h-3.5 text-violet-400" />
+              Centralizar
+            </button>
+
             <button
               type="button"
               onClick={() => setShowRoutesPanel(prev => !prev)}

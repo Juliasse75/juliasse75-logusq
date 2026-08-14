@@ -2055,32 +2055,47 @@ Assinatura do Expedidor: _______________________________`;
                   </div>
 
                   {/* Cargas Entregues até o Momento */}
-                  <div className="bg-slate-950/60 p-3 rounded-xl border border-red-500/10">
-                    <span className="text-[9px] text-emerald-400 font-bold uppercase block mb-1">✓ Entregas Realizadas com Sucesso</span>
-                    {em.entreguesAteMomento && em.entreguesAteMomento.length > 0 ? (
-                      <ul className="space-y-1 list-disc list-inside text-emerald-300 text-[11px]">
-                        {em.entreguesAteMomento.map((item: string, i: number) => (
-                          <li key={i} className="truncate">{item}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <span className="text-slate-500 italic text-[11px]">Nenhuma entrega concluída antes da pane.</span>
-                    )}
-                  </div>
+                  {(() => {
+                    const uniqueEntregues = Array.from(new Set(em.entreguesAteMomento || []));
+                    const uniqueFaltando = Array.from(
+                      new Set((em.faltandoEntregar || []).filter((item: string) => !uniqueEntregues.includes(item)))
+                    );
 
-                  {/* Cargas Pendentes / Faltando Entregar */}
-                  <div className="bg-slate-950/60 p-3 rounded-xl border border-red-500/10">
-                    <span className="text-[9px] text-amber-400 font-bold uppercase block mb-1">⏳ Cargas Pendentes (Faltam Entregar)</span>
-                    {em.faltandoEntregar && em.faltandoEntregar.length > 0 ? (
-                      <ul className="space-y-1 list-disc list-inside text-amber-300 text-[11px]">
-                        {em.faltandoEntregar.map((item: string, i: number) => (
-                          <li key={i} className="truncate">{item}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <span className="text-slate-500 italic text-[11px]">Nenhuma carga pendente no veículo.</span>
-                    )}
-                  </div>
+                    return (
+                      <>
+                        <div className="bg-slate-950/60 p-3 rounded-xl border border-red-500/10">
+                          <span className="text-[9px] text-emerald-400 font-bold uppercase block mb-1">
+                            ✓ Entregas Realizadas com Sucesso ({uniqueEntregues.length})
+                          </span>
+                          {uniqueEntregues.length > 0 ? (
+                            <ul className="space-y-1 list-disc list-inside text-emerald-300 text-[11px] max-h-48 overflow-y-auto pr-1">
+                              {uniqueEntregues.map((item: string, i: number) => (
+                                <li key={i} className="truncate">{item}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <span className="text-slate-500 italic text-[11px]">Nenhuma entrega concluída antes da pane.</span>
+                          )}
+                        </div>
+
+                        {/* Cargas Pendentes / Faltando Entregar */}
+                        <div className="bg-slate-950/60 p-3 rounded-xl border border-red-500/10">
+                          <span className="text-[9px] text-amber-400 font-bold uppercase block mb-1">
+                            ⏳ Cargas Pendentes (Faltam Entregar) ({uniqueFaltando.length})
+                          </span>
+                          {uniqueFaltando.length > 0 ? (
+                            <ul className="space-y-1 list-disc list-inside text-amber-300 text-[11px] max-h-48 overflow-y-auto pr-1">
+                              {uniqueFaltando.map((item: string, i: number) => (
+                                <li key={i} className="truncate">{item}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <span className="text-slate-500 italic text-[11px]">Nenhuma carga pendente no veículo.</span>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
 
                 {/* BOTÕES DE DECISÃO LOGÍSTICA DE TRANSBORDO */}

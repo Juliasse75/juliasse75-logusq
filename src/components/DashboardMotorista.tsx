@@ -55,11 +55,14 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
     tipo: 'Motocicleta'
   };
 
-  // Find assigned routes in all client accounts dynamically (simulate global scan across all active client tenants)
-  const clientEmails = [
-    'demo@logusq.com.br',
-    ...dbRepo.getClientes().map(c => c.email)
-  ];
+  // Find assigned routes in all client accounts dynamically (unique emails without duplicates)
+  const clientEmails = React.useMemo(() => {
+    const set = new Set<string>(['demo@logusq.com.br']);
+    dbRepo.getClientes().forEach(c => {
+      if (c.email) set.add(c.email);
+    });
+    return Array.from(set);
+  }, []);
   
   interface ActiveRouteDriver {
     routeId: string;
@@ -188,9 +191,24 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
   };
 
   const handleTriggerEmergency = () => {
-    const allStops = activeDriverRoutes.flatMap(r => r.path);
-    const entregues = allStops.filter(s => s.status === 'Entregue').map(s => `${s.cliente} (${s.tipoOperacao})`);
-    const pendentes = allStops.filter(s => s.status === 'Pendente').map(s => `${s.cliente} (${s.tipoOperacao})`);
+    // Unique stops map to strictly avoid duplicate counts across multi-route scans
+    const uniqueStopsMap = new Map<string, Entrega>();
+    activeDriverRoutes.forEach(r => {
+      (r.path || []).forEach(s => {
+        const key = s.id || s.chave || s.notaFiscal || `${s.cliente}_${s.endereco}`;
+        if (!uniqueStopsMap.has(key)) {
+          uniqueStopsMap.set(key, s);
+        }
+      });
+    });
+
+    const allStops = Array.from(uniqueStopsMap.values());
+    const entregues = allStops
+      .filter(s => s.status === 'Entregue')
+      .map(s => `${s.cliente} (${s.tipoOperacao || 'Entrega'})`);
+    const pendentes = allStops
+      .filter(s => s.status !== 'Entregue' && s.status !== 'Cancelado')
+      .map(s => `${s.cliente} (${s.tipoOperacao || 'Entrega'})`);
 
     const lastCompletedStop = allStops.filter(s => s.status === 'Entregue').slice(-1)[0];
     const lat = lastCompletedStop ? lastCompletedStop.latitude : -19.93; // Default near BH CD Central
@@ -218,15 +236,20 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
 
   useEffect(() => {
     const foundRoutes: ActiveRouteDriver[] = [];
+    const seenRouteKeys = new Set<string>();
+
     clientEmails.forEach(email => {
       const routes = dbRepo.getRotasAtivas(email);
       Object.entries(routes).forEach(([rId, r]: [string, any]) => {
         // Match by driver name or driver email
-        if (
+        const isMatch = (
           r.driverEmail === userEmail || 
-          r.driver?.toLowerCase().includes(driverProfile.nome.toLowerCase()) ||
+          (r.driver && driverProfile.nome && r.driver.toLowerCase().includes(driverProfile.nome.toLowerCase())) ||
           (userEmail === 'motorista@logusq.com.br' && rId === 'ROTA-1') // demo fallback
-        ) {
+        );
+        const uniqueKey = `${email}_${rId}`;
+        if (isMatch && !seenRouteKeys.has(uniqueKey)) {
+          seenRouteKeys.add(uniqueKey);
           foundRoutes.push({
             routeId: rId,
             clientEmail: email,
