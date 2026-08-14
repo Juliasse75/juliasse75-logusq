@@ -731,40 +731,47 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   }>({ type: null, driverEmail: '', result: null });
 
   const calculateRescueOptions = (driverEmail: string, type: 'recolher' | 'redistribuir' | 'manual') => {
-    const brokenRouteEntry = Object.entries(activeRoutes).find(([rId, r]: [string, any]) => r.driverEmail === driverEmail);
+    // Robust driver route matching by email, driver name, or condutores list
+    const brokenRouteEntry = Object.entries(activeRoutes).find(([rId, r]: [string, any]) => 
+      r.driverEmail === driverEmail || 
+      (r.driver && (r.driver.toLowerCase().includes(driverEmail.toLowerCase()) || driverEmail.toLowerCase().includes(r.driver.toLowerCase()))) ||
+      condutores.some(c => c.email === driverEmail && r.driver && (r.driver.toLowerCase().includes(c.nome.toLowerCase()) || c.nome.toLowerCase().includes(r.driver.toLowerCase())))
+    );
+
     if (!brokenRouteEntry) {
-      alert("Nenhuma rota ativa encontrada para o motorista em pane.");
+      alert("Nenhuma rota ativa encontrada para o motorista em pane no momento.");
       return;
     }
     const [brokenRouteId, brokenRoute] = brokenRouteEntry as [string, any];
-    const pendingPoints = (brokenRoute.path || []).filter((p: any) => p.status === 'Pendente');
+    const pendingPoints = (brokenRoute.path || []).filter((p: any) => p.status !== 'Entregue' && p.status !== 'Cancelado');
 
     if (pendingPoints.length === 0) {
       alert("Não há cargas pendentes no veículo quebrado para realizar o transbordo.");
       return;
     }
 
-    const breakdownLat = pendingPoints[0].latitude;
-    const breakdownLng = pendingPoints[0].longitude;
+    const matchingEmergency = unresolvedEmergencies.find(e => e.driverEmail === driverEmail);
+    const breakdownLat = matchingEmergency?.latitude || pendingPoints[0]?.latitude || clientBaseCoords.lat;
+    const breakdownLng = matchingEmergency?.longitude || pendingPoints[0]?.longitude || clientBaseCoords.lng;
     const totalPendingWeight = pendingPoints.reduce((sum: number, p: any) => sum + (p.pesoMercadoriaKg || 0), 0);
 
-    const otherRoutes = Object.entries(activeRoutes).filter(([rId, r]: [string, any]) => r.driverEmail !== driverEmail);
+    const otherRoutes = Object.entries(activeRoutes).filter(([rId, r]: [string, any]) => r.driverEmail !== driverEmail && rId !== brokenRouteId);
 
     if (type === 'recolher') {
       if (otherRoutes.length === 0) {
-        alert("Não há outros veículos em operação no momento para apoiar no resgate.");
+        alert("Não há outros veículos em operação no momento para apoiar no resgate. Utilize a opção '3. Direcionar para Motorista Específico' para designar qualquer condutor cadastrado.");
         return;
       }
 
       const options = otherRoutes.map(([rId, r]: [string, any]) => {
-        const v = frota.find(item => `${item.modelo} (${item.placa})` === r.vehicle);
+        const v = frota.find(item => `${item.modelo} (${item.placa})` === r.vehicle || item.idVeiculo === r.vehicle || item.placa === r.vehicle);
         const capacity = v?.capacidadeKg || 1200;
-        const currentWeight = (r.path || []).filter((p: any) => p.status === 'Pendente').reduce((sum: number, p: any) => sum + (p.pesoMercadoriaKg || 0), 0);
+        const currentWeight = (r.path || []).filter((p: any) => p.status !== 'Entregue' && p.status !== 'Cancelado').reduce((sum: number, p: any) => sum + (p.pesoMercadoriaKg || 0), 0);
         const availableCapacity = capacity - currentWeight;
 
         const lastCompleted = (r.path || []).filter((p: any) => p.status === 'Entregue');
-        const vehicleLat = lastCompleted.length > 0 ? lastCompleted[lastCompleted.length - 1].latitude : DEFAULT_BASE.latitude;
-        const vehicleLng = lastCompleted.length > 0 ? lastCompleted[lastCompleted.length - 1].longitude : DEFAULT_BASE.longitude;
+        const vehicleLat = lastCompleted.length > 0 ? lastCompleted[lastCompleted.length - 1].latitude : clientBaseCoords.lat;
+        const vehicleLng = lastCompleted.length > 0 ? lastCompleted[lastCompleted.length - 1].longitude : clientBaseCoords.lng;
 
         const distance = haversineDistance(vehicleLat, vehicleLng, breakdownLat, breakdownLng);
         
@@ -799,7 +806,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       });
     } else if (type === 'redistribuir') {
       if (otherRoutes.length === 0) {
-        alert("Não há outros veículos em operação no momento para apoiar no resgate.");
+        alert("Não há outros veículos em operação no momento para apoiar no resgate. Utilize a opção '3. Direcionar para Motorista Específico'.");
         return;
       }
 
@@ -808,24 +815,24 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       const virtualPositions: Record<string, { lat: number, lng: number }> = {};
 
       otherRoutes.forEach(([rId, r]: [string, any]) => {
-        const currentWeight = (r.path || []).filter((p: any) => p.status === 'Pendente').reduce((sum: number, p: any) => sum + (p.pesoMercadoriaKg || 0), 0);
+        const currentWeight = (r.path || []).filter((p: any) => p.status !== 'Entregue' && p.status !== 'Cancelado').reduce((sum: number, p: any) => sum + (p.pesoMercadoriaKg || 0), 0);
         vehiclePendingWeights[rId] = currentWeight;
 
         const lastCompleted = (r.path || []).filter((p: any) => p.status === 'Entregue');
         virtualPositions[rId] = {
-          lat: lastCompleted.length > 0 ? lastCompleted[lastCompleted.length - 1].latitude : DEFAULT_BASE.latitude,
-          lng: lastCompleted.length > 0 ? lastCompleted[lastCompleted.length - 1].longitude : DEFAULT_BASE.longitude
+          lat: lastCompleted.length > 0 ? lastCompleted[lastCompleted.length - 1].latitude : clientBaseCoords.lat,
+          lng: lastCompleted.length > 0 ? lastCompleted[lastCompleted.length - 1].longitude : clientBaseCoords.lng
         };
       });
 
       pendingPoints.forEach((point: any) => {
         const scoredVehicles = otherRoutes.map(([rId, r]: [string, any]) => {
-          const v = frota.find(item => `${item.modelo} (${item.placa})` === r.vehicle);
+          const v = frota.find(item => `${item.modelo} (${item.placa})` === r.vehicle || item.idVeiculo === r.vehicle || item.placa === r.vehicle);
           const capacity = v?.capacidadeKg || 1200;
-          const availableCapacity = capacity - vehiclePendingWeights[rId];
+          const availableCapacity = capacity - (vehiclePendingWeights[rId] || 0);
 
-          const vehicleLat = virtualPositions[rId].lat;
-          const vehicleLng = virtualPositions[rId].lng;
+          const vehicleLat = virtualPositions[rId]?.lat || clientBaseCoords.lat;
+          const vehicleLng = virtualPositions[rId]?.lng || clientBaseCoords.lng;
 
           const distance = haversineDistance(vehicleLat, vehicleLng, point.latitude, point.longitude);
 
@@ -838,10 +845,10 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
           };
         }).sort((a, b) => a.distance - b.distance);
 
-        const bestVehicle = scoredVehicles.find(v => v.availableCapacity >= point.pesoMercadoriaKg) || scoredVehicles[0];
+        const bestVehicle = scoredVehicles.find(v => v.availableCapacity >= (point.pesoMercadoriaKg || 0)) || scoredVehicles[0];
 
         // Update weights and virtual position to simulate sequential travel
-        vehiclePendingWeights[bestVehicle.routeId] += point.pesoMercadoriaKg;
+        vehiclePendingWeights[bestVehicle.routeId] = (vehiclePendingWeights[bestVehicle.routeId] || 0) + (point.pesoMercadoriaKg || 0);
         virtualPositions[bestVehicle.routeId] = { lat: point.latitude, lng: point.longitude };
 
         assignments.push({
@@ -867,13 +874,15 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       const options = allDrivers.map((driver: any) => {
         if (driver.email === driverEmail) return null;
 
-        const activeRouteEntry = Object.entries(activeRoutes).find(([rId, r]: [string, any]) => r.driverEmail === driver.email);
+        const activeRouteEntry = Object.entries(activeRoutes).find(([rId, r]: [string, any]) => 
+          r.driverEmail === driver.email || (r.driver && r.driver.toLowerCase().includes(driver.nome.toLowerCase()))
+        );
         
         let hasActiveRoute = false;
         let routeId = '';
         let currentWeight = 0;
-        let vehicleLat = DEFAULT_BASE.latitude;
-        let vehicleLng = DEFAULT_BASE.longitude;
+        let vehicleLat = clientBaseCoords.lat;
+        let vehicleLng = clientBaseCoords.lng;
         let routeStatus = 'Disponível (Sem Rota)';
 
         const v = frota.find(item => item.idVeiculo === driver.veiculo || `${item.modelo} (${item.placa})` === driver.veiculo || item.placa === driver.veiculo);
@@ -883,7 +892,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
           hasActiveRoute = true;
           routeId = activeRouteEntry[0];
           const r = activeRouteEntry[1] as any;
-          const pending = (r.path || []).filter((p: any) => p.status === 'Pendente');
+          const pending = (r.path || []).filter((p: any) => p.status !== 'Entregue' && p.status !== 'Cancelado');
           currentWeight = pending.reduce((sum: number, p: any) => sum + (p.pesoMercadoriaKg || 0), 0);
           
           const lastCompleted = (r.path || []).filter((p: any) => p.status === 'Entregue');
@@ -938,7 +947,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     const brokenRoute = updatedRoutes[brokenRouteId];
 
     brokenRoute.path = brokenRoute.path.map((p: any) => {
-      if (p.status === 'Pendente') {
+      if (p.status !== 'Entregue' && p.status !== 'Cancelado') {
         return { ...p, status: 'Cancelado', observacao: `Carga transbordada para ${bestOption.driver} (Apoio Emergencial)` };
       }
       return p;
@@ -961,7 +970,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     };
 
     const completedStops = (rescueRoute.path || []).filter((p: any) => p.status === 'Entregue' || p.status === 'Cancelado');
-    const futureStops = (rescueRoute.path || []).filter((p: any) => p.status === 'Pendente');
+    const futureStops = (rescueRoute.path || []).filter((p: any) => p.status !== 'Entregue' && p.status !== 'Cancelado');
     
     const newPath = [...completedStops, rescueStop, ...futureStops];
     
@@ -979,6 +988,14 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       newMapRoutes[idx] = r.path;
     });
     setMapRoutes(newMapRoutes);
+
+    try {
+      const bc = new BroadcastChannel('logusq_sync_channel');
+      bc.postMessage({ type: 'SYNC_ROUTES', timestamp: Date.now() });
+      bc.close();
+    } catch (e) {}
+    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new CustomEvent('logusq_sync_complete'));
 
     alert(`✓ Missão de Resgate Confirmada! O motorista ${bestOption.driver} foi notificado para coletar os ${totalPendingWeight} kg de carga no local da pane e retornar com o passivo.`);
     setActiveRescueCalc({ type: null, driverEmail: '', result: null });
@@ -1017,8 +1034,8 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       const allPending = [...existingPending, clonedPoint];
 
       const lastCompletedNode = completedStops[completedStops.length - 1];
-      const startLat = lastCompletedNode ? lastCompletedNode.latitude : DEFAULT_BASE.latitude;
-      const startLng = lastCompletedNode ? lastCompletedNode.longitude : DEFAULT_BASE.longitude;
+      const startLat = lastCompletedNode ? lastCompletedNode.latitude : clientBaseCoords.lat;
+      const startLng = lastCompletedNode ? lastCompletedNode.longitude : clientBaseCoords.lng;
 
       const optimizedPending = optimizeTSP(startLat, startLng, allPending);
       const finalPath = [...completedStops, ...optimizedPending];
@@ -1039,6 +1056,14 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     });
     setMapRoutes(newMapRoutes);
 
+    try {
+      const bc = new BroadcastChannel('logusq_sync_channel');
+      bc.postMessage({ type: 'SYNC_ROUTES', timestamp: Date.now() });
+      bc.close();
+    } catch (e) {}
+    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new CustomEvent('logusq_sync_complete'));
+
     alert(`✓ Redistribuição de Cargas Concluída! Os pontos pendentes foram redistribuídos e re-optimizados matematicamente (via algoritmo TSP) nas rotas dos veículos operacionais.`);
     setActiveRescueCalc({ type: null, driverEmail: '', result: null });
     triggerRefresh();
@@ -1052,7 +1077,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
 
     // 1. Cancel the pending points on the broken route
     brokenRoute.path = brokenRoute.path.map((p: any) => {
-      if (p.status === 'Pendente') {
+      if (p.status !== 'Entregue' && p.status !== 'Cancelado') {
         return { ...p, status: 'Cancelado', observacao: `Carga transbordada manualmente para ${selectedOption.driver} (Apoio Emergencial)` };
       }
       return p;
@@ -1077,7 +1102,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     if (selectedOption.hasActiveRoute) {
       const rescueRoute = updatedRoutes[selectedOption.routeId];
       const completedStops = (rescueRoute.path || []).filter((p: any) => p.status === 'Entregue' || p.status === 'Cancelado');
-      const futureStops = (rescueRoute.path || []).filter((p: any) => p.status === 'Pendente');
+      const futureStops = (rescueRoute.path || []).filter((p: any) => p.status !== 'Entregue' && p.status !== 'Cancelado');
 
       const clonedPending = pendingPoints.map((p: any) => ({
         ...p,
@@ -1086,8 +1111,8 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
         observacao: `Carga incorporada manualmente de ${brokenRoute.driver} (Pane)`
       }));
 
-      const startLat = completedStops.length > 0 ? completedStops[completedStops.length - 1].latitude : DEFAULT_BASE.latitude;
-      const startLng = completedStops.length > 0 ? completedStops[completedStops.length - 1].longitude : DEFAULT_BASE.longitude;
+      const startLat = completedStops.length > 0 ? completedStops[completedStops.length - 1].latitude : clientBaseCoords.lat;
+      const startLng = completedStops.length > 0 ? completedStops[completedStops.length - 1].longitude : clientBaseCoords.lng;
 
       // Put rescue stop at the beginning of the pending points, then other pending ones, then TSP-optimize them
       const allNewPending = [rescueStop, ...clonedPending, ...futureStops];
@@ -1110,7 +1135,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       }));
 
       const allNewPending = [rescueStop, ...clonedPending];
-      const optimizedPending = optimizeTSP(DEFAULT_BASE.latitude, DEFAULT_BASE.longitude, allNewPending);
+      const optimizedPending = optimizeTSP(clientBaseCoords.lat, clientBaseCoords.lng, allNewPending);
 
       updatedRoutes[newRouteId] = {
         driver: selectedOption.driver,
@@ -1130,6 +1155,14 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       newMapRoutes[idx] = r.path;
     });
     setMapRoutes(newMapRoutes);
+
+    try {
+      const bc = new BroadcastChannel('logusq_sync_channel');
+      bc.postMessage({ type: 'SYNC_ROUTES', timestamp: Date.now() });
+      bc.close();
+    } catch (e) {}
+    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new CustomEvent('logusq_sync_complete'));
 
     alert(`✓ Sucesso! Carga transferida manualmente para o motorista ${selectedOption.driver} (${selectedOption.vehicle}).`);
     setActiveRescueCalc({ type: null, driverEmail: '', result: null });
@@ -2120,9 +2153,28 @@ Assinatura do Expedidor: _______________________________`;
                   {/* Cargas Entregues até o Momento */}
                   {(() => {
                     const uniqueEntregues = Array.from(new Set(em.entreguesAteMomento || []));
-                    const uniqueFaltando = Array.from(
+                    let uniqueFaltando = Array.from(
                       new Set((em.faltandoEntregar || []).filter((item: string) => !uniqueEntregues.includes(item)))
                     );
+
+                    // If snapshot was empty, reconcile in real-time from active routes or database
+                    if (uniqueFaltando.length === 0 && uniqueEntregues.length === 0) {
+                      const matchedRoute = Object.values(activeRoutes).find((r: any) => 
+                        r.driverEmail === em.driverEmail || 
+                        (r.driver && em.driverName && (r.driver.toLowerCase().includes(em.driverName.toLowerCase()) || em.driverName.toLowerCase().includes(r.driver.toLowerCase())))
+                      ) as any;
+                      if (matchedRoute && matchedRoute.path) {
+                        const deliveredFromRoute = matchedRoute.path
+                          .filter((s: any) => s.status === 'Entregue')
+                          .map((s: any) => `${s.cliente} (${s.tipoOperacao || 'Entrega'})`);
+                        const pendingFromRoute = matchedRoute.path
+                          .filter((s: any) => s.status !== 'Entregue' && s.status !== 'Cancelado')
+                          .map((s: any) => `${s.cliente} (${s.tipoOperacao || 'Entrega'})`);
+                        
+                        if (deliveredFromRoute.length > 0) uniqueEntregues.push(...deliveredFromRoute);
+                        if (pendingFromRoute.length > 0) uniqueFaltando = pendingFromRoute;
+                      }
+                    }
 
                     return (
                       <>
