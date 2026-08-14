@@ -290,7 +290,13 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   // --- JORNADAS TAB FILTERS ---
   const [filterJornadaDriver, setFilterJornadaDriver] = useState('');
   const [filterJornadaVehicle, setFilterJornadaVehicle] = useState('');
-  const [filterJornadaDate, setFilterJornadaDate] = useState('17/07/2026');
+  const [filterJornadaDate, setFilterJornadaDate] = useState(() => {
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2, '0');
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const yyyy = today.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  });
 
   // --- EMERGENCY AND JOURNEY AUDIT STATE & HELPERS ---
   const [resolvedEmergencies, setResolvedEmergencies] = useState<string[]>(() => {
@@ -341,10 +347,26 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     
     route.path.forEach((stop: any, idx: number) => {
       const stopName = stop.cliente;
-      const startAtendimentoStr = stop.tempoInicioAtendimento;
-      const endAtendimentoStr = stop.tempoFimAtendimento;
+      let startAtendimentoStr = stop.tempoInicioAtendimento;
+      let endAtendimentoStr = stop.tempoFimAtendimento;
+      const duracaoMin = stop.duracaoAtendimentoMinutos || (stop.status === 'Entregue' ? 5 : 0);
+
+      // Auto-fallback: If stop is completed/cancelled, ensure timestamps exist
+      if (stop.status === 'Entregue' || stop.status === 'Cancelado') {
+        if (!endAtendimentoStr && stop.dataHora) {
+          endAtendimentoStr = stop.dataHora;
+        }
+        if (!startAtendimentoStr && endAtendimentoStr) {
+          try {
+            const endT = parsePtBrDate(endAtendimentoStr)?.getTime();
+            if (endT) {
+              startAtendimentoStr = new Date(endT - (duracaoMin * 60000)).toISOString();
+            }
+          } catch (e) {}
+        }
+      }
       
-      let travelTimeMsg = "Sem registro de horário";
+      let travelTimeMsg = "Sem registro de deslocamento";
       let travelDiffMin = 0;
       
       if (lastTimeStr && startAtendimentoStr) {
@@ -358,8 +380,11 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
             travelTimeMsg = `${lastTimeFormatted} às ${startTimeFormatted} (${travelDiffMin} min)`;
           }
         } catch (err) {}
+      } else if (startAtendimentoStr) {
+        const startTimeFormatted = parsePtBrDate(startAtendimentoStr)?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) || '';
+        travelTimeMsg = `Chegada às ${startTimeFormatted}`;
       } else {
-        travelTimeMsg = "Aguardando início de deslocamento...";
+        travelTimeMsg = idx === 0 && !inicioCDStr ? "Aguardando saída do CD Hub..." : "Aguardando deslocamento...";
       }
       
       timeline.push({
@@ -371,7 +396,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       });
       
       let serviceTimeMsg = "Aguardando chegada...";
-      let serviceDiffMin = stop.duracaoAtendimentoMinutos || 0;
+      let serviceDiffMin = duracaoMin;
       
       if (startAtendimentoStr) {
         try {
@@ -380,11 +405,22 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
           if (endAtendimentoStr) {
             const endT = parsePtBrDate(endAtendimentoStr)?.getTime();
             const endTimeFormatted = parsePtBrDate(endAtendimentoStr)?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) || '';
-            serviceTimeMsg = `${startTimeFormatted} às ${endTimeFormatted} (${serviceDiffMin} min)`;
+            if (startT && endT) {
+              serviceDiffMin = Math.max(1, Math.round((endT - startT) / 60000));
+            }
+            serviceTimeMsg = stop.status === 'Entregue' 
+              ? `✓ Concluído: ${startTimeFormatted} às ${endTimeFormatted} (${serviceDiffMin} min)`
+              : stop.status === 'Cancelado'
+                ? `✕ Operação Recusada: ${startTimeFormatted} às ${endTimeFormatted} (${serviceDiffMin} min)`
+                : `${startTimeFormatted} às ${endTimeFormatted} (${serviceDiffMin} min)`;
           } else {
             serviceTimeMsg = `Chegada às ${startTimeFormatted} (Em atendimento...)`;
           }
         } catch (err) {}
+      } else if (stop.status === 'Entregue') {
+        serviceTimeMsg = `✓ Concluído com sucesso (${serviceDiffMin || 5} min)`;
+      } else if (stop.status === 'Cancelado') {
+        serviceTimeMsg = `✕ Operação Recusada / Cancelada`;
       }
       
       timeline.push({
@@ -396,7 +432,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
         minutos: serviceDiffMin
       });
       
-      lastTimeStr = endAtendimentoStr || startAtendimentoStr;
+      lastTimeStr = endAtendimentoStr || startAtendimentoStr || lastTimeStr;
     });
     
     const fimCDStr = atividade?.fimDeslocamento;
@@ -1861,6 +1897,8 @@ Assinatura do Expedidor: _______________________________`;
     // 4 hours ago, 3 hours ago, etc.
     const now = Date.now();
     const formatTime = (ts: number) => new Date(ts).toLocaleString('pt-BR');
+    const todayStr = new Date().toLocaleDateString('pt-BR');
+    setFilterJornadaDate(todayStr);
 
     const fakeAct = {
       inicioDeslocamento: formatTime(now - 14400000), // 4 hours ago
@@ -1891,7 +1929,9 @@ Assinatura do Expedidor: _______________________________`;
     const route = Object.values(routes).find((r: any) => 
       r.driverEmail === driverEmail || 
       r.driver?.toLowerCase().includes('carlos') || 
-      r.driver?.toLowerCase().includes('motorista')
+      r.driver?.toLowerCase().includes('motorista') ||
+      r.driver?.toLowerCase().includes('ricardo') ||
+      r.driver?.toLowerCase().includes('joão')
     );
 
     if (route && route.path) {
@@ -1901,6 +1941,7 @@ Assinatura do Expedidor: _______________________________`;
         route.path[0].duracaoAtendimentoMinutos = 10;
         route.path[0].status = 'Entregue';
         route.path[0].motoristaNome = route.driver || 'Motorista';
+        dbRepo.atualizarEntregaStatus(userEmail, route.path[0].id || route.path[0].chave, 'Entregue', '', 'Simulação auditada', route.driver);
       }
       if (route.path[1]) {
         route.path[1].tempoInicioAtendimento = formatTime(now - 8000000); // 2h15m ago
@@ -1908,6 +1949,7 @@ Assinatura do Expedidor: _______________________________`;
         route.path[1].duracaoAtendimentoMinutos = 15;
         route.path[1].status = 'Entregue';
         route.path[1].motoristaNome = route.driver || 'Motorista';
+        dbRepo.atualizarEntregaStatus(userEmail, route.path[1].id || route.path[1].chave, 'Entregue', '', 'Simulação auditada', route.driver);
       }
       if (route.path[2]) {
         route.path[2].tempoInicioAtendimento = formatTime(now - 5000000); // 1h20m ago
@@ -1915,12 +1957,13 @@ Assinatura do Expedidor: _______________________________`;
         route.path[2].duracaoAtendimentoMinutos = 10;
         route.path[2].status = 'Entregue';
         route.path[2].motoristaNome = route.driver || 'Motorista';
+        dbRepo.atualizarEntregaStatus(userEmail, route.path[2].id || route.path[2].chave, 'Entregue', '', 'Simulação auditada', route.driver);
       }
       dbRepo.saveRotasAtivas(userEmail, routes);
     }
 
     triggerRefresh();
-    alert('✓ Dados e tempos de rota simulados com sucesso para demonstração de relatórios!');
+    alert('✓ Dados e tempos de rota simulados com sucesso para a data atual!');
   };
 
   return (
@@ -4158,7 +4201,7 @@ Assinatura do Expedidor: _______________________________`;
                   }}
                   className="bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md shadow-indigo-950/40 cursor-pointer"
                 >
-                  <Sparkles className="w-4 h-4" /> Simular Dados de Rota Completa (17/07/2026)
+                  <Sparkles className="w-4 h-4" /> ⚡ Simular Dados de Rota Completa (Hoje)
                 </button>
               </div>
             </div>
@@ -4199,7 +4242,7 @@ Assinatura do Expedidor: _______________________________`;
                   type="text"
                   value={filterJornadaDate}
                   onChange={e => setFilterJornadaDate(e.target.value)}
-                  placeholder="Ex: 17/07/2026"
+                  placeholder="Ex: 14/08/2026 (ou deixe vazio para ver todas)"
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-violet-500 outline-none"
                 />
               </div>
@@ -4226,16 +4269,44 @@ Assinatura do Expedidor: _______________________________`;
                   {filteredDrivers.map(c => {
                     const saved = localStorage.getItem(`logusq_atividade_${c.email}`);
                     const activity = saved ? JSON.parse(saved) : null;
-                    const route: any = Object.values(activeRoutes).find((r: any) => r.driverEmail === c.email || r.driver === c.nome);
+                    const rawRoute: any = Object.values(activeRoutes).find((r: any) => 
+                      r.driverEmail === c.email || 
+                      r.driver === c.nome ||
+                      (r.driver && c.nome && (r.driver.toLowerCase().includes(c.nome.toLowerCase()) || c.nome.toLowerCase().includes(r.driver.toLowerCase())))
+                    );
 
-                    if (filterJornadaDate && activity) {
-                      const dateStr = activity.inicioDeslocamento || activity.fimDeslocamento || '';
-                      if (dateStr && !dateStr.includes(filterJornadaDate)) {
-                        return null;
+                    // Reconcile each stop in the route with live status & timings from todasEntregas
+                    const livePath = (rawRoute?.path || []).map((p: any) => {
+                      const match = todasEntregas.find(e => 
+                        (p.id && e.id === p.id) || 
+                        (p.chave && e.chave === p.chave) || 
+                        (p.notaFiscal && e.notaFiscal && p.notaFiscal === e.notaFiscal) ||
+                        (p.cliente && e.cliente && p.cliente.trim().toLowerCase() === e.cliente.trim().toLowerCase() && p.endereco?.trim().toLowerCase() === e.endereco?.trim().toLowerCase())
+                      );
+                      return match ? { ...p, ...match } : p;
+                    });
+
+                    const route = rawRoute ? { ...rawRoute, path: livePath } : null;
+
+                    if (filterJornadaDate.trim()) {
+                      const dateFilter = filterJornadaDate.trim();
+                      const activityDateStr = activity?.inicioDeslocamento || activity?.fimDeslocamento || '';
+                      const hasDeliveryOnDate = livePath.some((p: any) => {
+                        const t = p.tempoFimAtendimento || p.tempoInicioAtendimento || p.dataHora || p.dataEntregue || '';
+                        return t && t.includes(dateFilter);
+                      });
+                      const matchesActivity = activityDateStr && activityDateStr.includes(dateFilter);
+
+                      if (!matchesActivity && !hasDeliveryOnDate && (activity || livePath.length > 0)) {
+                        const todayStr = new Date().toLocaleDateString('pt-BR');
+                        const isFilteredToday = dateFilter === todayStr;
+                        if (!isFilteredToday) {
+                          return null;
+                        }
                       }
                     }
 
-                    if (!activity && !route) {
+                    if (!activity && (!route || livePath.length === 0)) {
                       return (
                         <div key={c.email} className="bg-slate-900 border border-slate-800 p-5 rounded-2xl text-xs text-slate-500 flex justify-between items-center">
                           <div>
@@ -4262,9 +4333,9 @@ Assinatura do Expedidor: _______________________________`;
                       return acc;
                     }, 0) || 0;
 
-                    const totalEntregas = route?.path?.length || 0;
-                    const entregues = route?.path?.filter((p: any) => p.status === 'Entregue').length || 0;
-                    const cancelados = route?.path?.filter((p: any) => p.status === 'Cancelado').length || 0;
+                    const totalEntregas = livePath.length;
+                    const entregues = livePath.filter((p: any) => p.status === 'Entregue').length;
+                    const cancelados = livePath.filter((p: any) => p.status === 'Cancelado').length;
 
                     return (
                       <div key={c.email} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">

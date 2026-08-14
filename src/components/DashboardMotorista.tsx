@@ -120,6 +120,7 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
     setAtividade(newState);
     localStorage.setItem(`logusq_atividade_${userEmail}`, JSON.stringify(newState));
     triggerRefresh();
+    broadcastRealtimeUpdate();
   };
 
   const [showPauseModal, setShowPauseModal] = useState(false);
@@ -575,9 +576,20 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
 
     // Save timing details
     dbRepo.atualizarEntregaTiming(selectedClientEmail, selectedEntrega.id, {
+      tempoInicioAtendimento: selectedEntrega.tempoInicioAtendimento || new Date(inicioTime).toISOString(),
       tempoFimAtendimento: new Date().toISOString(),
       duracaoAtendimentoMinutos: diffMin
     });
+
+    // Auto-record shift start from CD Hub if the driver didn't click "Iniciar Deslocamento" before their first delivery
+    if (!atividade.inicioDeslocamento) {
+      const autoInicio = new Date(inicioTime - 600000).toLocaleString('pt-BR');
+      const updatedAct = {
+        ...atividade,
+        inicioDeslocamento: autoInicio
+      };
+      saveAtividadeState(updatedAct);
+    }
 
     // Call update on dbRepo
     dbRepo.atualizarEntregaStatus(
