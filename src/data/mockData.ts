@@ -973,7 +973,11 @@ export const dbRepo = {
   atualizarEntregaStatus: (clientEmail: string, entregaId: string, status: 'Pendente' | 'Entregue' | 'Cancelado', fotoComprovante?: string, observacao?: string, motoristaNome?: string) => {
     const list = dbRepo.getEntregas(clientEmail);
     const updated = list.map(ent => {
-      if (ent.id === entregaId || ent.chave === entregaId) {
+      const match = (ent.id && ent.id === entregaId) || 
+                    (ent.chave && ent.chave === entregaId) || 
+                    (ent.notaFiscal && ent.notaFiscal === entregaId) ||
+                    (ent.cliente && entregaId && ent.cliente.trim().toLowerCase() === entregaId.trim().toLowerCase());
+      if (match) {
         return {
           ...ent,
           status,
@@ -995,7 +999,11 @@ export const dbRepo = {
       const route = rotas[rId];
       if (route.path) {
         route.path = route.path.map((ent: any) => {
-          if (ent.id === entregaId || ent.chave === entregaId) {
+          const match = (ent.id && ent.id === entregaId) || 
+                        (ent.chave && ent.chave === entregaId) || 
+                        (ent.notaFiscal && ent.notaFiscal === entregaId) ||
+                        (ent.cliente && entregaId && ent.cliente.trim().toLowerCase() === entregaId.trim().toLowerCase());
+          if (match) {
             rotasChanged = true;
             return {
               ...ent,
@@ -1013,6 +1021,13 @@ export const dbRepo = {
     if (rotasChanged) {
       dbRepo.saveRotasAtivas(clientEmail, rotas);
     }
+
+    try {
+      const bc = new BroadcastChannel('logusq_sync_channel');
+      bc.postMessage({ type: 'SYNC_UPDATE' });
+      bc.close();
+    } catch (e) {}
+    window.dispatchEvent(new CustomEvent('logusq_sync_complete'));
   },
 
   saveServiceTimeHistory: (clientEmail: string, destinationName: string, minutes: number) => {
@@ -1063,7 +1078,11 @@ export const dbRepo = {
   atualizarEntregaTiming: (clientEmail: string, entregaId: string, params: { tempoInicioAtendimento?: string; tempoFimAtendimento?: string; duracaoAtendimentoMinutos?: number }) => {
     const list = dbRepo.getEntregas(clientEmail);
     const updated = list.map(ent => {
-      if (ent.id === entregaId || ent.chave === entregaId) {
+      const match = (ent.id && ent.id === entregaId) || 
+                    (ent.chave && ent.chave === entregaId) || 
+                    (ent.notaFiscal && ent.notaFiscal === entregaId) ||
+                    (ent.cliente && entregaId && ent.cliente.trim().toLowerCase() === entregaId.trim().toLowerCase());
+      if (match) {
         if (params.duracaoAtendimentoMinutos && ent.cliente) {
           dbRepo.saveServiceTimeHistory(clientEmail, ent.cliente, params.duracaoAtendimentoMinutos);
         }
@@ -1083,7 +1102,11 @@ export const dbRepo = {
       const route = rotas[rId];
       if (route.path) {
         route.path = route.path.map((ent: any) => {
-          if (ent.id === entregaId || ent.chave === entregaId) {
+          const match = (ent.id && ent.id === entregaId) || 
+                        (ent.chave && ent.chave === entregaId) || 
+                        (ent.notaFiscal && ent.notaFiscal === entregaId) ||
+                        (ent.cliente && entregaId && ent.cliente.trim().toLowerCase() === entregaId.trim().toLowerCase());
+          if (match) {
             rotasChanged = true;
             if (params.duracaoAtendimentoMinutos && ent.cliente) {
               dbRepo.saveServiceTimeHistory(clientEmail, ent.cliente, params.duracaoAtendimentoMinutos);
@@ -1100,6 +1123,13 @@ export const dbRepo = {
     if (rotasChanged) {
       dbRepo.saveRotasAtivas(clientEmail, rotas);
     }
+
+    try {
+      const bc = new BroadcastChannel('logusq_sync_channel');
+      bc.postMessage({ type: 'SYNC_UPDATE' });
+      bc.close();
+    } catch (e) {}
+    window.dispatchEvent(new CustomEvent('logusq_sync_complete'));
   },
 
   atualizarCondutorSenha: (email: string, novaSenha: string): boolean => {

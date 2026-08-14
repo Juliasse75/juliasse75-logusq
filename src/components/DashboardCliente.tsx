@@ -199,16 +199,35 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   });
   const [mapRoutes, setMapRoutes] = useState<Record<number, Entrega[]>>({});
 
-  // Auto-refresh when sync finishes or when data changes
+  // Auto-refresh when sync finishes or when data changes in other tabs/devices
   React.useEffect(() => {
     setActiveRoutes(dbRepo.getRotasAtivas(userEmail));
     
     const handleSyncComplete = () => {
+      setActiveRoutes(dbRepo.getRotasAtivas(userEmail));
       triggerRefresh();
     };
+
     window.addEventListener('logusq_sync_complete', handleSyncComplete);
+    window.addEventListener('storage', handleSyncComplete);
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel('logusq_sync_channel');
+      bc.onmessage = () => {
+        handleSyncComplete();
+      };
+    } catch (e) {}
+
+    const intervalId = setInterval(() => {
+      setActiveRoutes(dbRepo.getRotasAtivas(userEmail));
+    }, 4000);
+
     return () => {
       window.removeEventListener('logusq_sync_complete', handleSyncComplete);
+      window.removeEventListener('storage', handleSyncComplete);
+      if (bc) bc.close();
+      clearInterval(intervalId);
     };
   }, [refreshKey, userEmail]);
 
@@ -2723,9 +2742,20 @@ Assinatura do Expedidor: _______________________________`;
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {Object.entries(activeRoutes).map(([rId, r]: [string, any]) => {
-                        const totalStops = r.path?.length || 0;
-                        const completedStops = r.path?.filter((p: any) => p.status === 'Entregue').length || 0;
-                        const cancelledStops = r.path?.filter((p: any) => p.status === 'Cancelado').length || 0;
+                        // Reconcile each stop in r.path with live status from todasEntregas
+                        const livePath = (r.path || []).map((p: any) => {
+                          const match = todasEntregas.find(e => 
+                            (p.id && e.id === p.id) || 
+                            (p.chave && e.chave === p.chave) || 
+                            (p.notaFiscal && e.notaFiscal && p.notaFiscal === e.notaFiscal) ||
+                            (p.cliente && e.cliente && p.cliente.trim().toLowerCase() === e.cliente.trim().toLowerCase() && p.endereco?.trim().toLowerCase() === e.endereco?.trim().toLowerCase())
+                          );
+                          return match ? { ...p, ...match } : p;
+                        });
+
+                        const totalStops = livePath.length;
+                        const completedStops = livePath.filter((p: any) => p.status === 'Entregue').length;
+                        const cancelledStops = livePath.filter((p: any) => p.status === 'Cancelado').length;
                         const finishedStops = completedStops + cancelledStops;
                         const progressPercent = totalStops > 0 ? Math.round((finishedStops / totalStops) * 100) : 0;
                         const isRouteFinished = totalStops > 0 && finishedStops === totalStops;
@@ -2787,14 +2817,14 @@ Assinatura do Expedidor: _______________________________`;
                               </div>
 
                               {/* Expandable stops details */}
-                              {r.path && r.path.length > 0 && (
+                              {livePath.length > 0 && (
                                 <details className="mt-3 border-t border-slate-800/80 pt-2 text-[10px]" open={finishedStops > 0}>
                                   <summary className="cursor-pointer text-slate-400 hover:text-white font-mono font-bold flex items-center justify-between select-none">
-                                    <span>Ver Clientes / Paradas ({r.path.length}) — {completedStops} Concluídas</span>
+                                    <span>Ver Clientes / Paradas ({livePath.length}) — {completedStops} Concluídas</span>
                                     <span className="text-[9px] text-violet-400">▼ Expandir</span>
                                   </summary>
                                   <div className="mt-2 space-y-1.5 max-h-52 overflow-y-auto pr-1">
-                                    {r.path.map((p: any, idx: number) => (
+                                    {livePath.map((p: any, idx: number) => (
                                       <div key={p.id || p.chave || idx} className={`p-2 rounded border flex items-center justify-between gap-2 transition-all ${
                                         p.status === 'Entregue'
                                           ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-100 shadow-sm'
