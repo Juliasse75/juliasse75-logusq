@@ -1900,6 +1900,20 @@ Assinatura do Expedidor: _______________________________`;
     const todayStr = new Date().toLocaleDateString('pt-BR');
     setFilterJornadaDate(todayStr);
 
+    // Update active route with precise timing logs for simulation
+    const routes = dbRepo.getRotasAtivas(userEmail);
+    const route = Object.values(routes).find((r: any) => 
+      r.driverEmail === driverEmail || 
+      r.driver?.toLowerCase().includes('carlos') || 
+      r.driver?.toLowerCase().includes('motorista') ||
+      r.driver?.toLowerCase().includes('ricardo') ||
+      r.driver?.toLowerCase().includes('joão')
+    );
+
+    const firstStop = route?.path?.[0];
+    const secondStop = route?.path?.[1];
+    const thirdStop = route?.path?.[2];
+
     const fakeAct = {
       inicioDeslocamento: formatTime(now - 14400000), // 4 hours ago
       fimDeslocamento: formatTime(now - 300000), // 5 mins ago
@@ -1915,24 +1929,18 @@ Assinatura do Expedidor: _______________________________`;
         {
           horario: formatTime(now - 12000000), // 3.3 hours ago
           tipo: 'Pneu furado',
-          justificativa: 'Pneu furado na Av. do Contorno. Borracheiro móvel acionado pelo portal, resolvido rápido.',
-          entreguesAteMomento: ['Supermercado Central BH'],
-          faltandoEntregar: ['Restaurante Sabor de Minas', 'Drogaria Popular BH']
+          justificativa: `Pneu furado próximo a ${firstStop?.cliente || 'via operacional'}. Borracheiro móvel acionado pelo portal, resolvido rápido.`,
+          entreguesAteMomento: firstStop ? [`${firstStop.cliente} (Entrega)`] : ['Primeiro Ponto de Parada'],
+          faltandoEntregar: (route?.path || []).slice(1).map(s => `${s.cliente} (${s.tipoOperacao || 'Entrega'})`),
+          latitude: firstStop?.latitude || clientBaseCoords.lat,
+          longitude: firstStop?.longitude || clientBaseCoords.lng,
+          localNome: firstStop?.cliente || 'Ponto da Rota',
+          endereco: firstStop?.endereco || `${clientBaseCoords.lat.toFixed(4)}, ${clientBaseCoords.lng.toFixed(4)}`
         }
       ]
     };
     
     localStorage.setItem(`logusq_atividade_${driverEmail}`, JSON.stringify(fakeAct));
-
-    // Update active route with precise timing logs for simulation
-    const routes = dbRepo.getRotasAtivas(userEmail);
-    const route = Object.values(routes).find((r: any) => 
-      r.driverEmail === driverEmail || 
-      r.driver?.toLowerCase().includes('carlos') || 
-      r.driver?.toLowerCase().includes('motorista') ||
-      r.driver?.toLowerCase().includes('ricardo') ||
-      r.driver?.toLowerCase().includes('joão')
-    );
 
     if (route && route.path) {
       if (route.path[0]) {
@@ -2075,17 +2083,29 @@ Assinatura do Expedidor: _______________________________`;
                       <h2 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
                         🚨 ALERTA CRÍTICO: ACIONAMENTO DE EMERGÊNCIA (PANE)
                       </h2>
-                      <p className="text-[11px] text-red-300 font-mono">
-                        Motorista: <b className="text-white">{em.driverName}</b> ({em.driverEmail}) • Veículo: <b className="text-white">{em.vehicle}</b>
+                      <p className="text-[11px] text-red-300 font-mono flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span>Motorista: <b className="text-white">{em.driverName}</b> ({em.driverEmail})</span>
+                        <span>•</span>
+                        <span>Veículo: <b className="text-white">{em.vehicle}</b></span>
+                        <span>•</span>
+                        <span className="text-amber-300">📍 Local: <b className="text-white">{em.localNome || em.endereco || (em.latitude ? `${em.latitude.toFixed(4)}, ${em.longitude.toFixed(4)}` : 'Local em trânsito')}</b></span>
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleResolveEmergency(`${em.driverEmail}_${em.horario}`)}
-                    className="bg-white hover:bg-slate-200 text-slate-950 text-[10px] font-black uppercase tracking-wider px-3.5 py-1.5 rounded-xl transition-all cursor-pointer border border-white shadow-md shadow-red-950/50"
-                  >
-                    ✓ Marcar Como Resolvido / Apoio Enviado
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setActiveTab('rotas')}
+                      className="bg-red-900/60 hover:bg-red-800 text-red-200 text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-xl transition-all cursor-pointer border border-red-700/60 flex items-center gap-1 shadow"
+                    >
+                      <MapPin className="w-3.5 h-3.5 text-red-400" /> Ver no Mapa de Operações
+                    </button>
+                    <button
+                      onClick={() => handleResolveEmergency(`${em.driverEmail}_${em.horario}`)}
+                      className="bg-white hover:bg-slate-200 text-slate-950 text-[10px] font-black uppercase tracking-wider px-3.5 py-1.5 rounded-xl transition-all cursor-pointer border border-white shadow-md shadow-red-950/50"
+                    >
+                      ✓ Marcar Como Resolvido / Apoio Enviado
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-mono">

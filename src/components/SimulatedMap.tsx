@@ -517,8 +517,8 @@ export default function SimulatedMap({
         
         if (!matchDriver || !matchVehicle) return;
 
-        const lat = em.latitude !== undefined ? em.latitude : (em.lat !== undefined ? em.lat : DEFAULT_BASE.latitude);
-        const lng = em.longitude !== undefined ? em.longitude : (em.lng !== undefined ? em.lng : DEFAULT_BASE.longitude);
+        const lat = em.latitude !== undefined ? em.latitude : (em.lat !== undefined ? em.lat : baseCoords.lat);
+        const lng = em.longitude !== undefined ? em.longitude : (em.lng !== undefined ? em.lng : baseCoords.lng);
 
         const emIcon = L.divIcon({
           html: `<div class="relative flex items-center justify-center pointer-events-auto">
@@ -535,20 +535,21 @@ export default function SimulatedMap({
         const emMarker = L.marker([lat, lng], { icon: emIcon })
           .addTo(map)
           .bindPopup(`
-            <div style="font-family: sans-serif; font-size: 11px; color: #1e293b; line-height: 1.4; min-width: 200px;">
-              <b style="font-size: 13px; color: #dc2626; display: flex; items-center gap-1; margin-bottom: 4px;">
+            <div style="font-family: sans-serif; font-size: 11px; color: #1e293b; line-height: 1.4; min-width: 210px;">
+              <b style="font-size: 13px; color: #dc2626; display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">
                 🚨 ALERTA DE EMERGÊNCIA
               </b>
-              <div style="margin-bottom: 5px; border-bottom: 1px solid #f1f5f9; pb-3px;">
+              <div style="margin-bottom: 5px; border-bottom: 1px solid #f1f5f9; padding-bottom: 4px;">
                 <b>Motorista:</b> <span style="color: #0f172a; font-weight: bold;">${em.driverName}</span><br/>
                 <b>Veículo:</b> <span style="color: #059669; font-weight: bold;">${em.vehicle}</span><br/>
-                <b>Horário:</b> <span style="font-mono: true;">${em.horario}</span>
+                <b>Horário:</b> <span style="font-family: monospace;">${em.horario}</span><br/>
+                <b>Localização:</b> <span style="color: #4338ca; font-weight: 600;">${em.localNome || em.endereco || `${lat.toFixed(4)}, ${lng.toFixed(4)}`}</span>
               </div>
               <div style="background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 6px; border-radius: 6px; font-size: 10px; margin-bottom: 4px;">
                 <b>Ocorrência:</b> ${em.tipo || 'Pane Mecânica'}<br/>
                 <b>Detalhes:</b> ${em.justificativa || 'Sem detalhes fornecidos.'}
               </div>
-              <span style="font-size: 8px; color: #ef4444; font-weight: bold; text-transform: uppercase; tracking: 0.05em;">Ação corretiva requerida no painel</span>
+              <span style="font-size: 8px; color: #ef4444; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em;">Ação corretiva requerida no painel</span>
             </div>
           `);
         markersRef.current.push(emMarker);
@@ -582,8 +583,8 @@ export default function SimulatedMap({
         const matchDriver = selectedDriverFilter === 'all' || em.driverName === selectedDriverFilter;
         const matchVehicle = selectedVehicleFilter === 'all' || em.vehicle === selectedVehicleFilter;
         if (matchDriver && matchVehicle) {
-          const lat = em.latitude !== undefined ? em.latitude : (em.lat !== undefined ? em.lat : DEFAULT_BASE.latitude);
-          const lng = em.longitude !== undefined ? em.longitude : (em.lng !== undefined ? em.lng : DEFAULT_BASE.longitude);
+          const lat = em.latitude !== undefined ? em.latitude : (em.lat !== undefined ? em.lat : baseCoords.lat);
+          const lng = em.longitude !== undefined ? em.longitude : (em.lng !== undefined ? em.lng : baseCoords.lng);
           return { lat, lng };
         }
         return null;

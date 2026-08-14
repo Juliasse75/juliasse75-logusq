@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { dbRepo } from '../data/mockData';
 import { Entrega } from '../types';
+import { geocodeAddress } from '../utils/routingEngine';
 import LogusQLogo from './LogusQLogo';
 import { 
   Truck, 
@@ -133,6 +134,36 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   const [emergencyType, setEmergencyType] = useState('Pneu furado');
   const [emergencyJustification, setEmergencyJustification] = useState('');
+  const [emergencyLocationOption, setEmergencyLocationOption] = useState('auto');
+  const [emergencyGpsCoords, setEmergencyGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [emergencyGpsLoading, setEmergencyGpsLoading] = useState(false);
+  const [emergencyCustomAddress, setEmergencyCustomAddress] = useState('');
+
+  const handleOpenEmergencyModal = () => {
+    setShowEmergencyModal(true);
+    setEmergencyGpsLoading(true);
+    setEmergencyLocationOption('auto');
+    setEmergencyCustomAddress('');
+
+    if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setEmergencyGpsCoords({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude
+          });
+          setEmergencyGpsLoading(false);
+        },
+        (err) => {
+          console.warn('GPS não obtido diretamente do navegador:', err);
+          setEmergencyGpsLoading(false);
+        },
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 15000 }
+      );
+    } else {
+      setEmergencyGpsLoading(false);
+    }
+  };
 
   const handleStartActivity = () => {
     const updated = {
@@ -211,9 +242,73 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
       .filter(s => s.status !== 'Entregue' && s.status !== 'Cancelado')
       .map(s => `${s.cliente} (${s.tipoOperacao || 'Entrega'})`);
 
+    const inProgressStop = allStops.find(s => s.tempoInicioAtendimento && !s.tempoFimAtendimento);
+    const nextPendingStop = allStops.find(s => s.status !== 'Entregue' && s.status !== 'Cancelado');
     const lastCompletedStop = allStops.filter(s => s.status === 'Entregue').slice(-1)[0];
-    const lat = lastCompletedStop ? lastCompletedStop.latitude : -19.93; // Default near BH CD Central
-    const lng = lastCompletedStop ? lastCompletedStop.longitude : -43.93;
+    const anyStop = inProgressStop || nextPendingStop || lastCompletedStop || allStops[0];
+
+    // Client company base fallback (dynamically geocoded from company profile or route)
+    const clientObj = dbRepo.getClientes().find(c => c.email === driverClientEmail || clientEmails.includes(c.email));
+    const baseCoordsFromClient = clientObj?.endereco || clientObj?.cidade
+      ? geocodeAddress(`${clientObj.endereco || ''}, ${clientObj.cidade || ''} - ${clientObj.estado || ''}`)
+      : null;
+
+    let lat: number;
+    let lng: number;
+    let locationName = '';
+    let locationAddress = '';
+
+    if (emergencyLocationOption === 'gps' && emergencyGpsCoords) {
+      lat = emergencyGpsCoords.lat;
+      lng = emergencyGpsCoords.lng;
+      locationName = 'Posição GPS em Tempo Real';
+      locationAddress = `Coordenadas GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    } else if (emergencyLocationOption.startsWith('stop_')) {
+      const stopIndex = parseInt(emergencyLocationOption.replace('stop_', ''), 10);
+      const chosenStop = allStops[stopIndex];
+      if (chosenStop) {
+        lat = chosenStop.latitude;
+        lng = chosenStop.longitude;
+        locationName = chosenStop.cliente || 'Ponto de Parada';
+        locationAddress = chosenStop.endereco || '';
+      } else {
+        lat = anyStop?.latitude || baseCoordsFromClient?.lat || -20.1385;
+        lng = anyStop?.longitude || baseCoordsFromClient?.lng || -40.2920;
+        locationName = anyStop?.cliente || 'Ponto Operacional';
+        locationAddress = anyStop?.endereco || '';
+      }
+    } else if (emergencyLocationOption === 'custom' && emergencyCustomAddress.trim()) {
+      const fallbackForGeocode = anyStop ? { lat: anyStop.latitude, lng: anyStop.longitude } : (baseCoordsFromClient || undefined);
+      const geocoded = geocodeAddress(emergencyCustomAddress, fallbackForGeocode);
+      lat = geocoded.lat;
+      lng = geocoded.lng;
+      locationName = 'Local Informado';
+      locationAddress = emergencyCustomAddress.trim();
+    } else {
+      // Automatic detection: prioritize active/pending stop of this driver's route, then GPS, then base
+      if (anyStop && anyStop.latitude && anyStop.longitude) {
+        lat = anyStop.latitude;
+        lng = anyStop.longitude;
+        locationName = inProgressStop ? `Em atendimento: ${anyStop.cliente}` : (nextPendingStop ? `Em trajeto: ${anyStop.cliente}` : anyStop.cliente);
+        locationAddress = anyStop.endereco;
+      } else if (emergencyGpsCoords) {
+        lat = emergencyGpsCoords.lat;
+        lng = emergencyGpsCoords.lng;
+        locationName = 'Posição GPS em Tempo Real';
+        locationAddress = `Coordenadas: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      } else if (baseCoordsFromClient) {
+        lat = baseCoordsFromClient.lat;
+        lng = baseCoordsFromClient.lng;
+        locationName = clientObj?.empresa || 'Base Operacional CD Hub';
+        locationAddress = `${clientObj?.endereco || ''}, ${clientObj?.cidade || ''} - ${clientObj?.estado || ''}`;
+      } else {
+        // Safe regional logistics coordinate (Espírito Santo Hub)
+        lat = -20.1385;
+        lng = -40.2920;
+        locationName = 'Região Operacional';
+        locationAddress = 'Espírito Santo (ES)';
+      }
+    }
 
     const novaEmergencia = {
       horario: new Date().toLocaleString('pt-BR'),
@@ -222,7 +317,9 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
       entreguesAteMomento: entregues,
       faltandoEntregar: pendentes,
       latitude: lat,
-      longitude: lng
+      longitude: lng,
+      localNome: locationName,
+      endereco: locationAddress
     };
 
     const updated = {
@@ -232,7 +329,8 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
     saveAtividadeState(updated);
     setShowEmergencyModal(false);
     setEmergencyJustification('');
-    alert('🚨 ALERTA DE EMERGÊNCIA ENVIADO IMEDIATAMENTE AO PORTAL DO GESTOR!');
+    setEmergencyCustomAddress('');
+    alert(`🚨 ALERTA DE EMERGÊNCIA ENVIADO IMEDIATAMENTE AO PORTAL DO GESTOR!\n\n📍 Local da ocorrência: ${locationName} (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
   };
 
   useEffect(() => {
@@ -866,7 +964,7 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
 
             {/* Emergency trigger button */}
             <button
-              onClick={() => setShowEmergencyModal(true)}
+              onClick={handleOpenEmergencyModal}
               className="w-full bg-red-600/30 hover:bg-red-600 text-red-300 hover:text-white py-2.5 px-3 rounded-xl text-[11px] font-black tracking-wider uppercase flex items-center justify-center gap-1.5 transition-all border border-red-500/20 shadow-lg shadow-red-950/50 cursor-pointer mt-1"
             >
               <AlertTriangle className="w-4 h-4 text-red-400 animate-pulse" /> 🚨 Acionamento de Emergência (Pane)
@@ -974,19 +1072,24 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
         {/* --- MODAL: ACIONAMENTO DE EMERGÊNCIA --- */}
         {showEmergencyModal && (
           <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-slate-900 border border-red-900 p-5 rounded-2xl w-full max-w-sm space-y-4 shadow-2xl shadow-red-950/20">
-              <div className="flex items-center gap-2 border-b border-slate-800 pb-2 text-red-400">
-                <AlertTriangle className="w-4.5 h-4.5 text-red-500 animate-pulse" />
-                <h4 className="font-black text-white text-sm tracking-wide uppercase">🚨 Acionar Emergência (Pane)</h4>
+            <div className="bg-slate-900 border border-red-900 p-5 rounded-2xl w-full max-w-md space-y-4 shadow-2xl shadow-red-950/20">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 text-red-400">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4.5 h-4.5 text-red-500 animate-pulse" />
+                  <h4 className="font-black text-white text-sm tracking-wide uppercase">🚨 Acionar Emergência (Pane)</h4>
+                </div>
+                <span className="text-[9px] font-mono bg-red-950/80 text-red-300 border border-red-800/40 px-2 py-0.5 rounded-full">
+                  Prioridade Máxima
+                </span>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-3.5">
                 <div className="space-y-1">
                   <label className="block text-[10px] font-mono text-slate-400 uppercase">Tipo de Defeito / Pane</label>
                   <select
                     value={emergencyType}
                     onChange={e => setEmergencyType(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-violet-500 outline-none"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-red-500 outline-none"
                   >
                     <option value="Pneu furado">Pneu Furado</option>
                     <option value="Falta de gasolina">Falta de Gasolina (Pane Seca)</option>
@@ -997,13 +1100,64 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
                   </select>
                 </div>
 
+                {/* Location selector */}
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center">
+                    <label className="block text-[10px] font-mono text-slate-400 uppercase">Local da Ocorrência</label>
+                    {emergencyGpsLoading && (
+                      <span className="text-[9px] text-amber-400 font-mono animate-pulse flex items-center gap-1">
+                        <Navigation className="w-3 h-3 animate-spin" /> Buscando GPS...
+                      </span>
+                    )}
+                  </div>
+                  <select
+                    value={emergencyLocationOption}
+                    onChange={e => setEmergencyLocationOption(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-red-500 outline-none"
+                  >
+                    <option value="auto">📍 Detecção Automática (Próximo Ponto / Rota Ativa)</option>
+                    {emergencyGpsCoords && (
+                      <option value="gps">📡 GPS Real do Dispositivo ({emergencyGpsCoords.lat.toFixed(4)}, {emergencyGpsCoords.lng.toFixed(4)})</option>
+                    )}
+                    {(() => {
+                      const uniqueStopsMap = new Map<string, Entrega>();
+                      activeDriverRoutes.forEach(r => {
+                        (r.path || []).forEach(s => {
+                          const key = s.id || s.chave || s.notaFiscal || `${s.cliente}_${s.endereco}`;
+                          if (!uniqueStopsMap.has(key)) uniqueStopsMap.set(key, s);
+                        });
+                      });
+                      const allStops = Array.from(uniqueStopsMap.values());
+                      return allStops.map((s, idx) => (
+                        <option key={idx} value={`stop_${idx}`}>
+                          📦 Parada: {s.cliente} - {s.endereco.split(',')[0]}
+                        </option>
+                      ));
+                    })()}
+                    <option value="custom">✏️ Outro endereço / rodovia (Digitar)</option>
+                  </select>
+                </div>
+
+                {emergencyLocationOption === 'custom' && (
+                  <div className="space-y-1">
+                    <label className="block text-[10px] font-mono text-slate-400 uppercase">Endereço ou Ponto de Referência</label>
+                    <input
+                      type="text"
+                      value={emergencyCustomAddress}
+                      onChange={e => setEmergencyCustomAddress(e.target.value)}
+                      placeholder="Ex: Rodovia BR-101 Norte, km 250 - Serra - ES"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:border-red-500 outline-none"
+                    />
+                  </div>
+                )}
+
                 <div className="space-y-1">
                   <label className="block text-[10px] font-mono text-slate-400 uppercase">Justificativa & Detalhes</label>
                   <textarea
                     value={emergencyJustification}
                     onChange={e => setEmergencyJustification(e.target.value)}
                     placeholder="Descreva a situação detalhadamente para que o gestor possa providenciar o apoio/guincho necessário..."
-                    rows={4}
+                    rows={3}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:border-red-500 outline-none resize-none"
                   />
                 </div>
@@ -1018,9 +1172,9 @@ export default function DashboardMotorista({ userEmail, onLogout }: DashboardMot
                 </button>
                 <button
                   onClick={handleTriggerEmergency}
-                  className="flex-1 bg-red-600 hover:bg-red-500 text-white py-2 rounded-xl text-xs font-extrabold cursor-pointer"
+                  className="flex-1 bg-red-600 hover:bg-red-500 text-white py-2 rounded-xl text-xs font-extrabold cursor-pointer flex items-center justify-center gap-1.5"
                 >
-                  🚨 ENVIAR ALERTA
+                  <AlertTriangle className="w-3.5 h-3.5" /> ENVIAR ALERTA
                 </button>
               </div>
             </div>
