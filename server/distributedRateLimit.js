@@ -16,7 +16,7 @@ export function getUpstashRedisClient() {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
 
-  if (url && token) {
+  if (url && token && (url.startsWith('https://') || url.startsWith('http://'))) {
     try {
       upstashRedisClient = new Redis({ url, token });
       return upstashRedisClient;

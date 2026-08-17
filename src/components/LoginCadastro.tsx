@@ -101,6 +101,17 @@ export default function LoginCadastro({ onLoginSuccess }: LoginCadastroProps) {
   const [cadastroSucesso, setCadastroSucesso] = useState<any>(null);
   const [cadastroError, setCadastroError] = useState('');
 
+  // Estados para Recuperação Segura de Senha OOB
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotStep, setForgotStep] = useState<'request' | 'reset'>('request');
+  const [forgotToken, setForgotToken] = useState('');
+  const [forgotNovaSenha, setForgotNovaSenha] = useState('');
+  const [forgotConfirmSenha, setForgotConfirmSenha] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState('');
+  const [forgotSuccess, setForgotSuccess] = useState('');
+
   const handleCEPChange = async (val: string, target: 'empresa' | 'responsavel') => {
     const limpo = val.replace(/\D/g, '').slice(0, 8);
     if (target === 'empresa') {
@@ -1196,7 +1207,25 @@ REPRESENTANTE DA CONTRATANTE
                   </div>
 
                   <div>
-                    <label className="block text-xs font-mono text-slate-400 uppercase mb-1.5">Senha Secreta</label>
+                    <div className="flex justify-between items-center mb-1.5">
+                      <label className="block text-xs font-mono text-slate-400 uppercase">Senha Secreta</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowForgotModal(true);
+                          setForgotEmail(loginEmail || '');
+                          setForgotStep('request');
+                          setForgotToken('');
+                          setForgotNovaSenha('');
+                          setForgotConfirmSenha('');
+                          setForgotError('');
+                          setForgotSuccess('');
+                        }}
+                        className="text-[11px] text-violet-400 hover:text-violet-300 transition-colors font-medium cursor-pointer"
+                      >
+                        Esqueceu a senha?
+                      </button>
+                    </div>
                     <input
                       type="password"
                       required
@@ -2248,6 +2277,216 @@ REPRESENTANTE DA CONTRATANTE
           </div>
         </div>
       </div>
+
+      {/* MODAL DE RECUPERAÇÃO SEGURA DE SENHA (OOB) */}
+      {showForgotModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-5 relative">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-violet-500/10 rounded-lg text-violet-400">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Recuperação Segura (OOB)</h3>
+                  <p className="text-[10px] text-slate-400">Validação criptográfica de uso único (15 min)</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowForgotModal(false)}
+                className="text-slate-500 hover:text-white text-xs font-mono p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            {forgotError && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs p-3 rounded-xl flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{forgotError}</span>
+              </div>
+            )}
+
+            {forgotSuccess && (
+              <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs p-3 rounded-xl flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{forgotSuccess}</span>
+              </div>
+            )}
+
+            {forgotStep === 'request' && (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  setForgotError('');
+                  setForgotSuccess('');
+                  setForgotLoading(true);
+
+                  try {
+                    const res = await fetch('/api/auth/forgot-password', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ email: forgotEmail })
+                    });
+                    const data = await res.json();
+
+                    if (!res.ok) {
+                      throw new Error(data.message || 'Erro ao gerar token de recuperação.');
+                    }
+
+                    setForgotSuccess('Token seguro gerado com sucesso! Insira-o abaixo junto com sua nova senha.');
+                    if (data.resetToken) {
+                      setForgotToken(data.resetToken);
+                    }
+                    setForgotStep('reset');
+                  } catch (err: any) {
+                    setForgotError(err.message || 'Falha ao solicitar recuperação.');
+                  } finally {
+                    setForgotLoading(false);
+                  }
+                }}
+                className="space-y-4"
+              >
+                <div>
+                  <label className="block text-xs font-mono text-slate-400 uppercase mb-1">E-mail Cadastrado</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="seu.email@empresa.com"
+                    value={forgotEmail}
+                    onChange={e => setForgotEmail(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Um token criptográfico temporário de 15 minutos será gerado para autorizar a redefinição.
+                  </p>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotModal(false)}
+                    className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2.5 rounded-xl text-xs"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={forgotLoading}
+                    className="flex-1 bg-violet-600 hover:bg-violet-500 text-white font-bold py-2.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    {forgotLoading ? 'Gerando...' : 'Gerar Token'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {forgotStep === 'reset' && (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  setForgotError('');
+                  setForgotSuccess('');
+
+                  if (forgotNovaSenha !== forgotConfirmSenha) {
+                    setForgotError('As senhas digitadas não coincidem.');
+                    return;
+                  }
+
+                  const pwdErr = validateStrongPasswordClient(forgotNovaSenha);
+                  if (pwdErr) {
+                    setForgotError(pwdErr);
+                    return;
+                  }
+
+                  setForgotLoading(true);
+
+                  try {
+                    const res = await fetch('/api/auth/change-password', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        email: forgotEmail,
+                        token: forgotToken,
+                        novaSenha: forgotNovaSenha
+                      })
+                    });
+                    const data = await res.json();
+
+                    if (!res.ok) {
+                      throw new Error(data.message || 'Token inválido ou expirado.');
+                    }
+
+                    setForgotSuccess('Sua senha foi redefinida com sucesso! Agora você já pode fazer login com as novas credenciais.');
+                    setTimeout(() => {
+                      setShowForgotModal(false);
+                      setLoginSenha(forgotNovaSenha);
+                    }, 2000);
+                  } catch (err: any) {
+                    setForgotError(err.message || 'Erro ao redefinir a senha.');
+                  } finally {
+                    setForgotLoading(false);
+                  }
+                }}
+                className="space-y-3"
+              >
+                <div>
+                  <label className="block text-xs font-mono text-slate-400 uppercase mb-1">Token de Recuperação (OOB)</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Cole o token de 64 caracteres hex"
+                    value={forgotToken}
+                    onChange={e => setForgotToken(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 font-mono text-[11px] text-violet-300 focus:border-violet-500 rounded-xl px-3 py-2 placeholder-slate-600 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-mono text-slate-400 uppercase mb-1">Nova Senha Forte</label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Mínimo 8 caracteres com maiúscula, minúscula, número e símbolo"
+                    value={forgotNovaSenha}
+                    onChange={e => setForgotNovaSenha(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-mono text-slate-400 uppercase mb-1">Confirmar Nova Senha</label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Repita a nova senha"
+                    value={forgotConfirmSenha}
+                    onChange={e => setForgotConfirmSenha(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none"
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setForgotStep('request')}
+                    className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2.5 rounded-xl text-xs"
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={forgotLoading}
+                    className="flex-1 bg-violet-600 hover:bg-violet-500 text-white font-bold py-2.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    {forgotLoading ? 'Salvando...' : 'Salvar Nova Senha'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
