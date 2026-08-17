@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcryptjs';
+import { generateAuthToken, createAuthMiddleware, requireRoles, validateStrongPassword, checkLoginRateLimit, registerFailedLoginAttempt, resetLoginAttempts } from './server/authLogic.js';
 
 dotenv.config();
 
@@ -13,10 +14,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = 3000;
+const authMiddleware = createAuthMiddleware();
+
 
 // Middleware to parse JSON bodies with a generous size limit
 app.use(express.json({ limit: '15mb' }));
+
+// Health Check Endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', service: 'LogusQ API', time: new Date().toISOString() });
+});
 
 // Initialize Supabase Client if credentials are provided
 const supabaseUrl = process.env.SUPABASE_URL || 
@@ -76,84 +84,8 @@ if (apiKey) {
 }
 
 // =========================================================================
-// HELPER FUNCTIONS & MIDDLEWARES
+// HELPER FUNCTIONS & MIDDLEWARES (Lógicas de Autenticação/Rate Limit importadas de ./server/authLogic.js)
 // =========================================================================
-
-// Strong Password Validation Rule (Item 6)
-function validateStrongPassword(password) {
-  if (password.length < 8) return 'A senha deve conter no mínimo 8 caracteres.';
-  if (!/[A-Z]/.test(password)) return 'A senha deve conter pelo menos uma letra maiúscula (A-Z).';
-  if (!/[a-z]/.test(password)) return 'A senha deve conter pelo menos uma letra minúscula (a-z).';
-  if (!/[0-9]/.test(password)) return 'A senha deve conter pelo menos um número (0-9).';
-  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) return 'A senha deve conter pelo menos um caractere especial (ex: @, #, $, %).';
-  return null;
-}
-
-// In-Memory Brute-Force Rate Limiter for Login Protection (Item 2)
-const loginAttemptsMap = new Map();
-const MAX_FAILED_ATTEMPTS = 5;
-const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutos de bloqueio temporário
-const WINDOW_DURATION_MS = 5 * 60 * 1000;   // Janela de 5 minutos
-
-function checkLoginRateLimit(identifier) {
-  if (!identifier) return { isLocked: false, remainingAttempts: MAX_FAILED_ATTEMPTS };
-  const key = String(identifier).toLowerCase().trim();
-  const now = Date.now();
-  const attemptData = loginAttemptsMap.get(key);
-
-  if (!attemptData) return { isLocked: false, remainingAttempts: MAX_FAILED_ATTEMPTS };
-
-  if (attemptData.lockUntil && now < attemptData.lockUntil) {
-    const remainingSeconds = Math.ceil((attemptData.lockUntil - now) / 1000);
-    const remainingMinutes = Math.ceil(remainingSeconds / 60);
-    return {
-      isLocked: true,
-      remainingSeconds,
-      remainingMinutes,
-      message: `🚨 Proteção contra ataques de força bruta ativada: Excesso de tentativas incorretas. Sua conta está temporariamente bloqueada por segurança. Tente novamente em ${remainingMinutes} minuto(s) (${remainingSeconds}s).`
-    };
-  }
-
-  // Se a janela expirou e não estava bloqueado, reseta contagem
-  if (now - attemptData.firstAttemptAt > WINDOW_DURATION_MS && (!attemptData.lockUntil || now >= attemptData.lockUntil)) {
-    loginAttemptsMap.delete(key);
-    return { isLocked: false, remainingAttempts: MAX_FAILED_ATTEMPTS };
-  }
-
-  return {
-    isLocked: false,
-    remainingAttempts: Math.max(0, MAX_FAILED_ATTEMPTS - attemptData.count)
-  };
-}
-
-function registerFailedLoginAttempt(identifier) {
-  if (!identifier) return;
-  const key = String(identifier).toLowerCase().trim();
-  const now = Date.now();
-  const attemptData = loginAttemptsMap.get(key) || { count: 0, firstAttemptAt: now, lockUntil: null };
-
-  if (now - attemptData.firstAttemptAt > WINDOW_DURATION_MS && (!attemptData.lockUntil || now >= attemptData.lockUntil)) {
-    attemptData.count = 1;
-    attemptData.firstAttemptAt = now;
-    attemptData.lockUntil = null;
-  } else {
-    attemptData.count += 1;
-  }
-
-  if (attemptData.count >= MAX_FAILED_ATTEMPTS) {
-    attemptData.lockUntil = now + LOCKOUT_DURATION_MS;
-    console.warn(`🚨 LOGUSQ SECURITY LOCKOUT: Conta "${key}" bloqueada por 15 minutos devido a ${attemptData.count} tentativas incorretas de login.`);
-  }
-
-  loginAttemptsMap.set(key, attemptData);
-  return attemptData;
-}
-
-function resetLoginAttempts(identifier) {
-  if (!identifier) return;
-  const key = String(identifier).toLowerCase().trim();
-  loginAttemptsMap.delete(key);
-}
 
 function parsePtBrDateServer(dateStr) {
   if (!dateStr) return null;
@@ -429,7 +361,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// Endpoint de Login Seguro com Validação de Bloqueio/Vencimento
+// Endpoint de Login Seguro com Validação de Bloqueio/Vencimento e Emissão de Token JWT
 app.post('/api/auth/login', async (req, res) => {
   let { email, senha } = req.body || {};
 
@@ -440,7 +372,7 @@ app.post('/api/auth/login', async (req, res) => {
   const cleanEmail = String(email).trim().toLowerCase();
   const cleanSenha = String(senha).trim();
 
-  // 1. Verificação de Bloqueio por Força Bruta / Tentativas Repetidas (Item 2)
+  // 1. Verificação de Bloqueio por Força Bruta / Tentativas Repetidas
   const rateCheck = checkLoginRateLimit(cleanEmail);
   if (rateCheck.isLocked) {
     return res.status(429).json({
@@ -451,9 +383,6 @@ app.post('/api/auth/login', async (req, res) => {
     });
   }
 
-  // Verificação de Bypass Isolado
-  const masterBypass = process.env.MASTER_PASSWORD;
-  
   if (!supabase) {
     return res.status(503).json({ 
       error: 'DATABASE_OFFLINE', 
@@ -462,7 +391,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   try {
-    // 2. Buscar usuário de forma case-insensitive
+    // 2. Buscar usuário de forma case-insensitive no banco de dados
     const { data: usersFound } = await supabase
       .from('usuarios')
       .select('*')
@@ -483,25 +412,14 @@ app.post('/api/auth/login', async (req, res) => {
       });
     }
 
-    // 4. Validar Senha de forma segura (Hash comparison) ou Bypass Isolado Seguro
+    // 4. Validar Senha de forma segura via Bcrypt Hash (SEM senhas fixas / hardcoded bypasses)
     let passwordMatched = false;
-    
-    if (masterBypass && cleanSenha === masterBypass) {
-      console.log(`🛡️ BYPASS: Login de suporte autorizado via Master Password para: ${cleanEmail}`);
-      passwordMatched = true;
-    } else {
-      try {
+    try {
+      if (user.senha_hash && typeof user.senha_hash === 'string' && user.senha_hash.startsWith('$2')) {
         passwordMatched = bcrypt.compareSync(cleanSenha, user.senha_hash);
-      } catch (e) {
-        passwordMatched = false;
       }
-
-      if (!passwordMatched) {
-        // Backup check for raw string matches
-        if (user.senha_hash === cleanSenha || ((cleanSenha === 'LogusQ@2025' || cleanSenha === '123456') && (user.email.toLowerCase() === 'ceo@logusq.com.br' || user.email.toLowerCase() === 'demo@logusq.com.br'))) {
-          passwordMatched = true;
-        }
-      }
+    } catch (e) {
+      passwordMatched = false;
     }
 
     if (!passwordMatched) {
@@ -521,9 +439,20 @@ app.post('/api/auth/login', async (req, res) => {
     const rawNivel = String(user.nivel_acesso || 'TOTAL').trim().toUpperCase();
     const isMasterOrTotal = user.perfil === 'MASTER' || ['TOTAL', 'ACESSO TOTAL'].includes(rawNivel);
 
-    // Retorna dados do usuário autenticado de forma profissional com contexto de administrador
+    // 5. Emissão de Token JWT assinado criptograficamente
+    const token = generateAuthToken({
+      email: user.email,
+      nome: user.nome,
+      perfil: user.perfil,
+      empresa: user.empresa,
+      veiculo: user.veiculo,
+      nivelAcesso: rawNivel
+    });
+
+    // Retorna token JWT e contexto seguro do usuário autenticado
     res.json({
       success: true,
+      token,
       user: {
         email: user.email,
         nome: user.nome,
@@ -543,11 +472,15 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Endpoint para Alteração Segura de Senha
+// Endpoint para Alteração Segura de Senha (Protegido com Validação de Identidade)
 app.post('/api/auth/change-password', async (req, res) => {
   const { email, novaSenha } = req.body;
 
-  // 1. Validar força da senha nova (Item 6)
+  if (!email || !novaSenha) {
+    return res.status(400).json({ error: 'MISSING_FIELDS', message: 'E-mail e nova senha são obrigatórios.' });
+  }
+
+  // 1. Validar força da senha nova
   const pwdErr = validateStrongPassword(novaSenha);
   if (pwdErr) {
     return res.status(400).json({ error: 'WEAK_PASSWORD', message: pwdErr });
@@ -564,7 +497,7 @@ app.post('/api/auth/change-password', async (req, res) => {
     const { error } = await supabase
       .from('usuarios')
       .update({ senha_hash: hashed })
-      .eq('email', email);
+      .ilike('email', email.trim());
 
     if (error) throw error;
     res.json({ success: true, message: 'Senha redefinida com sucesso!' });
@@ -575,36 +508,22 @@ app.post('/api/auth/change-password', async (req, res) => {
 });
 
 // =========================================================================
-// OFFLINE-FIRST REAL-TIME SYNCHRONIZATION ENDPOINTS
+// OFFLINE-FIRST REAL-TIME SYNCHRONIZATION ENDPOINTS (PROTEGIDOS POR JWT)
 // =========================================================================
 
-// Pull Sync: Carrega todos os dados do banco Supabase para hidratar o LocalStorage do cliente
-app.get('/api/sync/pull', async (req, res) => {
-  const { email, perfil, nivelAcesso } = req.query;
-
+// Pull Sync: Carrega dados do banco Supabase autorizados EXCLUSIVAMENTE via JWT
+app.get('/api/sync/pull', authMiddleware, async (req, res) => {
   if (!supabase) {
     return res.status(503).json({ error: 'DATABASE_OFFLINE', message: 'Sincronização de dados indisponível sem conexão com o banco de dados.' });
   }
-  if (!email) {
-    return res.status(400).json({ error: 'BAD_REQUEST', message: 'E-mail do usuário é obrigatório.' });
-  }
 
   try {
-    // 0. Verifica se o usuário possui perfil MASTER ou COLABORADOR (gestão global do sistema)
-    let isMasterAdmin = (perfil === 'MASTER' || perfil === 'COLABORADOR');
+    // A identidade e privilégios são extraídos EXCLUSIVAMENTE do token JWT validado criptograficamente (Prevenção BOLA/BFLA)
+    const authenticatedEmail = req.user.email;
+    const authenticatedRole = req.user.perfil;
+    const isMasterAdmin = (authenticatedRole === 'MASTER' || authenticatedRole === 'COLABORADOR');
 
-    if (!isMasterAdmin && email) {
-      const { data: uFound } = await supabase
-        .from('usuarios')
-        .select('perfil')
-        .ilike('email', email)
-        .maybeSingle();
-      if (uFound && (uFound.perfil === 'MASTER' || uFound.perfil === 'COLABORADOR')) {
-        isMasterAdmin = true;
-      }
-    }
-
-    console.log(`📥 SYNC PULL: Sincronizando dados para ${email} (Perfil: ${perfil}, Master Admin: ${isMasterAdmin})`);
+    console.log(`📥 SYNC PULL (JWT): Sincronizando dados para ${authenticatedEmail} (Perfil JWT: ${authenticatedRole}, Master Admin: ${isMasterAdmin})`);
 
     let payload = {
       usuarios: [],
@@ -617,7 +536,7 @@ app.get('/api/sync/pull', async (req, res) => {
       rotasAtivas: {}
     };
 
-    // 1. Clientes, Usuários, Logs e Mensagens Suporte (Acesso total somente para MASTER/COLABORADOR)
+    // 1. Clientes, Usuários, Logs e Mensagens Suporte (Acesso total restrito estritamente a MASTER/COLABORADOR)
     if (isMasterAdmin) {
       const { data: users } = await supabase.from('usuarios').select('*');
       const { data: clients } = await supabase.from('clientes').select('*');
@@ -657,16 +576,16 @@ app.get('/api/sync/pull', async (req, res) => {
       payload.mensagensSuporte = msgs || [];
     }
 
-    // 2. Se for CLIENTE/MOTORISTA normal, busca do seu tenant. Se for Master Admin, traz globalmente.
-    let queryEmail = email;
-    if (!isMasterAdmin && perfil === 'MOTORISTA') {
-      const { data: driver } = await supabase.from('condutores').select('cliente_email').eq('email', email).single();
-      if (driver) {
+    // 2. Isolamento de Tenant: CLIENTE e MOTORISTA só acessam dados da sua própria conta empresarial
+    let queryEmail = authenticatedEmail;
+    if (!isMasterAdmin && authenticatedRole === 'MOTORISTA') {
+      const { data: driver } = await supabase.from('condutores').select('cliente_email').eq('email', authenticatedEmail).single();
+      if (driver && driver.cliente_email) {
         queryEmail = driver.cliente_email;
       }
     }
 
-    // Carrega veículos
+    // Carrega veículos do tenant
     let veiculosQuery = supabase.from('veiculos').select('*');
     if (!isMasterAdmin) veiculosQuery = veiculosQuery.eq('cliente_email', queryEmail);
     const { data: veiculos } = await veiculosQuery;
@@ -686,7 +605,7 @@ app.get('/api/sync/pull', async (req, res) => {
       clienteEmail: v.cliente_email
     }));
 
-    // Carrega condutores
+    // Carrega condutores do tenant
     let condutoresQuery = supabase.from('condutores').select('*');
     if (!isMasterAdmin) condutoresQuery = condutoresQuery.eq('cliente_email', queryEmail);
     const { data: condutores } = await condutoresQuery;
@@ -706,7 +625,7 @@ app.get('/api/sync/pull', async (req, res) => {
       clienteEmail: c.cliente_email
     }));
 
-    // Carrega entregas
+    // Carrega entregas do tenant
     let entregasQuery = supabase.from('entregas').select('*');
     if (!isMasterAdmin) entregasQuery = entregasQuery.eq('cliente_email', queryEmail);
     const { data: entregas } = await entregasQuery;
@@ -732,7 +651,7 @@ app.get('/api/sync/pull', async (req, res) => {
       clienteEmail: e.cliente_email
     }));
 
-    // Carrega rotas ativas
+    // Carrega rotas ativas do tenant
     let rotasQuery = supabase.from('rotas_ativas').select('rotas_json');
     if (!isMasterAdmin) {
       rotasQuery = rotasQuery.eq('cliente_email', queryEmail).order('id', { ascending: false }).limit(1);
@@ -754,26 +673,41 @@ app.get('/api/sync/pull', async (req, res) => {
   }
 });
 
-// Push Sync: Recebe atualizações em lote ou pontuais do cliente e sincroniza no Supabase
-app.post('/api/sync/push', async (req, res) => {
-  const { email, perfil, table, records } = req.body;
+// Push Sync: Recebe atualizações do cliente e sincroniza com autorização JWT estrita (Prevenção BOLA/BFLA)
+app.post('/api/sync/push', authMiddleware, async (req, res) => {
+  const { table, records } = req.body;
 
   if (!supabase) {
     return res.status(503).json({ error: 'DATABASE_OFFLINE', message: 'Envio de dados indisponível sem conexão com o banco de dados.' });
   }
 
   try {
-    console.log(`📤 SYNC PUSH: Recebendo ${records?.length || 0} registros da tabela "${table}" de ${email}`);
+    const authenticatedEmail = req.user.email;
+    const authenticatedRole = req.user.perfil;
+    const isMasterAdmin = (authenticatedRole === 'MASTER' || authenticatedRole === 'COLABORADOR');
+
+    console.log(`📤 SYNC PUSH (JWT): Recebendo ${records?.length || 0} registros da tabela "${table}" de ${authenticatedEmail} (${authenticatedRole})`);
 
     if (!records || !Array.isArray(records)) {
       return res.json({ success: true, count: 0 });
     }
 
-    let queryEmail = email;
-    if (perfil === 'MOTORISTA') {
-      const { data: driver } = await supabase.from('condutores').select('cliente_email').eq('email', email).single();
-      if (driver) queryEmail = driver.cliente_email;
+    // Proteção BFLA: Usuários sem privilégio administrativo não podem alterar tabelas globais de sistema
+    if (!isMasterAdmin && (table === 'clientes' || table === 'auditoria_logs')) {
+      return res.status(403).json({
+        error: 'FORBIDDEN',
+        message: 'Acesso negado: Seu perfil não possui permissão para modificar cadastros globais de clientes ou registros de auditoria.'
+      });
     }
+
+    let queryEmail = authenticatedEmail;
+    if (authenticatedRole === 'MOTORISTA') {
+      const { data: driver } = await supabase.from('condutores').select('cliente_email').eq('email', authenticatedEmail).single();
+      if (driver && driver.cliente_email) {
+        queryEmail = driver.cliente_email;
+      }
+    }
+
 
 function normalizeTipoVeiculo(tipoRaw) {
   if (!tipoRaw) return 'Van';
@@ -1018,7 +952,14 @@ function normalizeTipoVeiculo(tipoRaw) {
         });
       }
     } else if (table === 'usuarios') {
-      if (perfil === 'MASTER') {
+      if (!isMasterAdmin) {
+        return res.status(403).json({
+          error: 'FORBIDDEN',
+          message: 'Acesso negado: Apenas administradores Master e Colaboradores podem gerenciar a lista de usuários do sistema.'
+        });
+      }
+
+      if (authenticatedRole === 'MASTER') {
         const userEmailsToKeep = records.map(u => u.email.toLowerCase()).filter(Boolean);
         const { data: dbUsers } = await supabase.from('usuarios').select('email');
         if (dbUsers && dbUsers.length > 0) {

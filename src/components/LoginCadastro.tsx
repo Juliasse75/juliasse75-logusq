@@ -238,6 +238,9 @@ export default function LoginCadastro({ onLoginSuccess }: LoginCadastroProps) {
 
       if (response.ok) {
         clearLocalFailedLogin(cleanEmail);
+        if (data.token) {
+          localStorage.setItem('logusq_auth_token', data.token);
+        }
         localStorage.setItem('logusq_logged_user', JSON.stringify(data.user));
         onLoginSuccess(data.user.email);
       } else {
@@ -1274,7 +1277,7 @@ REPRESENTANTE DA CONTRATANTE
                             </div>
                           )}
 
-                          <form onSubmit={(e) => {
+                          <form onSubmit={async (e) => {
                             e.preventDefault();
                             setMotError('');
                             setMotSuccess('');
@@ -1299,7 +1302,29 @@ REPRESENTANTE DA CONTRATANTE
                               setMotError('Este motorista ainda não possui senha. Por favor, clique em "Logar pela Primeira Vez" abaixo para cadastrar.');
                               return;
                             }
-                            if (matched.senha === motSenha || motSenha === '123456') {
+
+                            // Tentativa de login via API com emissão de JWT
+                            try {
+                              const apiRes = await fetch('/api/auth/login', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ email: matched.email, senha: motSenha })
+                              });
+                              if (apiRes.ok) {
+                                const apiData = await apiRes.json();
+                                clearLocalFailedLogin(`mot_${cleanCpf}`);
+                                if (apiData.token) {
+                                  localStorage.setItem('logusq_auth_token', apiData.token);
+                                }
+                                localStorage.setItem('logusq_logged_user', JSON.stringify(apiData.user));
+                                onLoginSuccess(matched.email);
+                                return;
+                              }
+                            } catch (netErr) {
+                              console.warn('Login motorista offline, utilizando validação de hash local.', netErr);
+                            }
+
+                            if (matched.senha === motSenha) {
                               clearLocalFailedLogin(`mot_${cleanCpf}`);
                               onLoginSuccess(matched.email);
                             } else {

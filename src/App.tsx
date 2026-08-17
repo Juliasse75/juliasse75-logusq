@@ -20,6 +20,7 @@ export default function App() {
   const handleLogout = () => {
     localStorage.removeItem('logusq_session_email');
     localStorage.removeItem('logusq_logged_user');
+    localStorage.removeItem('logusq_auth_token');
     setCurrentUserEmail(null);
   };
 
@@ -44,9 +45,25 @@ export default function App() {
       const user = dbRepo.getUsuario(currentUserEmail);
       if (!user) return;
 
-      fetch(`/api/sync/pull?email=${encodeURIComponent(currentUserEmail)}&perfil=${user.perfil}&nivelAcesso=${encodeURIComponent(user.nivelAcesso || '')}`)
-        .then(res => res.json())
+      const token = localStorage.getItem('logusq_auth_token');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      fetch('/api/sync/pull', { headers })
+        .then(res => {
+          if (res.status === 401) {
+            console.warn('Sessão expirada ou não autorizada. Redirecionando para tela de login.');
+            handleLogout();
+            return null;
+          }
+          return res.json();
+        })
         .then(resData => {
+          if (!resData) return;
           if (resData.success && resData.mode === 'supabase' && resData.data) {
             setDbMode('supabase');
             const d = resData.data;

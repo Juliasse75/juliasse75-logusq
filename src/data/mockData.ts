@@ -536,12 +536,19 @@ const getLoggedUserPerfil = () => {
 export const triggerPushSync = async (table: string, records: any[]) => {
   const email = getLoggedUserEmail();
   if (!email) return;
-  const perfil = getLoggedUserPerfil();
+  const token = localStorage.getItem('logusq_auth_token');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   try {
     const res = await fetch('/api/sync/push', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, perfil, table, records })
+      headers,
+      body: JSON.stringify({ table, records })
     });
     if (!res.ok) console.warn('Erro ao sincronizar tabela ' + table + ' com o Supabase.');
   } catch(e) {
@@ -807,7 +814,6 @@ export const dbRepo = {
       const uEmail = u.email.trim().toLowerCase();
       if (uEmail !== cleanEmail) return false;
       if (u.senha_hash === cleanSenha) return true;
-      if ((cleanSenha === 'LogusQ@2025' || cleanSenha === '123456') && (uEmail === 'ceo@logusq.com.br' || uEmail === 'demo@logusq.com.br')) return true;
       return false;
     });
 

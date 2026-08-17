@@ -5,11 +5,113 @@
 // só o local onde o código mora mudou.
 // =========================================================================
 
+import jwt from 'jsonwebtoken';
+
+/**
+ * Chave secreta padrão de fallback para ambientes de desenvolvimento / teste.
+ * Em produção, sempre configure a variável de ambiente JWT_SECRET.
+ */
+export const DEFAULT_JWT_SECRET = process.env.JWT_SECRET || 'logusq-enterprise-jwt-super-secret-key-2026-production';
+
+/**
+ * Gera um token JWT assinado criptograficamente contendo as reivindicações do usuário (claims).
+ * NUNCA inclua senhas ou dados sensíveis dentro do payload do JWT.
+ */
+export function generateAuthToken(user, secret = DEFAULT_JWT_SECRET, expiresIn = '24h') {
+  if (!user || !user.email) {
+    throw new Error('Payload inválido para geração de token JWT.');
+  }
+
+  const payload = {
+    email: String(user.email).toLowerCase().trim(),
+    nome: user.nome || '',
+    perfil: String(user.perfil || 'CLIENTE').toUpperCase().trim(),
+    nivelAcesso: String(user.nivelAcesso || user.nivel_acesso || 'TOTAL').toUpperCase().trim(),
+    empresa: user.empresa || null,
+    veiculo: user.veiculo || null,
+    idCliente: user.idCliente || user.id_cliente || null
+  };
+
+  return jwt.sign(payload, secret, { expiresIn });
+}
+
+/**
+ * Valida a assinatura e expiração de um token JWT.
+ * Retorna o payload decodificado se válido, ou lança um erro caso expirado/inválido/adulterado.
+ */
+export function verifyAuthToken(token, secret = DEFAULT_JWT_SECRET) {
+  if (!token) {
+    throw new Error('Token de autenticação não fornecido.');
+  }
+  return jwt.verify(token, secret);
+}
+
+/**
+ * Cria o middleware de autenticação Express.
+ * Extrai o token do header `Authorization: Bearer <token>`, valida a assinatura e
+ * anexa o payload autenticado em `req.user`.
+ * Rejeita qualquer tentativa com token ausente ou inválido com status 401.
+ */
+export function createAuthMiddleware(secret = DEFAULT_JWT_SECRET) {
+  return (req, res, next) => {
+    const authHeader = req.headers.authorization || req.headers.Authorization;
+
+    if (!authHeader || typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        error: 'UNAUTHORIZED',
+        message: 'Acesso negado: Token JWT de autenticação ausente ou inválido no cabeçalho Authorization.'
+      });
+    }
+
+    const token = authHeader.substring(7).trim();
+
+    try {
+      const decoded = verifyAuthToken(token, secret);
+      req.user = decoded;
+      next();
+    } catch (err) {
+      return res.status(401).json({
+        error: 'INVALID_TOKEN',
+        message: 'Acesso negado: Sessão expirada ou token de autenticação JWT inválido/adulterado.',
+        details: err.message
+      });
+    }
+  };
+}
+
+/**
+ * Cria o middleware de autorização por função (Role-Based Access Control - RBAC) para evitar BFLA.
+ * Valida se a função extraída EXCLUSIVAMENTE do token JWT assinado está na lista de papéis permitidos.
+ */
+export function requireRoles(...allowedRoles) {
+  const upperRoles = allowedRoles.map(r => String(r).toUpperCase().trim());
+  return (req, res, next) => {
+    if (!req.user || !req.user.perfil) {
+      return res.status(401).json({
+        error: 'UNAUTHORIZED',
+        message: 'Acesso negado: Usuário não autenticado.'
+      });
+    }
+
+    const userRole = String(req.user.perfil).toUpperCase().trim();
+
+    if (!upperRoles.includes(userRole)) {
+      return res.status(403).json({
+        error: 'FORBIDDEN',
+        message: `Acesso proibido: O perfil "${userRole}" não possui permissão para executar esta operação administrativa.`
+      });
+    }
+
+    next();
+  };
+}
+
 /**
  * Valida a força de uma senha.
  * Regras: mínimo 8 caracteres, 1 maiúscula, 1 minúscula, 1 número, 1 especial.
  * Retorna null se a senha é forte, ou uma mensagem de erro em português se não é.
  */
+
 export function validateStrongPassword(password) {
   if (!password || password.length < 8) return 'A senha deve conter no mínimo 8 caracteres.';
   if (!/[A-Z]/.test(password)) return 'A senha deve conter pelo menos uma letra maiúscula (A-Z).';
@@ -106,6 +208,12 @@ export function createLoginRateLimiter({
 
   return { checkLoginRateLimit, registerFailedLoginAttempt, resetLoginAttempts, maxFailedAttempts };
 }
+
+// Instância padrão de Rate Limiter usada pelo servidor principal
+const defaultRateLimiter = createLoginRateLimiter();
+export const checkLoginRateLimit = defaultRateLimiter.checkLoginRateLimit;
+export const registerFailedLoginAttempt = defaultRateLimiter.registerFailedLoginAttempt;
+export const resetLoginAttempts = defaultRateLimiter.resetLoginAttempts;
 
 /**
  * Verifica se um cliente deve ser bloqueado por inadimplência (venceu há mais
