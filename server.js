@@ -7,8 +7,12 @@ import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcryptjs';
 import { generateAuthToken, createAuthMiddleware, requireRoles, validateStrongPassword, checkLoginRateLimit, registerFailedLoginAttempt, resetLoginAttempts } from './server/authLogic.js';
+import { validateEnv } from './server/envValidation.js';
 
 dotenv.config();
+
+// Validação rigorosa com Zod no startup do servidor
+const env = validateEnv();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,33 +30,18 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'LogusQ API', time: new Date().toISOString() });
 });
 
-// Initialize Supabase Client if credentials are provided
-const supabaseUrl = process.env.SUPABASE_URL || 
+// Inicialização segura do Cliente Supabase SEM chaves ou URLs embutidas em texto claro
+const supabaseUrl = env.SUPABASE_URL || 
                     process.env.supabase_url_logusq_project || 
-                    process.env.SUPABASE_URL_LOGUSQ_PROJECT ||
-                    'https://qybdhrbynmmjceeuqrns.supabase.co';
+                    process.env.SUPABASE_URL_LOGUSQ_PROJECT;
 
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || 
+const supabaseAnonKey = env.SUPABASE_ANON_KEY || 
                         process.env.supabase_api_logusq_projetc || 
                         process.env.SUPABASE_API_LOGUSQ_PROJETC ||
                         process.env.supabase_api_logusq_project ||
-                        process.env.SUPABASE_API_LOGUSQ_PROJECT ||
-                        'sb_publishable_Em8MHqSzsNUHu4GiH6FJwQ_vU2YPs3G';
+                        process.env.SUPABASE_API_LOGUSQ_PROJECT;
 
 let supabase = null;
-
-console.log('--- DETECÇÃO DE AMBIENTE SUPABASE ---');
-console.log('Todas as chaves de ambiente disponíveis:', Object.keys(process.env).filter(k => k.toLowerCase().includes('supabase') || k.toLowerCase().includes('logusq')));
-if (process.env.SUPABASE_URL) console.log('✅ SUPABASE_URL carregada.');
-if (process.env.supabase_url_logusq_project) console.log('✅ supabase_url_logusq_project carregada.');
-if (process.env.SUPABASE_URL_LOGUSQ_PROJECT) console.log('✅ SUPABASE_URL_LOGUSQ_PROJECT carregada.');
-
-if (process.env.SUPABASE_ANON_KEY) console.log('✅ SUPABASE_ANON_KEY carregada.');
-if (process.env.supabase_api_logusq_projetc) console.log('✅ supabase_api_logusq_projetc carregada.');
-if (process.env.SUPABASE_API_LOGUSQ_PROJETC) console.log('✅ SUPABASE_API_LOGUSQ_PROJETC carregada.');
-if (process.env.supabase_api_logusq_project) console.log('✅ supabase_api_logusq_project carregada.');
-if (process.env.SUPABASE_API_LOGUSQ_PROJECT) console.log('✅ SUPABASE_API_LOGUSQ_PROJECT carregada.');
-console.log('------------------------------------');
 
 if (supabaseUrl && supabaseAnonKey) {
   try {
@@ -62,13 +51,13 @@ if (supabaseUrl && supabaseAnonKey) {
     console.error('❌ LOGUSQ DATABASE: Erro ao conectar ao Supabase:', err);
   }
 } else {
-  console.warn('⚠️ LOGUSQ DATABASE: Chaves do Supabase (SUPABASE_URL, SUPABASE_ANON_KEY) não estão configuradas.');
-  console.warn('👉 O sistema operará em modo OFFLINE/FALLBACK com sincronização local integrada.');
+  console.warn('⚠️ LOGUSQ DATABASE: SUPABASE_URL ou SUPABASE_ANON_KEY não informados no ambiente.');
+  console.warn('👉 O sistema operará em modo OFFLINE/LOCAL com dados locais em cache.');
 }
 
 // Initialize Google GenAI for Smart Romaneio Parsing
 let ai = null;
-const apiKey = process.env.GEMINI_API_KEY;
+const apiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
 
 if (apiKey) {
   ai = new GoogleGenAI({
