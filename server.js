@@ -8,6 +8,7 @@ import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcryptjs';
 import { generateAuthToken, createAuthMiddleware, requireRoles, validateStrongPassword, checkLoginRateLimit, registerFailedLoginAttempt, resetLoginAttempts } from './server/authLogic.js';
 import { validateEnv } from './server/envValidation.js';
+import { createTenantSupabaseClient, resolveTenantEmail } from './server/tenantSupabase.js';
 
 dotenv.config();
 
