@@ -9,6 +9,7 @@ import bcrypt from 'bcryptjs';
 import { generateAuthToken, createAuthMiddleware, requireRoles, validateStrongPassword, checkLoginRateLimit, registerFailedLoginAttempt, resetLoginAttempts } from './server/authLogic.js';
 import { validateEnv } from './server/envValidation.js';
 import { createTenantSupabaseClient, resolveTenantEmail } from './server/tenantSupabase.js';
+import { createDistributedAuthRateLimiterMiddleware } from './server/distributedRateLimit.js';
 
 dotenv.config();
 
@@ -21,6 +22,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = 3000;
 const authMiddleware = createAuthMiddleware();
+const distributedAuthLimiter = createDistributedAuthRateLimiterMiddleware();
 
 
 // Middleware to parse JSON bodies with a generous size limit
@@ -352,7 +354,7 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 // Endpoint de Login Seguro com Validação de Bloqueio/Vencimento e Emissão de Token JWT
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', distributedAuthLimiter, async (req, res) => {
   let { email, senha } = req.body || {};
 
   if (!email || !senha) {
