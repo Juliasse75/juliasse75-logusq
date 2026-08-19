@@ -11,6 +11,7 @@ import {
 import { generateAuditReportPDF } from '../utils/generateAuditPDF';
 import { DossierModal } from './DossierModal';
 import SimulatedMap from './SimulatedMap';
+import CdHubMapPicker from './CdHubMapPicker';
 import { clusterAndOptimize, DEFAULT_BASE, geocodeAddress, fetchDirectNominatimGeocode, haversineDistance, optimizeTSP } from '../utils/routingEngine';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import ImportadorUniversal from './ImportadorUniversal';
@@ -4929,56 +4930,84 @@ Assinatura do Expedidor: _______________________________`;
                   </div>
                 </div>
 
-                {/* Calibração Precisa de Coordenadas do CD Hub no Mapa */}
-                <div className="bg-slate-950/80 border border-slate-800 p-4 rounded-xl space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5">
-                    <div>
-                      <span className="text-[11px] font-bold text-violet-300 flex items-center gap-1.5">
-                        <Crosshair className="w-3.5 h-3.5 text-violet-400" /> Calibração Precisa de Ponto GPS do CD Hub
-                      </span>
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        Coordenadas exatas que fixam a base central e garantem que o CD Hub apareça no ponto cartográfico correto para todos os clientes.
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleRecalculateCdCoordinates}
-                      disabled={geocodingCdHub}
-                      className="bg-violet-600/20 hover:bg-violet-600/30 text-violet-300 border border-violet-500/40 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                    >
-                      <Navigation className="w-3.5 h-3.5" />
-                      {geocodingCdHub ? 'Recalculando Ponto...' : 'Recalcular Ponto GPS no Mapa'}
-                    </button>
+                {/* Calibração Precisa e Visual do CD Hub no Mapa */}
+                <div className="bg-slate-950/90 border border-slate-800 p-5 rounded-2xl space-y-4">
+                  <div className="border-b border-slate-800/80 pb-2.5">
+                    <span className="text-xs font-bold text-violet-300 flex items-center gap-1.5">
+                      <Crosshair className="w-4 h-4 text-violet-400" /> Calibração Cartográfica Precisa do CD HUB
+                    </span>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Arraste o pino roxo ou clique diretamente no galpão/sede da sua empresa no mapa abaixo para fixar as coordenadas exatas da sua base central.
+                    </p>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                  {/* Interactive Leaflet Location Picker */}
+                  <CdHubMapPicker
+                    latitude={dadosEmpresa.cdLatitude || clientBaseCoords.lat}
+                    longitude={dadosEmpresa.cdLongitude || clientBaseCoords.lng}
+                    endereco={dadosEmpresa.endereco}
+                    numero={dadosEmpresa.numero}
+                    bairro={dadosEmpresa.bairro}
+                    cidade={dadosEmpresa.cidade}
+                    estado={dadosEmpresa.estado}
+                    cep={dadosEmpresa.cep}
+                    empresaNome={dadosEmpresa.empresa || 'CD Hub Central'}
+                    onCoordinatesChange={(newLat, newLng) => {
+                      setDadosEmpresa(prev => ({
+                        ...prev,
+                        cdLatitude: String(newLat),
+                        cdLongitude: String(newLng)
+                      }));
+                      setAsyncBaseCoords({ lat: newLat, lng: newLng });
+                    }}
+                  />
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs pt-1">
                     <div>
-                      <label className="block text-slate-400 mb-1 font-medium">Latitude GPS (ex: -22.4811)</label>
+                      <label className="block text-slate-400 mb-1 font-medium">Latitude GPS Exata</label>
                       <input
                         type="text"
                         value={dadosEmpresa.cdLatitude}
-                        onChange={e => setDadosEmpresa({ ...dadosEmpresa, cdLatitude: e.target.value })}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500 font-mono text-xs"
-                        placeholder="Automático (ex: -20.1385)"
+                        onChange={e => {
+                          const val = e.target.value;
+                          setDadosEmpresa(prev => ({ ...prev, cdLatitude: val }));
+                          const parsed = parseFloat(val);
+                          if (!isNaN(parsed) && parsed >= -90 && parsed <= 90) {
+                            setAsyncBaseCoords(prev => ({ lat: parsed, lng: prev?.lng || clientBaseCoords.lng }));
+                          }
+                        }}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-emerald-300 focus:outline-none focus:border-violet-500 font-mono text-xs font-bold"
+                        placeholder="Ex: -22.481100"
                       />
                     </div>
                     <div>
-                      <label className="block text-slate-400 mb-1 font-medium">Longitude GPS (ex: -42.2028)</label>
+                      <label className="block text-slate-400 mb-1 font-medium">Longitude GPS Exata</label>
                       <input
                         type="text"
                         value={dadosEmpresa.cdLongitude}
-                        onChange={e => setDadosEmpresa({ ...dadosEmpresa, cdLongitude: e.target.value })}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500 font-mono text-xs"
-                        placeholder="Automático (ex: -40.2920)"
+                        onChange={e => {
+                          const val = e.target.value;
+                          setDadosEmpresa(prev => ({ ...prev, cdLongitude: val }));
+                          const parsed = parseFloat(val);
+                          if (!isNaN(parsed) && parsed >= -180 && parsed <= 180) {
+                            setAsyncBaseCoords(prev => ({ lat: prev?.lat || clientBaseCoords.lat, lng: parsed }));
+                          }
+                        }}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-emerald-300 focus:outline-none focus:border-violet-500 font-mono text-xs font-bold"
+                        placeholder="Ex: -42.202800"
                       />
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-2 text-[10px] text-slate-400 bg-slate-900/60 p-2 rounded-lg border border-slate-800/60">
-                    <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span>
-                      Ponto Ativo no Mapa Agora: <strong className="text-white font-mono">{clientBaseCoords.lat.toFixed(6)}, {clientBaseCoords.lng.toFixed(6)}</strong>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[10px] text-slate-400 bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>
+                        Ponto Ativo de Roteirização: <strong className="text-white font-mono">{clientBaseCoords.lat.toFixed(6)}, {clientBaseCoords.lng.toFixed(6)}</strong>
+                      </span>
+                    </div>
+                    <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                      ✓ Salvo nas rotas e otimizador TSP
                     </span>
                   </div>
                 </div>

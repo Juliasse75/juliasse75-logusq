@@ -1184,6 +1184,8 @@ export const dbRepo = {
       bairro: params.bairro,
       cidade: params.cidade,
       estado: params.estado,
+      cdLatitude: params.cdLatitude !== undefined && !isNaN(Number(params.cdLatitude)) ? Number(params.cdLatitude) : undefined,
+      cdLongitude: params.cdLongitude !== undefined && !isNaN(Number(params.cdLongitude)) ? Number(params.cdLongitude) : undefined,
       tipoUnidade: params.tipoUnidade || 'Matriz',
       plano: params.plano || 'Start',
       valorPlano: PLANOS_PADRAO[params.plano as keyof typeof PLANOS_PADRAO]?.valor || 499,
