@@ -75,8 +75,8 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
         bairro: clientData.bairro || prev.bairro,
         cidade: clientData.cidade || prev.cidade,
         estado: clientData.estado || prev.estado,
-        cdLatitude: clientData.cdLatitude !== undefined ? String(clientData.cdLatitude) : prev.cdLatitude,
-        cdLongitude: clientData.cdLongitude !== undefined ? String(clientData.cdLongitude) : prev.cdLongitude,
+        cdLatitude: prev.cdLatitude || (clientData.cdLatitude !== undefined ? String(clientData.cdLatitude) : ''),
+        cdLongitude: prev.cdLongitude || (clientData.cdLongitude !== undefined ? String(clientData.cdLongitude) : ''),
         telefoneFixo: clientData.telefoneFixo || prev.telefoneFixo,
         whatsapp: clientData.whatsapp || prev.whatsapp,
         respNome: clientData.respNome || prev.respNome,
@@ -85,7 +85,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
         respWhatsapp: clientData.respWhatsapp || prev.respWhatsapp,
       }));
     }
-  }, [clientData?.email, refreshKey]);
+  }, [clientData?.email]);
 
   const handleCepDadosLookup = async (cepVal: string) => {
     const cleanCep = cepVal.replace(/\D/g, '');
@@ -229,9 +229,16 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     return { lat: DEFAULT_BASE.latitude, lng: DEFAULT_BASE.longitude };
   }, [asyncBaseCoords, clientData]);
 
-  // Query OpenStreetMap Nominatim proxy for exact street coordinates of client CD Hub
+  // Query OpenStreetMap Nominatim proxy for exact street coordinates of client CD Hub (only if coordinates are not explicitly defined)
   React.useEffect(() => {
     if (!clientData) return;
+    // If the client already has explicit coordinates persisted or calibrated, NEVER overwrite with centroid
+    if (clientData.cdLatitude !== undefined && clientData.cdLongitude !== undefined && !isNaN(clientData.cdLatitude) && !isNaN(clientData.cdLongitude)) {
+      return;
+    }
+    if (asyncBaseCoords) {
+      return;
+    }
     const endereco = (clientData.endereco || '').trim();
     const numero = (clientData.numero || '').trim();
     const bairro = (clientData.bairro || '').trim();
@@ -4959,6 +4966,11 @@ Assinatura do Expedidor: _______________________________`;
                         cdLongitude: String(newLng)
                       }));
                       setAsyncBaseCoords({ lat: newLat, lng: newLng });
+                      // Auto-save instantly so it's impossible to revert
+                      dbRepo.editarCliente(userEmail, {
+                        cdLatitude: newLat,
+                        cdLongitude: newLng
+                      });
                     }}
                   />
 
@@ -4974,6 +4986,10 @@ Assinatura do Expedidor: _______________________________`;
                           const parsed = parseFloat(val);
                           if (!isNaN(parsed) && parsed >= -90 && parsed <= 90) {
                             setAsyncBaseCoords(prev => ({ lat: parsed, lng: prev?.lng || clientBaseCoords.lng }));
+                            dbRepo.editarCliente(userEmail, {
+                              cdLatitude: parsed,
+                              cdLongitude: parseFloat(dadosEmpresa.cdLongitude) || clientBaseCoords.lng
+                            });
                           }
                         }}
                         className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-emerald-300 focus:outline-none focus:border-violet-500 font-mono text-xs font-bold"
@@ -4991,6 +5007,10 @@ Assinatura do Expedidor: _______________________________`;
                           const parsed = parseFloat(val);
                           if (!isNaN(parsed) && parsed >= -180 && parsed <= 180) {
                             setAsyncBaseCoords(prev => ({ lat: prev?.lat || clientBaseCoords.lat, lng: parsed }));
+                            dbRepo.editarCliente(userEmail, {
+                              cdLatitude: parseFloat(dadosEmpresa.cdLatitude) || clientBaseCoords.lat,
+                              cdLongitude: parsed
+                            });
                           }
                         }}
                         className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-emerald-300 focus:outline-none focus:border-violet-500 font-mono text-xs font-bold"

@@ -30,6 +30,7 @@ export default function CdHubMapPicker({
   const mapRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
   const tileLayerRef = useRef<any>(null);
+  const lastInternalChangeRef = useRef<number>(0);
 
   const [mapStyle, setMapStyle] = useState<'satellite' | 'streets' | 'dark'>('streets');
   const [isLocatingGps, setIsLocatingGps] = useState(false);
@@ -103,21 +104,27 @@ export default function CdHubMapPicker({
 
         marker.on('dragend', (event: any) => {
           const pos = event.target.getLatLng();
-          onCoordinatesChange(parseFloat(pos.lat.toFixed(6)), parseFloat(pos.lng.toFixed(6)));
+          const lat = parseFloat(pos.lat.toFixed(6));
+          const lng = parseFloat(pos.lng.toFixed(6));
+          lastInternalChangeRef.current = Date.now();
+          onCoordinatesChange(lat, lng);
           setStatusMessage({
             type: 'success',
-            text: `🎯 Ponto ajustado manualmente pelo pino: (${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)})`
+            text: `🎯 Ponto do CD Hub ajustado pelo pino: (${lat.toFixed(6)}, ${lng.toFixed(6)})`
           });
         });
 
         // Click on map moves marker
         map.on('click', (e: any) => {
           const { lat, lng } = e.latlng;
-          marker.setLatLng([lat, lng]);
-          onCoordinatesChange(parseFloat(lat.toFixed(6)), parseFloat(lng.toFixed(6)));
+          const parsedLat = parseFloat(lat.toFixed(6));
+          const parsedLng = parseFloat(lng.toFixed(6));
+          lastInternalChangeRef.current = Date.now();
+          marker.setLatLng([parsedLat, parsedLng]);
+          onCoordinatesChange(parsedLat, parsedLng);
           setStatusMessage({
             type: 'success',
-            text: `🎯 Ponto ajustado pelo clique no mapa: (${lat.toFixed(6)}, ${lng.toFixed(6)})`
+            text: `🎯 Ponto do CD Hub ajustado pelo clique no mapa: (${parsedLat.toFixed(6)}, ${parsedLng.toFixed(6)})`
           });
         });
 
@@ -155,11 +162,15 @@ export default function CdHubMapPicker({
     };
   }, []);
 
-  // Update map view & marker when lat/lng change from external inputs
+  // Update map view & marker when lat/lng change from external inputs (only if not an active internal user edit)
   useEffect(() => {
+    // If the change occurred internally recently (within 3 seconds), do not reset the map/marker
+    if (Date.now() - lastInternalChangeRef.current < 3000) {
+      return;
+    }
     if (mapRef.current && markerRef.current && !isNaN(validLat) && !isNaN(validLng)) {
       const currentPos = markerRef.current.getLatLng();
-      if (Math.abs(currentPos.lat - validLat) > 0.00001 || Math.abs(currentPos.lng - validLng) > 0.00001) {
+      if (Math.abs(currentPos.lat - validLat) > 0.0001 || Math.abs(currentPos.lng - validLng) > 0.0001) {
         markerRef.current.setLatLng([validLat, validLng]);
         mapRef.current.panTo([validLat, validLng], { animate: true, duration: 0.5 });
       }
@@ -198,6 +209,7 @@ export default function CdHubMapPicker({
         const lat = parseFloat(position.coords.latitude.toFixed(6));
         const lng = parseFloat(position.coords.longitude.toFixed(6));
         
+        lastInternalChangeRef.current = Date.now();
         onCoordinatesChange(lat, lng);
         if (mapRef.current && markerRef.current) {
           markerRef.current.setLatLng([lat, lng]);
@@ -245,6 +257,7 @@ export default function CdHubMapPicker({
           const lat = parseFloat(Number(data.lat).toFixed(6));
           const lng = parseFloat(Number(data.lng).toFixed(6));
           
+          lastInternalChangeRef.current = Date.now();
           onCoordinatesChange(lat, lng);
           if (mapRef.current && markerRef.current) {
             markerRef.current.setLatLng([lat, lng]);
@@ -308,6 +321,7 @@ export default function CdHubMapPicker({
     }
 
     if (parsedLat !== null && parsedLng !== null && !isNaN(parsedLat) && !isNaN(parsedLng)) {
+      lastInternalChangeRef.current = Date.now();
       onCoordinatesChange(parseFloat(parsedLat.toFixed(6)), parseFloat(parsedLng.toFixed(6)));
       if (mapRef.current && markerRef.current) {
         markerRef.current.setLatLng([parsedLat, parsedLng]);
