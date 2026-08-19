@@ -37,6 +37,8 @@ export interface Cliente {
   cidade?: string;
   estado?: string;
   tipoUnidade?: 'Matriz' | 'Filial';
+  cdLatitude?: number;
+  cdLongitude?: number;
   plano: 'POC' | 'Start' | 'Pro' | 'Enterprise';
   valorPlano: number;
   status: 'Ativo' | 'Bloqueado' | 'Cancelado';

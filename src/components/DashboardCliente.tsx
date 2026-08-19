@@ -5,7 +5,8 @@ import LogusQLogo from './LogusQLogo';
 import { 
   Truck, Users, MapPin, Calculator, Plus, Upload, Download, Play, 
   Map, CheckCircle, Trash2, Calendar, FileText, Clipboard, Settings, ShieldAlert, Sparkles,
-  Info, RotateCcw, Clock, Bell, Printer, UserCheck, Building2, Save, Phone, Mail, User, Search, Edit3, FileCheck
+  Info, RotateCcw, Clock, Bell, Printer, UserCheck, Building2, Save, Phone, Mail, User, Search, Edit3, FileCheck,
+  Navigation, Crosshair
 } from 'lucide-react';
 import { generateAuditReportPDF } from '../utils/generateAuditPDF';
 import { DossierModal } from './DossierModal';
@@ -42,6 +43,8 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     bairro: clientData?.bairro || '',
     cidade: clientData?.cidade || '',
     estado: clientData?.estado || '',
+    cdLatitude: clientData?.cdLatitude !== undefined ? String(clientData.cdLatitude) : '',
+    cdLongitude: clientData?.cdLongitude !== undefined ? String(clientData.cdLongitude) : '',
     telefoneFixo: clientData?.telefoneFixo || '',
     whatsapp: clientData?.whatsapp || '',
     respNome: clientData?.respNome || '',
@@ -53,6 +56,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   const [savingDados, setSavingDados] = useState(false);
   const [dadosSuccessMsg, setDadosSuccessMsg] = useState('');
   const [loadingCepDados, setLoadingCepDados] = useState(false);
+  const [geocodingCdHub, setGeocodingCdHub] = useState(false);
 
   // Sync form state if clientData updates
   React.useEffect(() => {
@@ -70,6 +74,8 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
         bairro: clientData.bairro || prev.bairro,
         cidade: clientData.cidade || prev.cidade,
         estado: clientData.estado || prev.estado,
+        cdLatitude: clientData.cdLatitude !== undefined ? String(clientData.cdLatitude) : prev.cdLatitude,
+        cdLongitude: clientData.cdLongitude !== undefined ? String(clientData.cdLongitude) : prev.cdLongitude,
         telefoneFixo: clientData.telefoneFixo || prev.telefoneFixo,
         whatsapp: clientData.whatsapp || prev.whatsapp,
         respNome: clientData.respNome || prev.respNome,
@@ -103,10 +109,69 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     }
   };
 
+  const handleRecalculateCdCoordinates = async () => {
+    const endereco = dadosEmpresa.endereco.trim();
+    const numero = dadosEmpresa.numero.trim();
+    const bairro = dadosEmpresa.bairro.trim();
+    const cidade = dadosEmpresa.cidade.trim();
+    const estado = dadosEmpresa.estado.trim();
+    const cep = dadosEmpresa.cep.trim();
+
+    if (!cidade && !endereco) {
+      alert('Preencha ao menos o logradouro e a cidade para recalcular o ponto no mapa.');
+      return;
+    }
+
+    setGeocodingCdHub(true);
+    try {
+      const streetCombined = endereco ? `${endereco}${numero ? `, ${numero}` : ''}${bairro ? ` - ${bairro}` : ''}` : '';
+      const queryParams = new URLSearchParams();
+      if (streetCombined) queryParams.set('street', streetCombined);
+      if (cidade) queryParams.set('city', cidade);
+      if (estado) queryParams.set('state', estado);
+      if (cep) queryParams.set('postalcode', cep);
+      queryParams.set('q', `${streetCombined ? `${streetCombined}, ` : ''}${cidade}${estado ? ` - ${estado}` : ''}`);
+
+      const res = await fetch(`/api/geocode?${queryParams.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.lat && data.lng) {
+          setDadosEmpresa(prev => ({
+            ...prev,
+            cdLatitude: String(data.lat),
+            cdLongitude: String(data.lng)
+          }));
+          setAsyncBaseCoords({ lat: data.lat, lng: data.lng });
+          setDadosSuccessMsg(`✓ Ponto do CD Hub recalculado com precisão: ${data.displayName || `${data.lat}, ${data.lng}`}`);
+          setTimeout(() => setDadosSuccessMsg(''), 6000);
+          return;
+        }
+      }
+
+      // Fallback to local routing engine
+      const localResult = geocodeAddress(`${endereco}, ${numero} - ${bairro}, ${cidade} - ${estado}`);
+      setDadosEmpresa(prev => ({
+        ...prev,
+        cdLatitude: String(localResult.lat),
+        cdLongitude: String(localResult.lng)
+      }));
+      setAsyncBaseCoords(localResult);
+      setDadosSuccessMsg('✓ Ponto calibrado com o catálogo de coordenadas regionais.');
+      setTimeout(() => setDadosSuccessMsg(''), 6000);
+    } catch (err) {
+      console.warn('Erro ao recalcular coordenadas:', err);
+    } finally {
+      setGeocodingCdHub(false);
+    }
+  };
+
   const handleSaveDadosEmpresa = (e: React.FormEvent) => {
     e.preventDefault();
     setSavingDados(true);
     try {
+      const customLat = dadosEmpresa.cdLatitude ? parseFloat(dadosEmpresa.cdLatitude) : undefined;
+      const customLng = dadosEmpresa.cdLongitude ? parseFloat(dadosEmpresa.cdLongitude) : undefined;
+
       dbRepo.editarCliente(userEmail, {
         empresa: dadosEmpresa.empresa,
         cnpj: dadosEmpresa.cnpj,
@@ -119,6 +184,8 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
         bairro: dadosEmpresa.bairro,
         cidade: dadosEmpresa.cidade,
         estado: dadosEmpresa.estado,
+        cdLatitude: !isNaN(customLat as number) ? customLat : undefined,
+        cdLongitude: !isNaN(customLng as number) ? customLng : undefined,
         telefoneFixo: dadosEmpresa.telefoneFixo,
         whatsapp: dadosEmpresa.whatsapp,
         respNome: dadosEmpresa.respNome,
@@ -127,9 +194,14 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
         respWhatsapp: dadosEmpresa.respWhatsapp,
       });
 
-      setAsyncBaseCoords(null);
+      if (!isNaN(customLat as number) && !isNaN(customLng as number)) {
+        setAsyncBaseCoords({ lat: customLat as number, lng: customLng as number });
+      } else {
+        setAsyncBaseCoords(null);
+      }
+
       triggerRefresh();
-      setDadosSuccessMsg('✓ Endereço e Dados da Empresa salvos com sucesso! O CD Hub no mapa foi atualizado.');
+      setDadosSuccessMsg('✓ Endereço e Coordenadas do CD Hub salvos com sucesso! O CD Hub no mapa foi atualizado.');
       setTimeout(() => setDadosSuccessMsg(''), 6000);
     } catch (err) {
       alert('Erro ao salvar os dados da empresa. Tente novamente.');
@@ -138,9 +210,15 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     }
   };
   
-  // Resolve client's base/CD coordinates dynamically based on their address
+  // Resolve client's base/CD coordinates dynamically based on their address or custom calibrated coordinates
   const clientBaseCoords = React.useMemo(() => {
+    // 1. Direct explicit coordinates persisted on client record
+    if (clientData?.cdLatitude !== undefined && clientData?.cdLongitude !== undefined && !isNaN(clientData.cdLatitude) && !isNaN(clientData.cdLongitude)) {
+      return { lat: clientData.cdLatitude, lng: clientData.cdLongitude };
+    }
+    // 2. Geocoded async base coords in session
     if (asyncBaseCoords) return asyncBaseCoords;
+    // 3. Fallback to geocoding from address text
     if (clientData) {
       const fullAddress = `${clientData.endereco || ''}, ${clientData.numero || ''} - ${clientData.bairro || ''}, ${clientData.cidade || ''} - ${clientData.estado || ''} CEP: ${clientData.cep || ''}`.trim();
       if (fullAddress && fullAddress.length > 10) {
@@ -153,31 +231,49 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   // Query OpenStreetMap Nominatim proxy for exact street coordinates of client CD Hub
   React.useEffect(() => {
     if (!clientData) return;
-    const searchString = `${clientData.endereco || ''}, ${clientData.cidade || ''} - ${clientData.estado || ''}`.trim();
-    if (!searchString || searchString.length < 5) return;
+    const endereco = (clientData.endereco || '').trim();
+    const numero = (clientData.numero || '').trim();
+    const bairro = (clientData.bairro || '').trim();
+    const cidade = (clientData.cidade || '').trim();
+    const estado = (clientData.estado || '').trim();
+    const cep = (clientData.cep || '').trim();
+
+    if (!cidade && !endereco) return;
 
     let isMounted = true;
-    fetch(`/api/geocode?q=${encodeURIComponent(searchString)}`)
+    
+    // Build query with full address priority, then street+city+state
+    const streetCombined = endereco ? `${endereco}${numero ? `, ${numero}` : ''}${bairro ? ` - ${bairro}` : ''}` : '';
+    const queryParams = new URLSearchParams();
+    if (streetCombined) queryParams.set('street', streetCombined);
+    if (cidade) queryParams.set('city', cidade);
+    if (estado) queryParams.set('state', estado);
+    if (cep) queryParams.set('postalcode', cep);
+    const searchString = `${streetCombined ? `${streetCombined}, ` : ''}${cidade}${estado ? ` - ${estado}` : ''}`.trim();
+    queryParams.set('q', searchString);
+
+    fetch(`/api/geocode?${queryParams.toString()}`)
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (isMounted && data && data.lat && data.lng) {
-          const stateUpper = (clientData.estado || '').toUpperCase().trim();
+          const stateUpper = estado.toUpperCase();
           let isValidForState = true;
 
-          // State bounding box safety checks to prevent erroneous matches in other states
+          // State bounding box safety checks to prevent cross-state anomalies
           if (stateUpper === 'ES' || stateUpper === 'ESPÍRITO SANTO' || stateUpper === 'ESPIRITO SANTO') {
-            if (data.lat > -17.5 || data.lat < -21.5 || data.lng < -42.5 || data.lng > -39.0) {
-              console.warn(`⚠️ Nominatim retornou coordenadas fora do Espírito Santo (${data.lat}, ${data.lng}). Usando geocodificador local confiável de Serra/ES.`);
-              isValidForState = false;
-            }
+            if (data.lat > -17.5 || data.lat < -21.5 || data.lng < -42.5 || data.lng > -39.0) isValidForState = false;
           } else if (stateUpper === 'RJ' || stateUpper === 'RIO DE JANEIRO') {
-            if (data.lat > -20.5 || data.lat < -23.5 || data.lng < -45.0 || data.lng > -40.8) {
-              isValidForState = false;
-            }
+            if (data.lat > -20.5 || data.lat < -23.5 || data.lng < -45.0 || data.lng > -40.8) isValidForState = false;
           } else if (stateUpper === 'SP' || stateUpper === 'SÃO PAULO' || stateUpper === 'SAO PAULO') {
-            if (data.lat > -19.5 || data.lat < -25.5 || data.lng < -53.5 || data.lng > -44.0) {
-              isValidForState = false;
-            }
+            if (data.lat > -19.5 || data.lat < -25.5 || data.lng < -53.5 || data.lng > -44.0) isValidForState = false;
+          } else if (stateUpper === 'MG' || stateUpper === 'MINAS GERAIS') {
+            if (data.lat > -14.0 || data.lat < -23.0 || data.lng < -51.5 || data.lng > -39.5) isValidForState = false;
+          } else if (stateUpper === 'SC' || stateUpper === 'SANTA CATARINA') {
+            if (data.lat > -25.5 || data.lat < -29.8 || data.lng < -54.5 || data.lng > -48.0) isValidForState = false;
+          } else if (stateUpper === 'PR' || stateUpper === 'PARANÁ' || stateUpper === 'PARANA') {
+            if (data.lat > -22.5 || data.lat < -26.8 || data.lng < -54.8 || data.lng > -48.0) isValidForState = false;
+          } else if (stateUpper === 'RS' || stateUpper === 'RIO GRANDE DO SUL') {
+            if (data.lat > -26.8 || data.lat < -33.8 || data.lng < -57.5 || data.lng > -49.5) isValidForState = false;
           }
 
           if (isValidForState) {
@@ -189,7 +285,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       .catch(err => console.warn('Nominatim fallback para geocodificador local:', err));
 
     return () => { isMounted = false; };
-  }, [clientData?.endereco, clientData?.cidade, clientData?.estado]);
+  }, [clientData?.endereco, clientData?.numero, clientData?.bairro, clientData?.cidade, clientData?.estado, clientData?.cep]);
 
   const frota = dbRepo.getFrota(userEmail);
   const condutores = dbRepo.getCondutores(userEmail);
@@ -4830,6 +4926,60 @@ Assinatura do Expedidor: _______________________________`;
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500 uppercase font-mono"
                       placeholder="ES, RJ, SP, MG..."
                     />
+                  </div>
+                </div>
+
+                {/* Calibração Precisa de Coordenadas do CD Hub no Mapa */}
+                <div className="bg-slate-950/80 border border-slate-800 p-4 rounded-xl space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5">
+                    <div>
+                      <span className="text-[11px] font-bold text-violet-300 flex items-center gap-1.5">
+                        <Crosshair className="w-3.5 h-3.5 text-violet-400" /> Calibração Precisa de Ponto GPS do CD Hub
+                      </span>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        Coordenadas exatas que fixam a base central e garantem que o CD Hub apareça no ponto cartográfico correto para todos os clientes.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleRecalculateCdCoordinates}
+                      disabled={geocodingCdHub}
+                      className="bg-violet-600/20 hover:bg-violet-600/30 text-violet-300 border border-violet-500/40 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <Navigation className="w-3.5 h-3.5" />
+                      {geocodingCdHub ? 'Recalculando Ponto...' : 'Recalcular Ponto GPS no Mapa'}
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                    <div>
+                      <label className="block text-slate-400 mb-1 font-medium">Latitude GPS (ex: -22.4811)</label>
+                      <input
+                        type="text"
+                        value={dadosEmpresa.cdLatitude}
+                        onChange={e => setDadosEmpresa({ ...dadosEmpresa, cdLatitude: e.target.value })}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500 font-mono text-xs"
+                        placeholder="Automático (ex: -20.1385)"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 mb-1 font-medium">Longitude GPS (ex: -42.2028)</label>
+                      <input
+                        type="text"
+                        value={dadosEmpresa.cdLongitude}
+                        onChange={e => setDadosEmpresa({ ...dadosEmpresa, cdLongitude: e.target.value })}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500 font-mono text-xs"
+                        placeholder="Automático (ex: -40.2920)"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 text-[10px] text-slate-400 bg-slate-900/60 p-2 rounded-lg border border-slate-800/60">
+                    <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>
+                      Ponto Ativo no Mapa Agora: <strong className="text-white font-mono">{clientBaseCoords.lat.toFixed(6)}, {clientBaseCoords.lng.toFixed(6)}</strong>
+                    </span>
                   </div>
                 </div>
               </div>

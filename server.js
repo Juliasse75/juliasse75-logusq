@@ -183,41 +183,58 @@ async function checkClientBlocked(email) {
 // REAL WORLD MAPPING APIS (GEOCODING & STREET ROUTING)
 // =========================================================================
 
-// Nominatim Free Geocoding API Proxy (Item 4)
+// Nominatim Free Geocoding API Proxy with Multi-Tier Fallback Strategy (Structured and Unstructured)
 app.get('/api/geocode', async (req, res) => {
   try {
-    const { q } = req.query;
-    if (!q) {
-      return res.status(400).json({ error: 'Falta o termo de busca (parâmetro "q").' });
-    }
-
-    console.log(`🔍 Nominatim: Geocodificando endereço real: "${q}"`);
+    const { q, street, city, state, postalcode } = req.query;
     
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&addressdetails=1&limit=1`;
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'LogusQ-Logistics-Platform (contact: cosmejuliasse@gmail.com)'
+    // Build query candidates in priority order
+    const queries = [];
+    if (street && city && state) {
+      queries.push(`https://nominatim.openstreetmap.org/search?street=${encodeURIComponent(street)}&city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}&country=Brazil&format=json&addressdetails=1&limit=1`);
+      queries.push(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(`${street}, ${city}, ${state}, Brasil`)}&format=json&addressdetails=1&limit=1`);
+    }
+    if (city && state) {
+      queries.push(`https://nominatim.openstreetmap.org/search?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}&country=Brazil&format=json&addressdetails=1&limit=1`);
+    }
+    if (q) {
+      queries.push(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&countrycodes=br&format=json&addressdetails=1&limit=1`);
+      queries.push(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(`${q}, Brasil`)}&format=json&addressdetails=1&limit=1`);
+    }
+
+    if (queries.length === 0) {
+      return res.status(400).json({ error: 'Falta o termo de busca (parâmetro "q" ou "street", "city", "state").' });
+    }
+
+    for (const url of queries) {
+      try {
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': 'LogusQ-Logistics-Platform (contact: cosmejuliasse@gmail.com)',
+            'Accept-Language': 'pt-BR,pt;q=0.9'
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (Array.isArray(data) && data.length > 0) {
+            const result = {
+              lat: parseFloat(data[0].lat),
+              lng: parseFloat(data[0].lon),
+              displayName: data[0].display_name
+            };
+            return res.json(result);
+          }
+        }
+      } catch (err) {
+        // Try next fallback
       }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Nominatim retornou status ${response.status}`);
     }
 
-    const data = await response.json();
-    if (data && data.length > 0) {
-      const result = {
-        lat: parseFloat(data[0].lat),
-        lng: parseFloat(data[0].lon),
-        displayName: data[0].display_name
-      };
-      return res.json(result);
-    }
-
-    res.status(404).json({ error: 'Endereço real não encontrado no OpenStreetMap.' });
+    res.status(404).json({ error: 'Endereço não localizado com precisão nos servidores cartográficos.' });
   } catch (error) {
     console.error('❌ Erro no proxy de geocodificação Nominatim:', error);
-    res.status(500).json({ error: 'Erro de conexão com o serviço de geocodificação gratuita.' });
+    res.status(500).json({ error: 'Erro de conexão com o serviço de geocodificação.' });
   }
 });
 
