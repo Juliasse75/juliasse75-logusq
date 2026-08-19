@@ -6,7 +6,7 @@ import {
   Truck, Users, MapPin, Calculator, Plus, Upload, Download, Play, 
   Map, CheckCircle, Trash2, Calendar, FileText, Clipboard, Settings, ShieldAlert, Sparkles,
   Info, RotateCcw, Clock, Bell, Printer, UserCheck, Building2, Save, Phone, Mail, User, Search, Edit3, FileCheck,
-  Navigation, Crosshair
+  Navigation, Crosshair, CheckCircle2, Check, RefreshCw
 } from 'lucide-react';
 import { generateAuditReportPDF } from '../utils/generateAuditPDF';
 import { DossierModal } from './DossierModal';
@@ -55,6 +55,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   });
 
   const [savingDados, setSavingDados] = useState(false);
+  const [savedSuccessfully, setSavedSuccessfully] = useState(false);
   const [dadosSuccessMsg, setDadosSuccessMsg] = useState('');
   const [loadingCepDados, setLoadingCepDados] = useState(false);
   const [geocodingCdHub, setGeocodingCdHub] = useState(false);
@@ -202,8 +203,12 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       }
 
       triggerRefresh();
-      setDadosSuccessMsg('✓ Endereço e Coordenadas do CD Hub salvos com sucesso! O CD Hub no mapa foi atualizado.');
-      setTimeout(() => setDadosSuccessMsg(''), 6000);
+      setSavedSuccessfully(true);
+      const displayLat = (!isNaN(customLat as number) ? customLat : clientBaseCoords.lat)?.toFixed(6);
+      const displayLng = (!isNaN(customLng as number) ? customLng : clientBaseCoords.lng)?.toFixed(6);
+      setDadosSuccessMsg(`✓ Dados e CD Hub atualizados com sucesso! Ponto GPS ativo: (${displayLat}, ${displayLng})`);
+      setTimeout(() => setSavedSuccessfully(false), 5000);
+      setTimeout(() => setDadosSuccessMsg(''), 8000);
     } catch (err) {
       alert('Erro ao salvar os dados da empresa. Tente novamente.');
     } finally {
@@ -5088,18 +5093,70 @@ Assinatura do Expedidor: _______________________________`;
                 </div>
               </div>
 
-              {/* Botão de Ação Salvar */}
-              <div className="flex justify-end pt-2">
-                <button
-                  type="submit"
-                  disabled={savingDados}
-                  className="bg-violet-600 hover:bg-violet-500 text-white font-bold px-8 py-3 rounded-xl shadow-lg shadow-violet-600/30 transition-all flex items-center gap-2 cursor-pointer text-xs"
-                >
-                  <Save className="w-4 h-4" />
-                  {savingDados ? 'Salvando...' : 'Salvar Alterações e Atualizar CD Hub'}
-                </button>
+              {/* Botão de Ação Salvar com Feedback Imediato */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 pt-2">
+                {/* Inline status message right next to the action button */}
+                <div className="flex-1">
+                  {dadosSuccessMsg && (
+                    <div className="bg-emerald-950/90 border border-emerald-500/60 text-emerald-200 px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-2.5 shadow-lg shadow-emerald-950/50 animate-fade-in">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                      <div className="flex-1">
+                        <span className="block text-emerald-300 font-extrabold text-xs">Alterações Confirmadas e Processadas!</span>
+                        <span className="text-[11px] text-emerald-200/90 font-mono">{dadosSuccessMsg}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-end shrink-0">
+                  <button
+                    type="submit"
+                    disabled={savingDados}
+                    className={`font-extrabold px-8 py-3.5 rounded-xl shadow-xl transition-all flex items-center justify-center gap-2.5 cursor-pointer text-xs ${
+                      savedSuccessfully
+                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/40 ring-2 ring-emerald-400'
+                        : savingDados
+                        ? 'bg-violet-700 text-white/80 cursor-not-allowed'
+                        : 'bg-violet-600 hover:bg-violet-500 text-white shadow-violet-600/30 active:scale-95'
+                    }`}
+                  >
+                    {savingDados ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-violet-300" />
+                        <span>Processando e Atualizando CD Hub...</span>
+                      </>
+                    ) : savedSuccessfully ? (
+                      <>
+                        <Check className="w-4 h-4 text-white" />
+                        <span>✓ CD Hub e Dados Salvos com Sucesso!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4" />
+                        <span>Salvar Alterações e Atualizar CD Hub</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </form>
+          </div>
+        )}
+
+        {/* Global Floating Toast Alert across viewport */}
+        {savedSuccessfully && (
+          <div className="fixed top-8 left-1/2 -translate-x-1/2 z-50 bg-slate-950/95 border-2 border-emerald-500 text-white px-6 py-4 rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-3.5 animate-bounce max-w-md w-full mx-auto">
+            <div className="w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center text-slate-950 font-black shrink-0 shadow-lg shadow-emerald-500/40">
+              <Check className="w-5 h-5 text-slate-950 stroke-[3]" />
+            </div>
+            <div className="flex-1">
+              <span className="font-extrabold text-xs text-white block uppercase tracking-wider">
+                ✓ Comando Processado com Sucesso!
+              </span>
+              <p className="text-[11px] text-emerald-300 font-mono mt-0.5">
+                CD Hub sincronizado: {dadosEmpresa.cdLatitude || clientBaseCoords.lat}, {dadosEmpresa.cdLongitude || clientBaseCoords.lng}
+              </p>
+            </div>
           </div>
         )}
 
