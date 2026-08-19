@@ -343,47 +343,6 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     };
   }, [refreshKey, userEmail]);
 
-  // Auto-correct any legacy or mis-geocoded delivery points in wrong states (e.g. SP/RJ when CD Hub is in SC)
-  React.useEffect(() => {
-    if (!clientData || todasEntregas.length === 0) return;
-
-    let needsUpdate = false;
-    const corrected = todasEntregas.map(ent => {
-      const dist = haversineDistance(
-        ent.latitude,
-        ent.longitude,
-        clientBaseCoords.lat,
-        clientBaseCoords.lng
-      );
-
-      // If delivery point is > 100 km away from CD Hub, auto-correct coordinates to client's operational region
-      if (dist > 100) {
-        const freshCoords = geocodeAddress(ent.endereco, clientBaseCoords);
-        const newDist = haversineDistance(
-          freshCoords.lat,
-          freshCoords.lng,
-          clientBaseCoords.lat,
-          clientBaseCoords.lng
-        );
-
-        if (newDist < dist || newDist <= 100) {
-          needsUpdate = true;
-          return {
-            ...ent,
-            latitude: freshCoords.lat,
-            longitude: freshCoords.lng,
-          };
-        }
-      }
-      return ent;
-    });
-
-    if (needsUpdate) {
-      dbRepo.saveEntregas(userEmail, corrected);
-      triggerRefresh();
-    }
-  }, [clientData?.email, clientBaseCoords.lat, clientBaseCoords.lng, todasEntregas.length]);
-
   // Form selections
   const [selectedVeiculoEdit, setSelectedVeiculoEdit] = useState<string>(frota[0]?.idVeiculo || '');
   const veicSel = frota.find(v => v.idVeiculo === selectedVeiculoEdit);
@@ -1435,35 +1394,60 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   };
 
   const handleRecalibrateDeliveries = async () => {
-    if (entregasPendentes.length === 0) {
-      alert('Não há entregas pendentes para recalibrar.');
+    if (todasEntregas.length === 0) {
+      alert('Não há entregas cadastradas para recalibrar no momento.');
       return;
     }
     
     setIsGeocodingLoading(true);
     let fixedCount = 0;
-    const updatedDeliveries = await Promise.all(
-      entregasPendentes.map(async (ent) => {
-        // Direct online geocode
-        const direct = await fetchDirectNominatimGeocode(ent.endereco, clientBaseCoords);
-        if (direct && direct.lat && direct.lng) {
-          fixedCount++;
-          return { ...ent, latitude: direct.lat, longitude: direct.lng };
-        }
-        // Offline district-aware geocode
-        const offline = geocodeAddress(ent.endereco, clientBaseCoords);
-        if (offline.lat !== ent.latitude || offline.lng !== ent.longitude) {
-          fixedCount++;
-          return { ...ent, latitude: offline.lat, longitude: offline.lng };
-        }
-        return ent;
-      })
-    );
+    try {
+      const updatedDeliveries = await Promise.all(
+        todasEntregas.map(async (ent) => {
+          // Direct online geocode using high accuracy API
+          const direct = await fetchDirectNominatimGeocode(ent.endereco, clientBaseCoords);
+          if (direct && direct.lat && direct.lng) {
+            fixedCount++;
+            return { ...ent, latitude: direct.lat, longitude: direct.lng };
+          }
+          // Offline terrestrial fallback
+          const offline = geocodeAddress(ent.endereco, clientBaseCoords);
+          if (offline.lat !== ent.latitude || offline.lng !== ent.longitude) {
+            fixedCount++;
+            return { ...ent, latitude: offline.lat, longitude: offline.lng };
+          }
+          return ent;
+        })
+      );
 
-    dbRepo.saveEntregas(userEmail, updatedDeliveries);
-    setIsGeocodingLoading(false);
-    triggerRefresh();
-    alert(`🎯 Recalibração de precisão concluída! ${fixedCount} pontos de entrega foram atualizados para coordenadas geográficas exatas.`);
+      dbRepo.saveEntregas(userEmail, updatedDeliveries);
+
+      // Also update any active routes path coordinates
+      const currentRoutes = dbRepo.getRotasAtivas(userEmail);
+      if (currentRoutes && Object.keys(currentRoutes).length > 0) {
+        const updatedRoutes: typeof currentRoutes = {};
+        for (const [rId, rData] of Object.entries(currentRoutes)) {
+          const updatedPath = rData.path.map(p => {
+            const match = updatedDeliveries.find(u => (u.id && u.id === p.id) || (u.chave && u.chave === p.chave));
+            if (match) {
+              return { ...p, latitude: match.latitude, longitude: match.longitude };
+            }
+            return p;
+          });
+          updatedRoutes[rId] = { ...rData, path: updatedPath };
+        }
+        dbRepo.saveRotasAtivas(userEmail, updatedRoutes);
+        setActiveRoutes(updatedRoutes);
+      }
+
+      triggerRefresh();
+      alert(`🎯 Recalibração de precisão concluída! ${fixedCount} pontos do romaneio foram reposicionados exatamente sobre suas respectivas cidades e ruas em terra firme.`);
+    } catch (err) {
+      console.error('Erro ao recalibrar:', err);
+      alert('Ocorreu um erro ao recalibrar as coordenadas. Tente novamente.');
+    } finally {
+      setIsGeocodingLoading(false);
+    }
   };
 
   const handleDelCepLookup = async (cepValue: string) => {
@@ -2585,6 +2569,15 @@ Assinatura do Expedidor: _______________________________`;
                   className="bg-slate-900 hover:bg-slate-800 text-slate-300 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-800 flex items-center gap-2 transition-colors"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-violet-400" /> Importar Romaneio (IA / PDF / XLS)
+                </button>
+                <button
+                  onClick={handleRecalibrateDeliveries}
+                  disabled={isGeocodingLoading || todasEntregas.length === 0}
+                  className="bg-emerald-950/70 hover:bg-emerald-900/90 text-emerald-300 border border-emerald-500/50 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-emerald-950/30 disabled:opacity-50"
+                  title="Recalibra todas as coordenadas das entregas existentes com alta precisão terrestre"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isGeocodingLoading ? 'animate-spin' : ''}`} />
+                  {isGeocodingLoading ? 'Recalibrando Pontos...' : 'Recalibrar Romaneio no Mapa'}
                 </button>
                 <button
                   onClick={handleOptimize}
