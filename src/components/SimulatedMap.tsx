@@ -50,13 +50,16 @@ function getDispersedPointCoords(
   const pos = dupIdx !== -1 ? dupIdx : indexInRoute;
   const totalDups = Math.max(duplicates.length, allPointsInRoute.length);
 
-  // Spiral dispersion formula (~300m - 1.2km radius)
-  const angle = (pos * (2 * Math.PI / Math.min(totalDups, 12))) + (pos * 0.4);
-  const radius = 0.0035 + (Math.floor(pos / 12) * 0.0025);
+  // Micro-dispersion formula (~50m - 150m radius) so pins at the same address are distinct but remain on the exact street
+  const angle = (pos * (2 * Math.PI / Math.min(totalDups, 8))) + (pos * 0.5);
+  const radius = 0.0006 + (Math.floor(pos / 8) * 0.0004);
+
+  // If on coastal region (lng > -43.0), avoid outward eastward jumps to prevent landing in water
+  const lngMultiplier = (rawLng > -43.0 && Math.cos(angle) > 0) ? 0.3 : 1.0;
 
   return {
     lat: rawLat + Math.sin(angle) * radius,
-    lng: rawLng + Math.cos(angle) * radius * 1.15
+    lng: rawLng + Math.cos(angle) * radius * lngMultiplier
   };
 }
 

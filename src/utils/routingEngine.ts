@@ -124,24 +124,35 @@ const CITY_COORDS: Record<string, { lat: number; lng: number; region: string }> 
   'itaipuaçu': { lat: -22.9611, lng: -42.9819, region: 'RJ' },
   'itaipuacu': { lat: -22.9611, lng: -42.9819, region: 'RJ' },
 
-  // Rio de Janeiro (RJ) - Municipality Centers
+  // Rio de Janeiro (RJ) - Municipality Centers & Coastal Corridors
   'rio de janeiro': { lat: -22.9068, lng: -43.1729, region: 'RJ' },
   'niterói': { lat: -22.8833, lng: -43.1036, region: 'RJ' },
   'niteroi': { lat: -22.8833, lng: -43.1036, region: 'RJ' },
   'duque de caxias': { lat: -22.7856, lng: -43.3117, region: 'RJ' },
   'nova iguaçu': { lat: -22.7592, lng: -43.4511, region: 'RJ' },
+  'nova iguacu': { lat: -22.7592, lng: -43.4511, region: 'RJ' },
   'campos dos goytacazes': { lat: -21.7545, lng: -41.3244, region: 'RJ' },
   'rio das ostras': { lat: -22.5269, lng: -41.9483, region: 'RJ' },
   'macaé': { lat: -22.3708, lng: -41.7869, region: 'RJ' },
   'macae': { lat: -22.3708, lng: -41.7869, region: 'RJ' },
   'cabo frio': { lat: -22.8892, lng: -42.0281, region: 'RJ' },
+  'arraial do cabo': { lat: -22.9660, lng: -42.0280, region: 'RJ' },
   'búzios': { lat: -22.7561, lng: -41.8888, region: 'RJ' },
   'buzios': { lat: -22.7561, lng: -41.8888, region: 'RJ' },
   'armação dos búzios': { lat: -22.7561, lng: -41.8888, region: 'RJ' },
   'armacao dos buzios': { lat: -22.7561, lng: -41.8888, region: 'RJ' },
+  'são pedro da aldeia': { lat: -22.8417, lng: -42.1028, region: 'RJ' },
+  'sao pedro da aldeia': { lat: -22.8417, lng: -42.1028, region: 'RJ' },
+  'iguaba grande': { lat: -22.8406, lng: -42.1861, region: 'RJ' },
   'araruama': { lat: -22.8728, lng: -42.3428, region: 'RJ' },
   'saquarema': { lat: -22.9203, lng: -42.5103, region: 'RJ' },
   'casimiro de abreu': { lat: -22.4811, lng: -42.2028, region: 'RJ' },
+  'quissamã': { lat: -22.1083, lng: -41.4722, region: 'RJ' },
+  'quissama': { lat: -22.1083, lng: -41.4722, region: 'RJ' },
+  'conceição de macabu': { lat: -22.0833, lng: -41.8667, region: 'RJ' },
+  'conceicao de macabu': { lat: -22.0833, lng: -41.8667, region: 'RJ' },
+  'silva jardim': { lat: -22.6517, lng: -42.3922, region: 'RJ' },
+  'rio bonito': { lat: -22.7056, lng: -42.6289, region: 'RJ' },
   'maricá': { lat: -22.9194, lng: -42.8186, region: 'RJ' },
   'marica': { lat: -22.9194, lng: -42.8186, region: 'RJ' },
   'itaboraí': { lat: -22.7472, lng: -42.8592, region: 'RJ' },
@@ -244,32 +255,29 @@ export function geocodeAddress(
   }
 
   if (bestCityMatch) {
-    // Generate a deterministic jitter around the city center
+    // Extract street number if present
+    const numMatch = clean.match(/\b(\d{1,5})\b/);
+    const streetNum = numMatch ? parseInt(numMatch[1], 10) : 100;
+
+    // Generate a deterministic small jitter around the city center (terrestrial only)
     let hash = 0;
     for (let i = 0; i < clean.length; i++) {
       hash = clean.charCodeAt(i) + ((hash << 5) - hash);
     }
-    const latOffset = (((hash & 0xff) / 255) - 0.5) * 0.04;
-    const lngOffset = ((((hash >> 8) & 0xff) / 255) - 0.5) * 0.04;
+    
+    // Controlled offset within municipal bounds (±400m to 800m)
+    const latOffset = (((hash & 0x7f) / 127) - 0.5) * 0.008 + ((streetNum % 40) * 0.0001);
+    // For coastal locations (lng > -43.0), bias slightly westwards (negative lng) so markers stay strictly on dry land
+    const lngOffset = (bestCityMatch.coords.lng > -43.0)
+      ? -Math.abs((((hash >> 7) & 0x7f) / 127) * 0.006) - 0.0008
+      : (((hash >> 7) & 0x7f) / 127 - 0.5) * 0.008;
 
     const candidate = {
       lat: bestCityMatch.coords.lat + latOffset,
       lng: bestCityMatch.coords.lng + lngOffset,
     };
 
-    // Sanity check: if candidate is > 100km away from fallbackBaseCoords and address didn't explicitly specify another state UF
-    if (fallbackBaseCoords) {
-      const dist = haversineDistance(candidate.lat, candidate.lng, fallbackBaseCoords.lat, fallbackBaseCoords.lng);
-      const hasExplicitForeignUf = detectedRegion && baseRegion && detectedRegion !== baseRegion;
-      
-      if (dist > 100 && !hasExplicitForeignUf) {
-        // Reject candidate outside client's operating zone and fallback to local anchor
-      } else {
-        return candidate;
-      }
-    } else {
-      return candidate;
-    }
+    return candidate;
   }
 
   // 4. Check Regional Geocode DB
@@ -281,8 +289,8 @@ export function geocodeAddress(
           hash = clean.charCodeAt(i) + ((hash << 5) - hash);
         }
         return {
-          lat: item.lat + (((hash & 0x0f) / 15) - 0.5) * 0.005,
-          lng: item.lng + ((((hash >> 4) & 0x0f) / 15) - 0.5) * 0.005,
+          lat: item.lat + (((hash & 0x0f) / 15) - 0.5) * 0.004,
+          lng: item.lng + ((((hash >> 4) & 0x0f) / 15) - 0.5) * 0.004,
         };
       }
     }
@@ -324,8 +332,8 @@ export function geocodeAddress(
   for (let i = 0; i < clean.length; i++) {
     hash = clean.charCodeAt(i) + ((hash << 5) - hash);
   }
-  const latOffset = (((hash & 0xff) / 255) - 0.5) * 0.05;
-  const lngOffset = ((((hash >> 8) & 0xff) / 255) - 0.5) * 0.05;
+  const latOffset = (((hash & 0x7f) / 127) - 0.5) * 0.006;
+  const lngOffset = -Math.abs((((hash >> 7) & 0x7f) / 127) * 0.005); // Negative lng keeps away from water
 
   return {
     lat: baseLat + latOffset,
@@ -334,8 +342,7 @@ export function geocodeAddress(
 }
 
 /**
- * Direct OpenStreetMap Nominatim Geocoding API helper.
- * Queries Nominatim online with fallback query variations and distance validations.
+ * Direct Geocoding Helper: Proxies through /api/geocode, with OSM & local cartography fallback.
  */
 export async function fetchDirectNominatimGeocode(
   address: string,
@@ -343,6 +350,32 @@ export async function fetchDirectNominatimGeocode(
 ): Promise<{ lat: number; lng: number; precision: 'exact' | 'district' | 'fallback' } | null> {
   if (!address || address.length < 3) return null;
 
+  // 1. Try internal backend geocoder (/api/geocode)
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+    const res = await fetch(`/api/geocode?q=${encodeURIComponent(address)}`, {
+      signal: controller.signal,
+      headers: { 'Accept': 'application/json' }
+    });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data && typeof data.lat === 'number' && typeof data.lng === 'number') {
+        return {
+          lat: data.lat,
+          lng: data.lng,
+          precision: data.precision || 'exact'
+        };
+      }
+    }
+  } catch (e) {
+    // Proceed to browser direct Nominatim
+  }
+
+  // 2. Browser Direct Nominatim query
   const cleanedAddress = address
     .replace(/ - /g, ', ')
     .replace(/\//g, ', ')
@@ -356,9 +389,9 @@ export async function fetchDirectNominatimGeocode(
   for (const q of queryVariants) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
 
-      const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(q)}`;
+      const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=2&countrycodes=br&q=${encodeURIComponent(q)}`;
       const res = await fetch(url, {
         signal: controller.signal,
         headers: {
@@ -375,15 +408,8 @@ export async function fetchDirectNominatimGeocode(
           const lng = parseFloat(top.lon);
 
           if (!isNaN(lat) && !isNaN(lng)) {
-            if (baseCoords) {
-              const dist = haversineDistance(lat, lng, baseCoords.lat, baseCoords.lng);
-              if (dist <= 160) {
-                const precision = (top.type === 'house' || top.type === 'building' || top.class === 'building' || top.class === 'highway' || top.class === 'place') ? 'exact' : 'district';
-                return { lat, lng, precision };
-              }
-            } else {
-              return { lat, lng, precision: 'exact' };
-            }
+            const precision = (top.type === 'house' || top.type === 'building' || top.class === 'building' || top.class === 'highway' || top.class === 'place') ? 'exact' : 'district';
+            return { lat, lng, precision };
           }
         }
       }
@@ -392,7 +418,13 @@ export async function fetchDirectNominatimGeocode(
     }
   }
 
-  return null;
+  // 3. Fallback to Local Offline Geocoder
+  const offline = geocodeAddress(address, baseCoords);
+  return {
+    lat: offline.lat,
+    lng: offline.lng,
+    precision: 'fallback'
+  };
 }
 
 /**

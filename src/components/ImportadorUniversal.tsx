@@ -633,36 +633,32 @@ export default function ImportadorUniversal({
         } else if (type === 'entregas') {
           const addressToGeocode = item.endereco || '';
           
-          // 1. Calculate offline coordinates immediately using enhanced routingEngine geocoder
-          const offlineCoords = geocodeAddress(addressToGeocode, clientBaseCoords);
-          let lat: number = offlineCoords.lat;
-          let lng: number = offlineCoords.lng;
+          // Check if address already specifies city or state
+          const hasCityOrUfInAddress = /\b(rj|sp|mg|es|sc|pr|rs|maca[eé]|rio das ostras|casimiro de abreu|cabo frio|arraial do cabo|b[uú]zios|araruama|saquarema|s[aã]o pedro da aldeia|campos|itabora[ií]|niter[oó]i|s[aã]o gon[cç]alo|rio de janeiro)\b/i.test(addressToGeocode);
 
-          // 2. Try online direct OpenStreetMap Nominatim geocode
-          if (addressToGeocode && addressToGeocode.length > 3) {
-            const cityStateContext = `${clientData?.cidade || ''} - ${clientData?.estado || ''}`.trim();
-            const fullSearchQuery = cityStateContext ? `${addressToGeocode}, ${cityStateContext}` : addressToGeocode;
-            const direct = await fetchDirectNominatimGeocode(fullSearchQuery, clientBaseCoords);
-            if (direct && direct.lat && direct.lng) {
-              lat = direct.lat;
-              lng = direct.lng;
-            }
+          let searchTarget = addressToGeocode;
+          if (!hasCityOrUfInAddress && clientData?.cidade) {
+            searchTarget = `${addressToGeocode}, ${clientData.cidade} - ${clientData.estado || 'RJ'}`;
           }
 
-          let hasExplicitCoords = false;
-          // 3. Override with explicit latitude/longitude if provided in file
+          // 1. Calculate high-accuracy coordinates using backend geocoder and OSM/Gemini/Cartography
+          let lat = -22.5269;
+          let lng = -41.9483;
+
+          const directGeo = await fetchDirectNominatimGeocode(searchTarget, clientBaseCoords);
+          if (directGeo && typeof directGeo.lat === 'number' && typeof directGeo.lng === 'number') {
+            lat = directGeo.lat;
+            lng = directGeo.lng;
+          } else {
+            const offlineCoords = geocodeAddress(searchTarget, clientBaseCoords);
+            lat = offlineCoords.lat;
+            lng = offlineCoords.lng;
+          }
+
+          // 2. Override with explicit latitude/longitude if provided directly in the imported file
           if (item.latitude && item.longitude && !isNaN(parseFloat(item.latitude)) && !isNaN(parseFloat(item.longitude))) {
             lat = parseFloat(item.latitude);
             lng = parseFloat(item.longitude);
-            hasExplicitCoords = true;
-          }
-
-          // If no explicit lat/lng columns in spreadsheet, apply deterministic spatial dispersion to prevent point overlap
-          if (!hasExplicitCoords) {
-            const angle = i * (2 * Math.PI / 12) + (i * 0.35);
-            const radius = 0.0035 + (Math.floor(i / 12) * 0.0025); // ~350m to 1.5km spread
-            lat = lat + Math.sin(angle) * radius;
-            lng = lng + Math.cos(angle) * radius * 1.15;
           }
 
           const cleanChave = item.chave || item.id || `ROM-${Math.floor(Math.random() * 1000000)}`;
