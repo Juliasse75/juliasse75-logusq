@@ -968,14 +968,87 @@ export const dbRepo = {
     triggerPushSync('entregas', filtered);
   },
 
+  getRotasArquivadas: (email: string): string[] => {
+    try {
+      const data = localStorage.getItem(`logusq_rotas_arquivadas_${email}`);
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  salvarRotasArquivadas: (email: string, ids: string[]) => {
+    localStorage.setItem(`logusq_rotas_arquivadas_${email}`, JSON.stringify(ids));
+  },
+
   getRotasAtivas: (email: string): Record<string, any> => {
     const data = localStorage.getItem(`logusq_rotas_ativas_${email}`);
-    return data ? JSON.parse(data) : {};
+    if (!data) return {};
+    try {
+      const rotas = JSON.parse(data);
+      const arquivadas = dbRepo.getRotasArquivadas(email);
+      if (!arquivadas || arquivadas.length === 0) return rotas;
+      const clean: Record<string, any> = {};
+      Object.keys(rotas).forEach(k => {
+        if (!arquivadas.includes(k)) {
+          clean[k] = rotas[k];
+        }
+      });
+      return clean;
+    } catch (e) {
+      return {};
+    }
   },
 
   saveRotasAtivas: (email: string, rotas: Record<string, any>) => {
     localStorage.setItem(`logusq_rotas_ativas_${email}`, JSON.stringify(rotas));
     triggerPushSync('rotas_ativas', [rotas]);
+  },
+
+  finalizarRota: (email: string, routeId: string) => {
+    const rotas = dbRepo.getRotasAtivas(email);
+    const rota = rotas[routeId];
+    
+    // 1. Mark entregas inside route as completed
+    if (rota && rota.path) {
+      const entregas = dbRepo.getEntregas(email);
+      const pathIds = new Set(rota.path.map((p: any) => p.id || p.chave || p.notaFiscal));
+      const updatedEntregas = entregas.map((ent: any) => {
+        if (pathIds.has(ent.id) || pathIds.has(ent.chave) || pathIds.has(ent.notaFiscal)) {
+          return {
+            ...ent,
+            status: ent.status === 'Cancelado' ? 'Cancelado' : 'Entregue',
+            dataEntregue: ent.dataEntregue || new Date().toLocaleString('pt-BR')
+          };
+        }
+        return ent;
+      });
+      localStorage.setItem(`${KEYS.ENTREGAS}_${email}`, JSON.stringify(updatedEntregas));
+      triggerPushSync('entregas', updatedEntregas);
+    }
+
+    // 2. Add routeId to archived routes (tombstone)
+    const arquivadas = dbRepo.getRotasArquivadas(email);
+    if (!arquivadas.includes(routeId)) {
+      arquivadas.push(routeId);
+      dbRepo.salvarRotasArquivadas(email, arquivadas);
+    }
+
+    // 3. Remove route from active routes
+    const updated = { ...rotas };
+    delete updated[routeId];
+    localStorage.setItem(`logusq_rotas_ativas_${email}`, JSON.stringify(updated));
+    triggerPushSync('rotas_ativas', [updated]);
+
+    // 4. Broadcast sync event across tabs
+    try {
+      const bc = new BroadcastChannel('logusq_sync_channel');
+      bc.postMessage({ type: 'SYNC_UPDATE' });
+      bc.close();
+    } catch (e) {}
+    window.dispatchEvent(new CustomEvent('logusq_sync_complete'));
+
+    return updated;
   },
 
   atualizarEntregaStatus: (clientEmail: string, entregaId: string, status: 'Pendente' | 'Entregue' | 'Cancelado', fotoComprovante?: string, observacao?: string, motoristaNome?: string) => {

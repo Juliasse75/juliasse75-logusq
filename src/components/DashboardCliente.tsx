@@ -1971,6 +1971,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       mapRoutesObj[idx] = points;
     });
 
+    dbRepo.salvarRotasArquivadas(userEmail, []);
     setActiveRoutes(routesObj);
     setMapRoutes(mapRoutesObj);
     dbRepo.saveRotasAtivas(userEmail, routesObj);
@@ -2031,18 +2032,8 @@ Assinatura do Expedidor: _______________________________`;
   };
 
   const handleCompleteRoute = (routeId: string) => {
-    const r = activeRoutes[routeId];
-    if (!r) return;
-    
-    // Mark entregas inside route as completed in localStorage
-    r.path.forEach(p => {
-      dbRepo.atualizarEntregaStatus(userEmail, p.chave || p.id, 'Entregue');
-    });
-
-    const updated = { ...activeRoutes };
-    delete updated[routeId];
+    const updated = dbRepo.finalizarRota(userEmail, routeId);
     setActiveRoutes(updated);
-    dbRepo.saveRotasAtivas(userEmail, updated);
     
     // Rebuild mapRoutes indexing matching remaining active routes
     const newMapRoutes: Record<number, Entrega[]> = {};
@@ -2054,7 +2045,7 @@ Assinatura do Expedidor: _______________________________`;
     setMapRoutes(newMapRoutes);
 
     triggerRefresh();
-    alert(`Rota ${routeId} concluída! Baixa realizada no sistema e pontos removidos do mapa de rotas ativas.`);
+    alert(`Rota ${routeId} concluída com sucesso! Baixa e arquivamento realizados no sistema e pontos removidos do mapa.`);
   };
 
   const handleSimulateShiftData = (driverEmail: string) => {

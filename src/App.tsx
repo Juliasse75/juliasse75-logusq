@@ -171,9 +171,19 @@ export default function App() {
             }
             if (d.rotasAtivas) {
               const serverRotas = d.rotasAtivas;
+              const arquivadas = dbRepo.getRotasArquivadas(currentUserEmail);
+              const cleanServerRotas: Record<string, any> = {};
+              Object.keys(serverRotas || {}).forEach(k => {
+                if (!arquivadas.includes(k)) {
+                  cleanServerRotas[k] = serverRotas[k];
+                }
+              });
+              
               const localRotas = dbRepo.getRotasAtivas(currentUserEmail);
-              if (Object.keys(serverRotas).length > 0 || Object.keys(localRotas).length === 0) {
-                localStorage.setItem(`logusq_rotas_ativas_${currentUserEmail}`, JSON.stringify(serverRotas));
+              if (Object.keys(cleanServerRotas).length > 0) {
+                localStorage.setItem(`logusq_rotas_ativas_${currentUserEmail}`, JSON.stringify(cleanServerRotas));
+              } else if (Object.keys(localRotas).length === 0) {
+                localStorage.setItem(`logusq_rotas_ativas_${currentUserEmail}`, JSON.stringify({}));
               }
             }
             if (Array.isArray(d.auditoriaLogs)) {
