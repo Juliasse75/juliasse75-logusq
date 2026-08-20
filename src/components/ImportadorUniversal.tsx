@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { 
   X, Upload, FileText, Clipboard, Sparkles, Check, 
-  AlertTriangle, Play, HelpCircle, ArrowRight, Table, ListPlus, Loader2
+  AlertTriangle, Play, HelpCircle, ArrowRight, Table, ListPlus, Loader2, Download
 } from 'lucide-react';
 import { geocodeAddress, fetchDirectNominatimGeocode, haversineDistance } from '../utils/routingEngine';
 
@@ -96,11 +96,13 @@ export default function ImportadorUniversal({
     entregas: {
       title: 'Importar Romaneio de Entregas / Coletas',
       subtitle: 'Carregue notas fiscais, romaneios PDF, listas de clientes do ERP em TXT/CSV ou cole endereços.',
-      helpText: 'Cada linha representa uma parada. Deve conter Chave/ID, Nome do Cliente, Endereço completo, Peso da carga e Nota Fiscal.',
+      helpText: 'Cada linha representa uma parada. Deve conter Chave/ID, Nome do Cliente, CEP, Endereço completo, Peso da carga e Nota Fiscal.',
       targetFields: [
         { key: 'chave', label: 'ID Entrega / Chave NFe', required: true },
         { key: 'cliente', label: 'Cliente / Destinatário', required: true },
+        { key: 'cep', label: 'CEP Entrega', required: false, help: 'Ex: 28860-000' },
         { key: 'endereco', label: 'Endereço de Entrega', required: true },
+        { key: 'cepColeta', label: 'CEP Coleta', required: false, help: 'Ex: 28890-000' },
         { key: 'enderecoColeta', label: 'Endereço de Coleta (se houver)', required: false },
         { key: 'pontoReferencia', label: 'Ponto de Referência', required: false },
         { key: 'telefone', label: 'Telefone de Contato', required: false },
@@ -406,9 +408,16 @@ export default function ImportadorUniversal({
           'identificador', 'id_entrega', 'identificadorentrega', 'identificador_entrega'
         ],
         cliente: ['cliente', 'destinatario', 'destino', 'nome', 'empresa', 'razaosocial', 'nomecliente'],
+        cep: [
+          'cep', 'cepdestiono', 'cepentrega', 'cep_entrega', 'codigopostal', 'cod_postal', 
+          'postalcode', 'postal_code', 'zip', 'zipcode', 'zip_code', 'cepdodestinatario'
+        ],
         endereco: [
           'endereco', 'local', 'rua', 'address', 'entrega', 'enderecodeentrega', 
           'localentrega', 'destinofinal', 'ruaentrega', 'logradouro'
+        ],
+        cepColeta: [
+          'cepcoleta', 'cep_coleta', 'ceporigem', 'cep_origem', 'cepda_coleta', 'coletacep'
         ],
         enderecoColeta: ['coleta', 'origem', 'coletar', 'enderecodecoleta', 'localcoleta'],
         pontoReferencia: ['referencia', 'pontoreferencia', 'pontodereferencia', 'ref'],
@@ -546,6 +555,36 @@ export default function ImportadorUniversal({
     setSelectedIndices(updated);
   };
 
+  // Download official CSV template
+  const handleDownloadTemplate = () => {
+    let headers = '';
+    let sampleRows = '';
+    let filename = '';
+
+    if (type === 'veiculos') {
+      headers = "ID Frota,Placa,Modelo,Fabricante,Tipo,Capacidade (KG),Ano Fabr,Ano Mod,Cor,RENAVAM,Chassi";
+      sampleRows = "VEIC-101,ABC-1234,Fiorino 1.4 EVO,Fiat,Van,650,2023,2024,Branco,12345678901,9BD12345678901234\nVEIC-102,XYZ-9876,Delivery 11.180,Volkswagen,Caminhão Pesado,5200,2022,2023,Prata,98765432109,9BW98765432109876";
+      filename = 'modelo_frota_logusq.csv';
+    } else if (type === 'condutores') {
+      headers = "Nome Completo,CPF,RG,Telefone,Email,Data Nascimento,CNH,Categoria CNH,Vencimento CNH,Numero Frota";
+      sampleRows = "Carlos Alberto da Silva,111.222.333-44,MG-12.345.678,(31) 98888-7777,carlos.silva@empresa.com.br,12/03/1985,12345678910,D,10/12/2030,VEIC-101\nMarcos Vinicius de Souza,555.665.777-88,SP-98.765.432,(11) 97777-6666,marcos.souza@empresa.com.br,25/08/1992,98765432101,B,15/06/2031,VEIC-102";
+      filename = 'modelo_motoristas_logusq.csv';
+    } else {
+      headers = "\uFEFFChave ID,Nome do Cliente,CEP,Endereço Completo,CEP Coleta,Endereço de Coleta,Ponto de Referencia,Telefone Contato,WhatsApp,Peso Carga (KG),Operacao,Nota Fiscal";
+      sampleRows = "ENT-01,Supermercado Central,28860-000,Rua Franklin Roosevelt 120 - Centro - Casimiro de Abreu RJ,,,Ao lado da Prefeitura,(22) 98888-1111,(22) 98888-1111,85,Entrega,NF-4091\nENT-02,Drogaria Macaé Farma,27910-000,Avenida Rui Barbosa 450 - Centro - Macaé RJ,,,Em frente ao calçadão,(22) 97777-2222,(22) 97777-2222,25,Entrega,NF-4092\nCOL-03,Centro Logístico Ostras,,28890-000,Rodovia Amaral Peixoto km 132 - Rio das Ostras RJ,Galpão 04,(22) 99999-3333,(22) 99999-3333,320,Coleta,NF-4093";
+      filename = 'modelo_romaneio_com_cep_logusq.csv';
+    }
+
+    const csvContent = `${headers}\n${sampleRows}`;
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   // Perform saving action
   const handleConfirmImport = async () => {
     const toImport = parsedRecords.filter((_, idx) => selectedIndices[idx]);
@@ -632,13 +671,17 @@ export default function ImportadorUniversal({
           successCount++;
         } else if (type === 'entregas') {
           const addressToGeocode = item.endereco || '';
+          const cepValue = item.cep ? item.cep.toString().trim() : '';
           
           // Check if address already specifies city or state
           const hasCityOrUfInAddress = /\b(rj|sp|mg|es|sc|pr|rs|maca[eé]|rio das ostras|casimiro de abreu|cabo frio|arraial do cabo|b[uú]zios|araruama|saquarema|s[aã]o pedro da aldeia|campos|itabora[ií]|niter[oó]i|s[aã]o gon[cç]alo|rio de janeiro)\b/i.test(addressToGeocode);
 
           let searchTarget = addressToGeocode;
+          if (cepValue && !searchTarget.includes(cepValue)) {
+            searchTarget = `${searchTarget}, CEP: ${cepValue}`;
+          }
           if (!hasCityOrUfInAddress && clientData?.cidade) {
-            searchTarget = `${addressToGeocode}, ${clientData.cidade} - ${clientData.estado || 'RJ'}`;
+            searchTarget = `${searchTarget}, ${clientData.cidade} - ${clientData.estado || 'RJ'}`;
           }
 
           // 1. Calculate high-accuracy coordinates using backend geocoder and OSM/Gemini/Cartography
@@ -668,7 +711,9 @@ export default function ImportadorUniversal({
             id: cleanId,
             chave: cleanChave,
             cliente: item.cliente || 'Cliente Importado',
+            cep: cepValue,
             endereco: addressToGeocode || 'Endereço Indefinido',
+            cepColeta: item.cepColeta ? item.cepColeta.toString().trim() : '',
             enderecoColeta: item.enderecoColeta || '',
             pontoReferencia: item.pontoReferencia || '',
             telefone: item.telefone || '',
@@ -771,13 +816,21 @@ export default function ImportadorUniversal({
 
                 <div className="pt-3 border-t border-slate-800/60">
                   <span className="block text-[10px] font-mono text-slate-500 uppercase mb-1.5">Campos Aceitos para {type === 'veiculos' ? 'Frota' : type === 'condutores' ? 'Motoristas' : 'Entregas'}:</span>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap gap-1.5 mb-4">
                     {config.targetFields.map(f => (
                       <span key={f.key} className={`text-[10px] px-2 py-0.5 rounded font-mono ${f.required ? 'bg-violet-950 border border-violet-800 text-violet-300 font-bold' : 'bg-slate-800 text-slate-400'}`}>
                         {f.label}{f.required ? '*' : ''}
                       </span>
                     ))}
                   </div>
+
+                  <button
+                    onClick={handleDownloadTemplate}
+                    className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-slate-900 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:border-emerald-500/60 rounded-lg text-xs font-semibold transition-all shadow-sm group"
+                  >
+                    <Download className="w-3.5 h-3.5 group-hover:-translate-y-0.5 transition-transform" />
+                    Baixar Planilha Modelo (.CSV com CEP)
+                  </button>
                 </div>
               </div>
 

@@ -155,7 +155,9 @@ export interface Entrega {
   id: string;
   chave: string;
   cliente: string;
+  cep?: string;
   endereco: string;
+  cepColeta?: string;
   enderecoColeta?: string;
   pontoReferencia?: string;
   telefone?: string;

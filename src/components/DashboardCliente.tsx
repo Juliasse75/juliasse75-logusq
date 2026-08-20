@@ -1346,6 +1346,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   const [delCliente, setDelCliente] = useState('');
   const [delCep, setDelCep] = useState('');
   const [delEnd, setDelEnd] = useState('');
+  const [delCepColeta, setDelCepColeta] = useState('');
   const [delEndColeta, setDelEndColeta] = useState('');
   const [delRef, setDelRef] = useState('');
   const [delTel, setDelTel] = useState('');
@@ -1476,6 +1477,35 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
         }
       } catch (err) {
         console.error('Erro ao buscar CEP:', err);
+      }
+    }
+  };
+
+  const handleDelCepColetaLookup = async (cepValue: string) => {
+    const cleanCep = cepValue.replace(/\D/g, '').slice(0, 8);
+    setDelCepColeta(cleanCep);
+    if (cleanCep.length === 8) {
+      try {
+        const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+        if (response.ok) {
+          const data = await response.json();
+          if (!data.erro) {
+            const street = data.logradouro || '';
+            const neighborhood = data.bairro || '';
+            const city = data.localidade || '';
+            const state = data.uf || '';
+            
+            let fullAddress = '';
+            if (street) fullAddress += street;
+            if (neighborhood) fullAddress += (fullAddress ? `, ${neighborhood}` : neighborhood);
+            if (city) fullAddress += (fullAddress ? ` - ${city}` : city);
+            if (state) fullAddress += (fullAddress ? `/${state}` : `/${state}`);
+            
+            setDelEndColeta(fullAddress);
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao buscar CEP de Coleta:', err);
       }
     }
   };
@@ -1668,14 +1698,15 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   };
 
   const downloadModeloEntregasCsv = () => {
-    const csvContent = "\uFEFFChave ID,Nome do Cliente,Endereço de Entrega,Endereço de Coleta,Ponto de Referencia,Telefone de Contato,WhatsApp,Peso da Carga,Numero da Nota Fiscal,Operacao\n" +
-      "ENT-101,Supermercado Central,Rua da Bahia 1022 - Centro - Belo Horizonte MG,,Próximo ao Teatro Municipal,(31) 98888-8888,(31) 98888-8888,150,NF-10029,Entrega\n" +
-      "COL-102,Galpão Logístico,,Avenida JK 400 - Contagem MG,Ao lado do posto de gasolina,(31) 97777-7777,(31) 97777-7777,350,NF-10030,Coleta";
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+    const csvContent = "\uFEFFChave ID,Nome do Cliente,CEP,Endereço de Entrega,CEP Coleta,Endereço de Coleta,Ponto de Referencia,Telefone de Contato,WhatsApp,Peso da Carga,Numero da Nota Fiscal,Operacao\n" +
+      "ENT-101,Supermercado Central,28860-000,Rua Franklin Roosevelt 120 - Centro - Casimiro de Abreu RJ,,,Próximo ao Teatro Municipal,(22) 98888-8888,(22) 98888-8888,150,NF-10029,Entrega\n" +
+      "ENT-102,Drogaria Macaé Farma,27910-000,Avenida Rui Barbosa 450 - Centro - Macaé RJ,,,Em frente ao calçadão,(22) 97777-7777,(22) 97777-7777,45,NF-10030,Entrega\n" +
+      "COL-103,Galpão Logístico Ostras,,28890-000,Rodovia Amaral Peixoto km 132 - Rio das Ostras RJ,Galpão 04,(22) 99999-3333,(22) 99999-3333,350,NF-10031,Coleta";
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'modelo_romaneio_entregas.csv';
+    link.download = 'modelo_romaneio_entregas_com_cep.csv';
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -1820,12 +1851,13 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     let lng: number | undefined = delLng ? parseFloat(delLng) : undefined;
     
     if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
-      const direct = await fetchDirectNominatimGeocode(delEnd, clientBaseCoords);
+      const searchTarget = delCep ? `${delEnd}, CEP ${delCep}` : delEnd;
+      const direct = await fetchDirectNominatimGeocode(searchTarget, clientBaseCoords);
       if (direct) {
         lat = direct.lat;
         lng = direct.lng;
       } else {
-        const offline = geocodeAddress(delEnd, clientBaseCoords);
+        const offline = geocodeAddress(searchTarget, clientBaseCoords);
         lat = offline.lat;
         lng = offline.lng;
       }
@@ -1834,7 +1866,9 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     dbRepo.cadastrarEntrega(userEmail, {
       chave: delChave,
       cliente: delCliente || 'Cliente Final',
+      cep: delCep,
       endereco: delEnd,
+      cepColeta: delCepColeta,
       enderecoColeta: delEndColeta,
       pontoReferencia: delRef,
       telefone: delTel,
@@ -1850,6 +1884,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     setDelCliente('');
     setDelCep('');
     setDelEnd('');
+    setDelCepColeta('');
     setDelEndColeta('');
     setDelRef('');
     setDelTel('');
@@ -2635,10 +2670,10 @@ Assinatura do Expedidor: _______________________________`;
 
                     <div className="grid grid-cols-3 gap-2">
                       <div className="col-span-1">
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">CEP</label>
+                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">CEP Entrega</label>
                         <input
                           type="text"
-                          placeholder="30000-000"
+                          placeholder="28860-000"
                           value={delCep}
                           onChange={e => handleDelCepLookup(e.target.value)}
                           className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
@@ -2649,7 +2684,7 @@ Assinatura do Expedidor: _______________________________`;
                         <input
                           type="text"
                           required
-                          placeholder="EX: Av. Afonso Pena, 1500 - BH"
+                          placeholder="EX: Rua Franklin Roosevelt, 120 - Casimiro de Abreu RJ"
                           value={delEnd}
                           onChange={e => setDelEnd(e.target.value)}
                           className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
@@ -2657,15 +2692,27 @@ Assinatura do Expedidor: _______________________________`;
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Endereço de Coleta (se houver)</label>
-                      <input
-                        type="text"
-                        placeholder="EX: Galpão Central, Via Expressa, 400 - Contagem"
-                        value={delEndColeta}
-                        onChange={e => setDelEndColeta(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
-                      />
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="col-span-1">
+                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">CEP Coleta</label>
+                        <input
+                          type="text"
+                          placeholder="28890-000"
+                          value={delCepColeta}
+                          onChange={e => handleDelCepColetaLookup(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Endereço de Coleta (se houver)</label>
+                        <input
+                          type="text"
+                          placeholder="EX: Rodovia Amaral Peixoto km 132 - Rio das Ostras RJ"
+                          value={delEndColeta}
+                          onChange={e => setDelEndColeta(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
+                        />
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
@@ -2827,9 +2874,15 @@ Assinatura do Expedidor: _______________________________`;
                                   {ent.tipoOperacao === 'Coleta' ? 'COLETA' : 'ENTREGA'}
                                 </span>
                               </div>
-                              <div className="text-[10px] text-slate-400"><span className="text-slate-600 font-medium">Entr:</span> {ent.endereco}</div>
+                              <div className="text-[10px] text-slate-400">
+                                <span className="text-slate-600 font-medium">Entr:</span> {ent.endereco}
+                                {ent.cep && <span className="ml-1.5 text-[9px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1 py-0.2 rounded font-bold">CEP {ent.cep}</span>}
+                              </div>
                               {ent.enderecoColeta && (
-                                <div className="text-[10px] text-slate-400"><span className="text-slate-600 font-medium">Coleta:</span> {ent.enderecoColeta}</div>
+                                <div className="text-[10px] text-slate-400">
+                                  <span className="text-slate-600 font-medium">Coleta:</span> {ent.enderecoColeta}
+                                  {ent.cepColeta && <span className="ml-1.5 text-[9px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1 py-0.2 rounded font-bold">CEP {ent.cepColeta}</span>}
+                                </div>
                               )}
                             </div>
                             <button 
