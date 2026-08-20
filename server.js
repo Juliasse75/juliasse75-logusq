@@ -1701,70 +1701,59 @@ async function geocodeSingleAddress(rawAddress, fallbackCity, fallbackState) {
     return GEOCODE_CACHE.get(cacheKey);
   }
 
-  // Street number and hash calculation
-  const numMatch = clean.match(/\b(\d{1,5})\b/);
-  const streetNum = numMatch ? parseInt(numMatch[1], 10) : 100;
-  
-  let hash = 0;
-  for (let i = 0; i < clean.length; i++) {
-    hash = clean.charCodeAt(i) + ((hash << 5) - hash);
-  }
+  // Street number extraction
+  const numMatch = clean.match(/\b(?:n[º°o]?\.?\s*|número\s*|num\s*)?(\d{1,5})\b/i);
+  const streetNum = numMatch ? numMatch[1] : '';
 
-  // --- TIER 1: CEP (Postal Code) 5-Digit & 8-Digit Precision Engine ---
-  const cepMatch = clean.match(/\b(\d{2}\.?\d{3})[-.\s]?(\d{3})?\b/);
-  if (cepMatch) {
-    const rawCep5 = cepMatch[1].replace(/\D/g, '');
-    if (BRAZIL_CEP_PREFIX_ANCHORS[rawCep5]) {
-      const anchor = BRAZIL_CEP_PREFIX_ANCHORS[rawCep5];
-      const latShift = (((hash & 0x7f) / 127) - 0.5) * 0.004 + ((streetNum % 30) * 0.00008);
-      const lngShift = (anchor.lng > -43.0)
-        ? -Math.abs((((hash >> 7) & 0x7f) / 127) * 0.003) - 0.0004
-        : (((hash >> 7) & 0x7f) / 127 - 0.5) * 0.004;
-
-      const result = {
-        lat: anchor.lat + latShift,
-        lng: anchor.lng + lngShift,
-        city: anchor.name,
-        state: anchor.state,
-        precision: 'exact_cep',
-        source: 'cep_postal_matrix'
-      };
-      GEOCODE_CACHE.set(cacheKey, result);
-      return result;
+  // 1. STEP 1: Query ViaCEP if 8-digit CEP is present
+  const cep8Match = clean.match(/\b(\d{2}\.?\d{3})[-.\s]?(\d{3})\b/);
+  let viaCepData = null;
+  if (cep8Match) {
+    const rawCep = `${cep8Match[1]}${cep8Match[2]}`.replace(/\D/g, '');
+    if (rawCep.length === 8) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2500);
+        const viaCepRes = await fetch(`https://viacep.com.br/ws/${rawCep}/json/`, {
+          signal: controller.signal,
+          headers: { 'Accept': 'application/json' }
+        });
+        clearTimeout(timeoutId);
+        if (viaCepRes.ok) {
+          const vData = await viaCepRes.json();
+          if (vData && !vData.erro) {
+            viaCepData = vData;
+          }
+        }
+      } catch (e) {}
     }
   }
 
-  // --- TIER 2: Sub-districts, Neighborhoods & Local Logistics Anchors (Evaluated FIRST) ---
-  const lowerClean = clean.toLowerCase();
-  for (const [distName, distData] of Object.entries(BRAZIL_DISTRICT_ANCHORS)) {
-    const distRegex = new RegExp(`\\b${distName}\\b`, 'i');
-    if (distRegex.test(lowerClean)) {
-      const latShift = (((hash & 0x7f) / 127) - 0.5) * 0.005 + ((streetNum % 30) * 0.0001);
-      const lngShift = (distData.lng > -43.0)
-        ? -Math.abs((((hash >> 7) & 0x7f) / 127) * 0.004) - 0.0006
-        : (((hash >> 7) & 0x7f) / 127 - 0.5) * 0.005;
+  // 2. STEP 2: Structured OpenStreetMap Nominatim Vector Search
+  const searchQueries = [];
 
-      const result = {
-        lat: distData.lat + latShift,
-        lng: distData.lng + lngShift,
-        city: distName,
-        state: distData.state,
-        precision: 'district_anchor_interpolated',
-        source: 'local_cartography'
-      };
-      GEOCODE_CACHE.set(cacheKey, result);
-      return result;
-    }
+  // If ViaCEP provided official street and city
+  if (viaCepData && viaCepData.logradouro) {
+    searchQueries.push(`${viaCepData.logradouro}${streetNum ? ` ${streetNum}` : ''}, ${viaCepData.bairro || ''}, ${viaCepData.localidade}, ${viaCepData.uf}, Brasil`);
+    searchQueries.push(`${viaCepData.logradouro}, ${viaCepData.localidade}, ${viaCepData.uf}, Brasil`);
   }
 
-  // --- TIER 3: Check direct OSM Nominatim ---
-  try {
-    const searchQueries = [
-      `${clean}, Brasil`,
-      clean
-    ];
+  // Clean address from CEP noise for search
+  const cleanWithoutCep = clean.replace(/CEP:?\s*\d{2}\.?\d{3}-?\d{3}/gi, '').trim();
+  searchQueries.push(`${cleanWithoutCep}, Brasil`);
+  searchQueries.push(cleanWithoutCep);
+  searchQueries.push(`${clean}, Brasil`);
+  searchQueries.push(clean);
 
-    for (const q of searchQueries) {
+  // If ViaCEP has localidade but user omitted city
+  if (viaCepData && viaCepData.localidade && !clean.includes(viaCepData.localidade)) {
+    searchQueries.push(`${cleanWithoutCep}, ${viaCepData.localidade} - ${viaCepData.uf}, Brasil`);
+  }
+
+  // Query OpenStreetMap Nominatim
+  for (const q of searchQueries) {
+    if (!q || q.length < 5) continue;
+    try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3500);
 
@@ -1772,7 +1761,7 @@ async function geocodeSingleAddress(rawAddress, fallbackCity, fallbackState) {
       const res = await fetch(url, {
         signal: controller.signal,
         headers: {
-          'User-Agent': 'LogusQ-Logistics-Platform/2.0 (suporte@logusq.com.br)',
+          'User-Agent': 'LogusQ-Logistics-Platform/3.0 (suporte@logusq.com.br)',
           'Accept-Language': 'pt-BR,pt;q=0.9'
         }
       });
@@ -1785,12 +1774,14 @@ async function geocodeSingleAddress(rawAddress, fallbackCity, fallbackState) {
           const lat = parseFloat(top.lat);
           const lng = parseFloat(top.lon);
 
-          if (!isNaN(lat) && !isNaN(lng)) {
+          // Verify point is in Brazil territory on land
+          if (!isNaN(lat) && !isNaN(lng) && lat >= -34.0 && lat <= 5.5 && lng >= -74.0 && lng <= -34.0) {
+            const precision = (top.type === 'house' || top.type === 'building' || top.class === 'building' || top.class === 'highway' || top.class === 'place') ? 'exact' : 'street';
             const result = {
               lat,
               lng,
               displayName: top.display_name,
-              precision: 'exact',
+              precision,
               source: 'nominatim'
             };
             GEOCODE_CACHE.set(cacheKey, result);
@@ -1798,25 +1789,30 @@ async function geocodeSingleAddress(rawAddress, fallbackCity, fallbackState) {
           }
         }
       }
+    } catch (osmErr) {
+      // Continue search
     }
-  } catch (osmErr) {
-    // Continue to fallback mechanisms
   }
 
-  // --- TIER 4: Gemini 2.5 Flash Geocoding ---
+  // 3. STEP 3: Gemini 2.5 Flash High Precision Real Geographic Search
   if (ai) {
     try {
-      const prompt = `Você é um motor de geocodificação de endereços no Brasil.
-Retorne as coordenadas GPS (latitude e longitude) EXATAS no continente brasileiro (em terra firme, NUNCA no mar/oceano) para o endereço:
-"${clean}"
+      const prompt = `Você é um motor cartográfico oficial para o território brasileiro.
+Localize com a máxima precisão geográfica as coordenadas GPS (latitude e longitude decimais exatas) no leito da rua/estrada real em terra firme no Brasil para o seguinte endereço:
+Endereço: "${clean}"
+${viaCepData ? `Dados Oficiais ViaCEP: Logradouro: ${viaCepData.logradouro}, Bairro: ${viaCepData.bairro}, Município: ${viaCepData.localidade}, UF: ${viaCepData.uf}` : ''}
 
-Se o endereço não tiver número exato ou rua não mapeada, use o centro do bairro ou município indicado na string.
-Retorne APENAS um objeto JSON válido com as seguintes propriedades numéricas e strings:
+REGRAS OBRIGATÓRIAS:
+1. NUNCA retorne coordenadas no oceano/mar ou floresta sem acesso viário. O ponto deve ficar rigorosamente sobre a rua/rodovia em terra firme.
+2. Identifique o município, bairro e logradouro no Brasil.
+3. Retorne APENAS um objeto JSON com:
 {
-  "lat": -22.3708,
-  "lng": -41.7869,
-  "cidade": "Macaé",
-  "estado": "RJ",
+  "lat": número decimal (ex: -22.4811),
+  "lng": número decimal (ex: -42.2028),
+  "cidade": string,
+  "estado": string,
+  "bairro": string,
+  "logradouro": string,
   "precisao": "rua"
 }`;
 
@@ -1838,34 +1834,77 @@ Retorne APENAS um objeto JSON válido com as seguintes propriedades numéricas e
 
       const parsed = JSON.parse(cleanJson);
       if (parsed && typeof parsed.lat === 'number' && typeof parsed.lng === 'number') {
-        const result = {
-          lat: parsed.lat,
-          lng: parsed.lng,
-          city: parsed.cidade,
-          state: parsed.estado,
-          precision: parsed.precisao || 'gemini_exact',
-          source: 'gemini_ai'
-        };
-        GEOCODE_CACHE.set(cacheKey, result);
-        return result;
+        if (parsed.lat >= -34.0 && parsed.lat <= 5.5 && parsed.lng >= -74.0 && parsed.lng <= -34.0) {
+          const result = {
+            lat: parsed.lat,
+            lng: parsed.lng,
+            city: parsed.cidade,
+            state: parsed.estado,
+            precision: 'gemini_exact_street',
+            source: 'gemini_ai'
+          };
+          GEOCODE_CACHE.set(cacheKey, result);
+          return result;
+        }
       }
     } catch (aiErr) {
-      console.warn('Geocoding Gemini fallback error:', aiErr.message);
+      console.warn('Geocoding Gemini error:', aiErr.message);
     }
   }
 
-  // --- TIER 5: Known Municipalities Database Fallback ---
+  // 4. STEP 4: OFFLINE / UNMAPPED FALLBACK (District / CEP Centroid)
+  let hash = 0;
+  for (let i = 0; i < clean.length; i++) {
+    hash = clean.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const numericStreet = streetNum ? parseInt(streetNum, 10) : 100;
+
+  // Check District anchors
+  const lowerClean = clean.toLowerCase();
+  for (const [distName, distData] of Object.entries(BRAZIL_DISTRICT_ANCHORS)) {
+    const distRegex = new RegExp(`\\b${distName}\\b`, 'i');
+    if (distRegex.test(lowerClean)) {
+      const result = {
+        lat: distData.lat,
+        lng: distData.lng,
+        city: distName,
+        state: distData.state,
+        precision: 'fallback_district',
+        source: 'local_cartography'
+      };
+      GEOCODE_CACHE.set(cacheKey, result);
+      return result;
+    }
+  }
+
+  // Check CEP prefix anchors
+  const cep5Match = clean.match(/\b(\d{2}\.?\d{3})\b/);
+  if (cep5Match) {
+    const rawCep5 = cep5Match[1].replace(/\D/g, '');
+    if (BRAZIL_CEP_PREFIX_ANCHORS[rawCep5]) {
+      const anchor = BRAZIL_CEP_PREFIX_ANCHORS[rawCep5];
+      const result = {
+        lat: anchor.lat,
+        lng: anchor.lng,
+        city: anchor.name,
+        state: anchor.state,
+        precision: 'fallback_cep',
+        source: 'cep_postal_matrix'
+      };
+      GEOCODE_CACHE.set(cacheKey, result);
+      return result;
+    }
+  }
+
+  // Check City anchors
   for (const [cityName, anchor] of Object.entries(BRAZIL_CITY_ANCHORS)) {
     if (lowerClean.includes(cityName)) {
-      const latShift = (((hash & 0x7f) / 127) - 0.5) * 0.008 + ((streetNum % 50) * 0.0001);
-      const lngShift = -Math.abs((((hash >> 7) & 0x7f) / 127) * 0.006) - 0.001;
-
       const result = {
-        lat: anchor.lat + latShift,
-        lng: anchor.lng + lngShift,
+        lat: anchor.lat,
+        lng: anchor.lng,
         city: cityName,
         state: anchor.state,
-        precision: 'city_anchor_interpolated',
+        precision: 'fallback_city',
         source: 'local_cartography'
       };
       GEOCODE_CACHE.set(cacheKey, result);

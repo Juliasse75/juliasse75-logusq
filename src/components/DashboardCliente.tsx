@@ -1405,14 +1405,22 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     try {
       const updatedDeliveries = await Promise.all(
         todasEntregas.map(async (ent) => {
-          // Direct online geocode using high accuracy API
-          const direct = await fetchDirectNominatimGeocode(ent.endereco, clientBaseCoords);
-          if (direct && direct.lat && direct.lng) {
+          let searchTarget = (ent.endereco || '').trim();
+          if (ent.cep && !searchTarget.includes(ent.cep)) {
+            searchTarget = `${searchTarget}, CEP: ${ent.cep}`;
+          }
+          if (clientData?.cidade && !searchTarget.toLowerCase().includes(clientData.cidade.toLowerCase())) {
+            searchTarget = `${searchTarget}, ${clientData.cidade} - ${clientData.estado || 'RJ'}`;
+          }
+
+          // Direct online geocode using high accuracy API (ViaCEP + OSM + Gemini)
+          const direct = await fetchDirectNominatimGeocode(searchTarget, clientBaseCoords);
+          if (direct && typeof direct.lat === 'number' && typeof direct.lng === 'number') {
             fixedCount++;
             return { ...ent, latitude: direct.lat, longitude: direct.lng };
           }
           // Offline terrestrial fallback
-          const offline = geocodeAddress(ent.endereco, clientBaseCoords);
+          const offline = geocodeAddress(searchTarget, clientBaseCoords);
           if (offline.lat !== ent.latitude || offline.lng !== ent.longitude) {
             fixedCount++;
             return { ...ent, latitude: offline.lat, longitude: offline.lng };
