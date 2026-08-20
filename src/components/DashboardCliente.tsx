@@ -2048,6 +2048,28 @@ Assinatura do Expedidor: _______________________________`;
     alert(`Rota ${routeId} concluída com sucesso! Baixa e arquivamento realizados no sistema e pontos removidos do mapa.`);
   };
 
+  const handleIniciarNovoCiclo = () => {
+    const todas = dbRepo.getEntregas(userEmail);
+    const concluidas = todas.filter(e => e.status === 'Entregue' || e.status === 'Cancelado');
+    const pendentes = todas.filter(e => e.status === 'Pendente');
+    const rotasCount = Object.keys(activeRoutes).length;
+
+    const confirmMsg = 
+      `Deseja iniciar um Novo Ciclo de Operação e limpar os pontos do mapa?\n\n` +
+      `• ${concluidas.length} entrega(s) concluída(s)/recusada(s) serão arquivadas permanentemente no histórico.\n` +
+      (pendentes.length > 0 ? `• ${pendentes.length} entrega(s) pendente(s) continuarão na sua lista de trabalho.\n` : '') +
+      (rotasCount > 0 ? `• ${rotasCount} rota(s) do mapa serão finalizadas e limpas.\n` : '') +
+      `\nTodos os comprovantes com fotos e relatórios de auditoria permanecem 100% salvos e acessíveis no sistema.`;
+
+    if (window.confirm(confirmMsg)) {
+      const res = dbRepo.iniciarNovoCiclo(userEmail);
+      setActiveRoutes({});
+      setMapRoutes({});
+      triggerRefresh();
+      alert(`✓ Ciclo finalizado e Novo Ciclo iniciado!\n${res.entregasArquivadas} ponto(s) arquivado(s) e mapa liberado para novo romaneio.`);
+    }
+  };
+
   const handleSimulateShiftData = (driverEmail: string) => {
     // 4 hours ago, 3 hours ago, etc.
     const now = Date.now();
@@ -2605,6 +2627,16 @@ Assinatura do Expedidor: _______________________________`;
                   <RefreshCw className={`w-3.5 h-3.5 ${isGeocodingLoading ? 'animate-spin' : ''}`} />
                   {isGeocodingLoading ? 'Recalibrando Pontos...' : 'Recalibrar Romaneio no Mapa'}
                 </button>
+                {(todasEntregas.some(e => e.status === 'Entregue' || e.status === 'Cancelado') || Object.keys(activeRoutes).length > 0) && (
+                  <button
+                    onClick={handleIniciarNovoCiclo}
+                    className="bg-amber-950/70 hover:bg-amber-900/90 text-amber-300 border border-amber-500/50 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-amber-950/30"
+                    title="Encerrar ciclo do dia, arquivar entregas finalizadas e limpar o mapa para uma nova operação"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                    Iniciar Novo Ciclo / Limpar Mapa
+                  </button>
+                )}
                 <button
                   onClick={handleOptimize}
                   className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-violet-900/20 transition-all flex items-center gap-2"
@@ -3012,6 +3044,28 @@ Assinatura do Expedidor: _______________________________`;
               {/* Right Column: Visual Simulated Map + Active Routes sheet (8 cols) */}
               <div className="lg:col-span-8 space-y-6">
                 
+                {/* 100% Concluído Banner */}
+                {todasEntregas.length > 0 && todasEntregas.every(e => e.status === 'Entregue' || e.status === 'Cancelado') && (
+                  <div className="bg-gradient-to-r from-emerald-950/90 via-slate-900 to-emerald-950/90 border border-emerald-500/50 p-4 rounded-xl shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in duration-300">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center shrink-0">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black text-white uppercase tracking-wider">Ciclo 100% Concluído com Sucesso!</h4>
+                        <p className="text-[11px] text-slate-300">Todas as {todasEntregas.length} entregas deste lote foram finalizadas. Deseja arquivar o ciclo e limpar o mapa para a próxima operação?</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleIniciarNovoCiclo}
+                      className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer shrink-0"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      Iniciar Novo Ciclo
+                    </button>
+                  </div>
+                )}
+
                 {/* SVG MAP */}
                  <SimulatedMap 
                   entregas={todasEntregas} 
@@ -3022,6 +3076,7 @@ Assinatura do Expedidor: _______________________________`;
                   baseName={clientData?.empresa || 'CD Hub Principal'}
                   baseCity={clientData?.cidade || 'Belo Horizonte'}
                   baseState={clientData?.estado || 'MG'}
+                  onIniciarNovoCiclo={handleIniciarNovoCiclo}
                 />
 
                 {/* Active Routes list */}
@@ -4298,7 +4353,17 @@ Assinatura do Expedidor: _______________________________`;
               
               {/* Filtered list computation */}
               {(() => {
-                const compFiltered = todasEntregas.filter(e => {
+                const historico: Entrega[] = dbRepo.getHistoricoEntregas(userEmail);
+                const todasComprovantesMap = new Map<string, Entrega>();
+                [...todasEntregas, ...historico].forEach((e: Entrega) => {
+                  const key = e.chave || e.id || e.notaFiscal;
+                  if (key && !todasComprovantesMap.has(key)) {
+                    todasComprovantesMap.set(key, e);
+                  }
+                });
+                const todasComprovantes: Entrega[] = Array.from(todasComprovantesMap.values());
+
+                const compFiltered: Entrega[] = todasComprovantes.filter((e: Entrega) => {
                   const hasProof = e.status === 'Entregue' || e.status === 'Cancelado' || !!e.fotoComprovante;
                   if (!hasProof) return false;
 

@@ -968,6 +968,55 @@ export const dbRepo = {
     triggerPushSync('entregas', filtered);
   },
 
+  getHistoricoEntregas: (email: string): Entrega[] => {
+    try {
+      const data = localStorage.getItem(`logusq_historico_entregas_${email}`);
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  salvarHistoricoEntregas: (email: string, items: Entrega[]) => {
+    localStorage.setItem(`logusq_historico_entregas_${email}`, JSON.stringify(items));
+  },
+
+  iniciarNovoCiclo: (email: string) => {
+    const todas = dbRepo.getEntregas(email);
+    const pendentes = todas.filter(e => e.status === 'Pendente');
+    const concluidas = todas.filter(e => e.status === 'Entregue' || e.status === 'Cancelado');
+
+    // 1. Arquivar entregas concluídas de forma cumulativa e deduplicada
+    const historicoAtual = dbRepo.getHistoricoEntregas(email);
+    const idSet = new Set(historicoAtual.map(h => h.chave || h.id || h.notaFiscal));
+    const novasParaHistorico = concluidas.filter(c => !idSet.has(c.chave || c.id || c.notaFiscal));
+    const historicoMerged = [...novasParaHistorico, ...historicoAtual];
+    dbRepo.salvarHistoricoEntregas(email, historicoMerged);
+
+    // 2. Manter apenas entregas ainda pendentes na base ativa
+    localStorage.setItem(`${KEYS.ENTREGAS}_${email}`, JSON.stringify(pendentes));
+    triggerPushSync('entregas', pendentes);
+
+    // 3. Limpar rotas ativas e histórico de rotas arquivadas
+    localStorage.setItem(`logusq_rotas_ativas_${email}`, JSON.stringify({}));
+    localStorage.setItem(`logusq_rotas_arquivadas_${email}`, JSON.stringify([]));
+    triggerPushSync('rotas_ativas', [{}]);
+
+    // 4. Propagar atualização via BroadcastChannel e Eventos do Browser
+    try {
+      const bc = new BroadcastChannel('logusq_sync_channel');
+      bc.postMessage({ type: 'SYNC_UPDATE' });
+      bc.close();
+    } catch (e) {}
+    window.dispatchEvent(new CustomEvent('logusq_sync_complete'));
+
+    return {
+      pendentesRestantes: pendentes.length,
+      entregasArquivadas: concluidas.length,
+      totalHistorico: historicoMerged.length
+    };
+  },
+
   getRotasArquivadas: (email: string): string[] => {
     try {
       const data = localStorage.getItem(`logusq_rotas_arquivadas_${email}`);

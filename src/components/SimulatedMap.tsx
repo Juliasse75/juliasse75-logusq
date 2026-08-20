@@ -74,6 +74,7 @@ interface SimulatedMapProps {
   activeRoutes?: Record<string, { driver: string; driverEmail?: string; vehicle: string; path: Entrega[]; km: number; duration: number }>;
   onSelectEntrega?: (entrega: Entrega) => void;
   emergencias?: any[];
+  onIniciarNovoCiclo?: () => void;
 }
 
 export default function SimulatedMap({
@@ -85,7 +86,8 @@ export default function SimulatedMap({
   rotas = {},
   veiculosSelecionados = [],
   activeRoutes = {},
-  emergencias = []
+  emergencias = [],
+  onIniciarNovoCiclo
 }: SimulatedMapProps) {
   const [leafletLoaded, setLeafletLoaded] = useState(false);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -819,6 +821,18 @@ export default function SimulatedMap({
               {showCompleted ? <Eye className="w-3 h-3 text-emerald-400" /> : <EyeOff className="w-3 h-3 text-slate-500" />}
               {showCompleted ? 'Pontos Concluídos: Exibindo' : 'Pontos Concluídos: Ocultos'}
             </button>
+
+            {onIniciarNovoCiclo && (
+              <button
+                type="button"
+                onClick={onIniciarNovoCiclo}
+                className="px-2.5 py-1 rounded text-[10px] font-mono font-bold transition-all cursor-pointer flex items-center gap-1 border bg-amber-950/70 hover:bg-amber-900/90 text-amber-300 border-amber-500/50 shadow-sm"
+                title="Encerrar ciclo do dia, arquivar entregas finalizadas e limpar o mapa para uma nova operação"
+              >
+                <RefreshCw className="w-3 h-3 text-amber-400" />
+                Limpar Mapa / Novo Ciclo
+              </button>
+            )}
           </div>
         </div>
       </div>
