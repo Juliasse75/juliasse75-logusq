@@ -1512,9 +1512,129 @@ app.post('/api/routing/optimize', handleRoutingOptimization);
 app.post('/api/roteirizacao', handleRoutingOptimization);
 
 // =========================================================================
-// HIGH-ACCURACY GEOCODING ENGINE (OPENSTREETMAP + GEMINI AI + BRAZIL CITIES)
+// HIGH-ACCURACY GEOCODING ENGINE (CEP DB + DISTRICTS + OPENSTREETMAP + GEMINI AI)
 // =========================================================================
 const GEOCODE_CACHE = new Map();
+
+// CEP 5-Digit & 8-Digit Postal Code Prefix Geocoding Engine for Brazil
+const BRAZIL_CEP_PREFIX_ANCHORS = {
+  '28880': { lat: -22.5936, lng: -41.9961, state: 'RJ', name: 'Barra de São João (Casimiro de Abreu)' },
+  '28870': { lat: -22.5342, lng: -42.2681, state: 'RJ', name: 'Professor Souza (Casimiro de Abreu)' },
+  '28865': { lat: -22.4419, lng: -42.0911, state: 'RJ', name: 'Rio Dourado (Casimiro de Abreu)' },
+  '28860': { lat: -22.4811, lng: -42.2028, state: 'RJ', name: 'Casimiro de Abreu (Centro / Industrial)' },
+  '27995': { lat: -22.3167, lng: -42.1833, state: 'RJ', name: 'Sana / Serra Macaense (Macaé)' },
+  '27930': { lat: -22.4089, lng: -41.8028, state: 'RJ', name: 'Granja dos Cavaleiros (Macaé)' },
+  '27910': { lat: -22.3780, lng: -41.7800, state: 'RJ', name: 'Macaé Centro' },
+  '27913': { lat: -22.3811, lng: -41.7772, state: 'RJ', name: 'Imbetiba (Macaé)' },
+  '27915': { lat: -22.3890, lng: -41.7850, state: 'RJ', name: 'Praia Campista (Macaé)' },
+  '27940': { lat: -22.3250, lng: -41.7200, state: 'RJ', name: 'Cabiúnas / Parque de Tubos (Macaé)' },
+  '27945': { lat: -22.3350, lng: -41.7300, state: 'RJ', name: 'Parque de Tubos (Macaé)' },
+  '28893': { lat: -22.5489, lng: -41.9680, state: 'RJ', name: 'Cidade Praiana (Rio das Ostras)' },
+  '28890': { lat: -22.5269, lng: -41.9483, state: 'RJ', name: 'Rio das Ostras Centro' },
+  '28891': { lat: -22.5205, lng: -41.9540, state: 'RJ', name: 'Palmital / Extensão do Bosque (Rio das Ostras)' },
+  '28892': { lat: -22.5365, lng: -41.9320, state: 'RJ', name: 'Recanto (Rio das Ostras)' },
+  '28895': { lat: -22.5283, lng: -41.9281, state: 'RJ', name: 'Costazul (Rio das Ostras)' },
+  '28896': { lat: -22.5410, lng: -41.9560, state: 'RJ', name: 'Mariléa / Jardim Atlântico (Rio das Ostras)' },
+  '28898': { lat: -22.4639, lng: -41.9886, state: 'RJ', name: 'Rocha Leão (Rio das Ostras)' },
+  '28899': { lat: -22.5188, lng: -41.9366, state: 'RJ', name: 'Âncora (Rio das Ostras)' },
+  '28928': { lat: -22.6842, lng: -41.9836, state: 'RJ', name: 'Unamar / Tamoios (Cabo Frio)' },
+  '28925': { lat: -22.7100, lng: -41.9950, state: 'RJ', name: 'Aquarius / Tamoios (Cabo Frio)' },
+  '28900': { lat: -22.8892, lng: -42.0281, state: 'RJ', name: 'Cabo Frio Centro' },
+  '28905': { lat: -22.8850, lng: -42.0220, state: 'RJ', name: 'Passagem (Cabo Frio)' },
+  '28907': { lat: -22.8930, lng: -42.0250, state: 'RJ', name: 'São Cristóvão (Cabo Frio)' },
+  '28950': { lat: -22.7561, lng: -41.8888, state: 'RJ', name: 'Armação dos Búzios' },
+  '28940': { lat: -22.8417, lng: -42.1028, state: 'RJ', name: 'São Pedro da Aldeia' },
+  '28970': { lat: -22.8728, lng: -42.3428, state: 'RJ', name: 'Araruama Centro' },
+  '28960': { lat: -22.8406, lng: -42.1861, state: 'RJ', name: 'Iguaba Grande' },
+  '28990': { lat: -22.9203, lng: -42.5103, state: 'RJ', name: 'Saquarema / Bacaxá' },
+  '28930': { lat: -22.9660, lng: -42.0280, state: 'RJ', name: 'Arraial do Cabo' },
+  '28000': { lat: -21.7545, lng: -41.3244, state: 'RJ', name: 'Campos dos Goytacazes' },
+  '28700': { lat: -22.0833, lng: -41.8667, state: 'RJ', name: 'Conceição de Macabu' },
+  '28735': { lat: -22.1083, lng: -41.4722, state: 'RJ', name: 'Quissamã' },
+  '28820': { lat: -22.6517, lng: -42.3922, state: 'RJ', name: 'Silva Jardim' },
+  '28800': { lat: -22.7056, lng: -42.6289, state: 'RJ', name: 'Rio Bonito' },
+  '28600': { lat: -22.2819, lng: -42.5311, state: 'RJ', name: 'Nova Friburgo' },
+  '25600': { lat: -22.5050, lng: -43.1789, state: 'RJ', name: 'Petrópolis' },
+  '25950': { lat: -22.4122, lng: -42.9656, state: 'RJ', name: 'Teresópolis' },
+  '89200': { lat: -26.3045, lng: -48.8464, state: 'SC', name: 'Joinville' },
+  '88000': { lat: -27.5954, lng: -48.5480, state: 'SC', name: 'Florianópolis' },
+  '89000': { lat: -26.9194, lng: -49.0661, state: 'SC', name: 'Blumenau' },
+  '01000': { lat: -23.5505, lng: -46.6333, state: 'SP', name: 'São Paulo Centro' },
+  '29000': { lat: -20.3155, lng: -40.3128, state: 'ES', name: 'Vitória' },
+  '30000': { lat: -19.9167, lng: -43.9345, state: 'MG', name: 'Belo Horizonte' },
+};
+
+// Sub-Districts, Neighborhoods & Local Logistics Anchors (Evaluated FIRST before parent city centers)
+const BRAZIL_DISTRICT_ANCHORS = {
+  // Casimiro de Abreu Districts
+  'barra de são joão': { lat: -22.5936, lng: -41.9961, state: 'RJ' },
+  'barra de sao joao': { lat: -22.5936, lng: -41.9961, state: 'RJ' },
+  'professor souza': { lat: -22.5342, lng: -42.2681, state: 'RJ' },
+  'rio dourado': { lat: -22.4419, lng: -42.0911, state: 'RJ' },
+  'bairro industrial': { lat: -22.4850, lng: -42.2150, state: 'RJ' },
+  'loteamento são joão': { lat: -22.4820, lng: -42.2010, state: 'RJ' },
+  'loteamento sao joao': { lat: -22.4820, lng: -42.2010, state: 'RJ' },
+
+  // Macaé Districts & Bairros
+  'sana': { lat: -22.3167, lng: -42.1833, state: 'RJ' },
+  'arraial do sana': { lat: -22.3167, lng: -42.1833, state: 'RJ' },
+  'glicério': { lat: -22.2500, lng: -42.0500, state: 'RJ' },
+  'glicerio': { lat: -22.2500, lng: -42.0500, state: 'RJ' },
+  'córrego do ouro': { lat: -22.2800, lng: -41.9500, state: 'RJ' },
+  'corrego do ouro': { lat: -22.2800, lng: -41.9500, state: 'RJ' },
+  'granja cavaleiros': { lat: -22.4089, lng: -41.8028, state: 'RJ' },
+  'granja dos cavaleiros': { lat: -22.4089, lng: -41.8028, state: 'RJ' },
+  'cavaleiros': { lat: -22.4089, lng: -41.8028, state: 'RJ' },
+  'novo cavaleiros': { lat: -22.4150, lng: -41.8100, state: 'RJ' },
+  'imbetiba': { lat: -22.3811, lng: -41.7772, state: 'RJ' },
+  'praia campista': { lat: -22.3890, lng: -41.7850, state: 'RJ' },
+  'cancela preta': { lat: -22.3991, lng: -41.7911, state: 'RJ' },
+  'cabiúnas': { lat: -22.3250, lng: -41.7200, state: 'RJ' },
+  'cabiunas': { lat: -22.3250, lng: -41.7200, state: 'RJ' },
+  'parque de tubos': { lat: -22.3350, lng: -41.7300, state: 'RJ' },
+
+  // Rio das Ostras Bairros & Districts
+  'cidade praiana': { lat: -22.5489, lng: -41.9680, state: 'RJ' },
+  'praiana': { lat: -22.5489, lng: -41.9680, state: 'RJ' },
+  'palmital': { lat: -22.5205, lng: -41.9540, state: 'RJ' },
+  'recanto': { lat: -22.5365, lng: -41.9320, state: 'RJ' },
+  'recanto das tartarugas': { lat: -22.5365, lng: -41.9320, state: 'RJ' },
+  'rocha leão': { lat: -22.4639, lng: -41.9886, state: 'RJ' },
+  'rocha leao': { lat: -22.4639, lng: -41.9886, state: 'RJ' },
+  'âncora': { lat: -22.5188, lng: -41.9366, state: 'RJ' },
+  'ancora': { lat: -22.5188, lng: -41.9366, state: 'RJ' },
+  'costazul': { lat: -22.5283, lng: -41.9281, state: 'RJ' },
+  'costa azul': { lat: -22.5283, lng: -41.9281, state: 'RJ' },
+  'jardim mariléa': { lat: -22.5410, lng: -41.9560, state: 'RJ' },
+  'mariléa': { lat: -22.5410, lng: -41.9560, state: 'RJ' },
+  'marilea': { lat: -22.5410, lng: -41.9560, state: 'RJ' },
+  'extensão do bosque': { lat: -22.5250, lng: -41.9400, state: 'RJ' },
+  'extensao do bosque': { lat: -22.5250, lng: -41.9400, state: 'RJ' },
+
+  // Cabo Frio Districts
+  'unamar': { lat: -22.6842, lng: -41.9836, state: 'RJ' },
+  'tamoios': { lat: -22.6842, lng: -41.9836, state: 'RJ' },
+  'aquarius': { lat: -22.7100, lng: -41.9950, state: 'RJ' },
+  'passagem': { lat: -22.8850, lng: -42.0220, state: 'RJ' },
+  'são cristóvão': { lat: -22.8930, lng: -42.0250, state: 'RJ' },
+  'sao cristovao': { lat: -22.8930, lng: -42.0250, state: 'RJ' },
+
+  // Búzios Bairros
+  'geribá': { lat: -22.7750, lng: -41.9050, state: 'RJ' },
+  'geriba': { lat: -22.7750, lng: -41.9050, state: 'RJ' },
+  'manguinhos': { lat: -22.7680, lng: -41.9020, state: 'RJ' },
+  'rasa': { lat: -22.7420, lng: -41.9450, state: 'RJ' },
+
+  // Saquarema / Maricá
+  'bacaxá': { lat: -22.8850, lng: -42.4719, state: 'RJ' },
+  'bacaxa': { lat: -22.8850, lng: -42.4719, state: 'RJ' },
+  'itaúna': { lat: -22.9250, lng: -42.5050, state: 'RJ' },
+  'itauna': { lat: -22.9250, lng: -42.5050, state: 'RJ' },
+  'inoã': { lat: -22.9150, lng: -42.9222, state: 'RJ' },
+  'inoa': { lat: -22.9150, lng: -42.9222, state: 'RJ' },
+  'itaipuaçu': { lat: -22.9611, lng: -42.9819, state: 'RJ' },
+  'itaipuacu': { lat: -22.9611, lng: -42.9819, state: 'RJ' },
+};
 
 // Known Municipalities & Logistics Anchors
 const BRAZIL_CITY_ANCHORS = {
@@ -1558,10 +1678,15 @@ const BRAZIL_CITY_ANCHORS = {
   'volta redonda': { lat: -22.5231, lng: -44.1042, state: 'RJ' },
   'resende': { lat: -22.4697, lng: -44.4467, state: 'RJ' },
   'angra dos reis': { lat: -23.0067, lng: -44.3181, state: 'RJ' },
-  'barra de sao joao': { lat: -22.5936, lng: -41.9961, state: 'RJ' },
-  'barra de são joão': { lat: -22.5936, lng: -41.9961, state: 'RJ' },
-  'unamar': { lat: -22.6842, lng: -41.9836, state: 'RJ' },
-  'tamoios': { lat: -22.6842, lng: -41.9836, state: 'RJ' }
+  'joinville': { lat: -26.3045, lng: -48.8464, state: 'SC' },
+  'florianopolis': { lat: -27.5954, lng: -48.5480, state: 'SC' },
+  'florianópolis': { lat: -27.5954, lng: -48.5480, state: 'SC' },
+  'blumenau': { lat: -26.9194, lng: -49.0661, state: 'SC' },
+  'sao paulo': { lat: -23.5505, lng: -46.6333, state: 'SP' },
+  'são paulo': { lat: -23.5505, lng: -46.6333, state: 'SP' },
+  'vitoria': { lat: -20.3155, lng: -40.3128, state: 'ES' },
+  'vitória': { lat: -20.3155, lng: -40.3128, state: 'ES' },
+  'belo horizonte': { lat: -19.9167, lng: -43.9345, state: 'MG' },
 };
 
 async function geocodeSingleAddress(rawAddress, fallbackCity, fallbackState) {
@@ -1576,7 +1701,63 @@ async function geocodeSingleAddress(rawAddress, fallbackCity, fallbackState) {
     return GEOCODE_CACHE.get(cacheKey);
   }
 
-  // 1. Check direct OSM Nominatim with precise structured formatting
+  // Street number and hash calculation
+  const numMatch = clean.match(/\b(\d{1,5})\b/);
+  const streetNum = numMatch ? parseInt(numMatch[1], 10) : 100;
+  
+  let hash = 0;
+  for (let i = 0; i < clean.length; i++) {
+    hash = clean.charCodeAt(i) + ((hash << 5) - hash);
+  }
+
+  // --- TIER 1: CEP (Postal Code) 5-Digit & 8-Digit Precision Engine ---
+  const cepMatch = clean.match(/\b(\d{2}\.?\d{3})[-.\s]?(\d{3})?\b/);
+  if (cepMatch) {
+    const rawCep5 = cepMatch[1].replace(/\D/g, '');
+    if (BRAZIL_CEP_PREFIX_ANCHORS[rawCep5]) {
+      const anchor = BRAZIL_CEP_PREFIX_ANCHORS[rawCep5];
+      const latShift = (((hash & 0x7f) / 127) - 0.5) * 0.004 + ((streetNum % 30) * 0.00008);
+      const lngShift = (anchor.lng > -43.0)
+        ? -Math.abs((((hash >> 7) & 0x7f) / 127) * 0.003) - 0.0004
+        : (((hash >> 7) & 0x7f) / 127 - 0.5) * 0.004;
+
+      const result = {
+        lat: anchor.lat + latShift,
+        lng: anchor.lng + lngShift,
+        city: anchor.name,
+        state: anchor.state,
+        precision: 'exact_cep',
+        source: 'cep_postal_matrix'
+      };
+      GEOCODE_CACHE.set(cacheKey, result);
+      return result;
+    }
+  }
+
+  // --- TIER 2: Sub-districts, Neighborhoods & Local Logistics Anchors (Evaluated FIRST) ---
+  const lowerClean = clean.toLowerCase();
+  for (const [distName, distData] of Object.entries(BRAZIL_DISTRICT_ANCHORS)) {
+    const distRegex = new RegExp(`\\b${distName}\\b`, 'i');
+    if (distRegex.test(lowerClean)) {
+      const latShift = (((hash & 0x7f) / 127) - 0.5) * 0.005 + ((streetNum % 30) * 0.0001);
+      const lngShift = (distData.lng > -43.0)
+        ? -Math.abs((((hash >> 7) & 0x7f) / 127) * 0.004) - 0.0006
+        : (((hash >> 7) & 0x7f) / 127 - 0.5) * 0.005;
+
+      const result = {
+        lat: distData.lat + latShift,
+        lng: distData.lng + lngShift,
+        city: distName,
+        state: distData.state,
+        precision: 'district_anchor_interpolated',
+        source: 'local_cartography'
+      };
+      GEOCODE_CACHE.set(cacheKey, result);
+      return result;
+    }
+  }
+
+  // --- TIER 3: Check direct OSM Nominatim ---
   try {
     const searchQueries = [
       `${clean}, Brasil`,
@@ -1622,7 +1803,7 @@ async function geocodeSingleAddress(rawAddress, fallbackCity, fallbackState) {
     // Continue to fallback mechanisms
   }
 
-  // 2. Gemini 2.5 Flash Geocoding for High-Accuracy Precision in Brazil
+  // --- TIER 4: Gemini 2.5 Flash Geocoding ---
   if (ai) {
     try {
       const prompt = `Você é um motor de geocodificação de endereços no Brasil.
@@ -1673,22 +1854,11 @@ Retorne APENAS um objeto JSON válido com as seguintes propriedades numéricas e
     }
   }
 
-  // 3. Known City Database Fallback with Deterministic Terrestrial Street Jitter
-  const lowerClean = clean.toLowerCase();
+  // --- TIER 5: Known Municipalities Database Fallback ---
   for (const [cityName, anchor] of Object.entries(BRAZIL_CITY_ANCHORS)) {
     if (lowerClean.includes(cityName)) {
-      // Calculate street-number based terrestrial displacement (avoiding Atlantic ocean to the east)
-      const numMatch = lowerClean.match(/\b(\d{1,5})\b/);
-      const streetNum = numMatch ? parseInt(numMatch[1], 10) : 100;
-      
-      let hash = 0;
-      for (let i = 0; i < lowerClean.length; i++) {
-        hash = lowerClean.charCodeAt(i) + ((hash << 5) - hash);
-      }
-
-      // Keep displacement very small (~300m-800m) and biased slightly inland (West)
       const latShift = (((hash & 0x7f) / 127) - 0.5) * 0.008 + ((streetNum % 50) * 0.0001);
-      const lngShift = -Math.abs((((hash >> 7) & 0x7f) / 127) * 0.006) - 0.001; // Negative lng shifts inland towards west
+      const lngShift = -Math.abs((((hash >> 7) & 0x7f) / 127) * 0.006) - 0.001;
 
       const result = {
         lat: anchor.lat + latShift,
@@ -1782,12 +1952,19 @@ app.post('/api/import/parse', async (req, res) => {
 - "vencCnh": validade da CNH
 - "veiculo": placa do veiculo atribuído se houver`;
     } else if (type === 'entregas') {
-      typeInstructions = `Você é um assistente de IA especialista em roteirização logística. Extraia a lista de pontos de entrega/coleta do romaneio. Retorne APENAS um array JSON contendo objetos com:
-- "chave": identificador de faturamento ou NF (ex: "NF-123")
-- "cliente": nome do destinatário
-- "endereco": endereço COMPLETO (rua, número, bairro, cidade, estado, cep). Tente extrair com a máxima precisão de detalhes.
-- "pesoMercadoriaKg": peso bruto em kg (número, ex: 25. Padrão 15 se indisponível)
-- "tipoOperacao": "Entrega" ou "Coleta"`;
+      typeInstructions = `Você é um assistente de IA especialista em roteirização logística e extração de romaneios. Extraia a lista completa de pontos de entrega/coleta do romaneio. Retorne APENAS um array JSON contendo objetos com:
+- "chave": identificador único, código ou NF (ex: "ROM-1001", "NF-123")
+- "cliente": nome do destinatário / cliente
+- "cep": CEP de entrega/destino (ex: "28880-000", "28893-058")
+- "endereco": endereço COMPLETO de entrega/destino (incluindo rua, número, bairro/distrito, cidade, estado e CEP). Exemplo: "Rua Sá Pinto, 188 - Barra de São João - Casimiro de Abreu RJ"
+- "cepColeta": CEP de coleta/origem (se houver)
+- "enderecoColeta": endereço de coleta/origem (se houver)
+- "pontoReferencia": ponto de referência comercial ou geográfico
+- "telefone": telefone de contato
+- "whatsapp": número do WhatsApp
+- "pesoMercadoriaKg": peso bruto da carga em kg (número, ex: 15)
+- "tipoOperacao": "Entrega" ou "Coleta"
+- "notaFiscal": número da nota fiscal se houver`;
     }
 
     const systemPrompt = `${typeInstructions}
