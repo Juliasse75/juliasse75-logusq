@@ -983,19 +983,17 @@ export const dbRepo = {
 
   iniciarNovoCiclo: (email: string) => {
     const todas = dbRepo.getEntregas(email);
-    const pendentes = todas.filter(e => e.status === 'Pendente');
-    const concluidas = todas.filter(e => e.status === 'Entregue' || e.status === 'Cancelado');
 
-    // 1. Arquivar entregas concluídas de forma cumulativa e deduplicada
+    // 1. Arquivar TODAS as entregas do ciclo no histórico permanente com deduplicação
     const historicoAtual = dbRepo.getHistoricoEntregas(email);
     const idSet = new Set(historicoAtual.map(h => h.chave || h.id || h.notaFiscal));
-    const novasParaHistorico = concluidas.filter(c => !idSet.has(c.chave || c.id || c.notaFiscal));
+    const novasParaHistorico = todas.filter(c => !idSet.has(c.chave || c.id || c.notaFiscal));
     const historicoMerged = [...novasParaHistorico, ...historicoAtual];
     dbRepo.salvarHistoricoEntregas(email, historicoMerged);
 
-    // 2. Manter apenas entregas ainda pendentes na base ativa
-    localStorage.setItem(`${KEYS.ENTREGAS}_${email}`, JSON.stringify(pendentes));
-    triggerPushSync('entregas', pendentes);
+    // 2. Zerar completamente a base ativa de entregas do mapa
+    localStorage.setItem(`${KEYS.ENTREGAS}_${email}`, JSON.stringify([]));
+    triggerPushSync('entregas', []);
 
     // 3. Limpar rotas ativas e histórico de rotas arquivadas
     localStorage.setItem(`logusq_rotas_ativas_${email}`, JSON.stringify({}));
@@ -1011,8 +1009,7 @@ export const dbRepo = {
     window.dispatchEvent(new CustomEvent('logusq_sync_complete'));
 
     return {
-      pendentesRestantes: pendentes.length,
-      entregasArquivadas: concluidas.length,
+      entregasArquivadas: todas.length,
       totalHistorico: historicoMerged.length
     };
   },

@@ -2050,23 +2050,21 @@ Assinatura do Expedidor: _______________________________`;
 
   const handleIniciarNovoCiclo = () => {
     const todas = dbRepo.getEntregas(userEmail);
-    const concluidas = todas.filter(e => e.status === 'Entregue' || e.status === 'Cancelado');
-    const pendentes = todas.filter(e => e.status === 'Pendente');
     const rotasCount = Object.keys(activeRoutes).length;
 
     const confirmMsg = 
-      `Deseja iniciar um Novo Ciclo de Operação e limpar os pontos do mapa?\n\n` +
-      `• ${concluidas.length} entrega(s) concluída(s)/recusada(s) serão arquivadas permanentemente no histórico.\n` +
-      (pendentes.length > 0 ? `• ${pendentes.length} entrega(s) pendente(s) continuarão na sua lista de trabalho.\n` : '') +
-      (rotasCount > 0 ? `• ${rotasCount} rota(s) do mapa serão finalizadas e limpas.\n` : '') +
-      `\nTodos os comprovantes com fotos e relatórios de auditoria permanecem 100% salvos e acessíveis no sistema.`;
+      `Deseja iniciar um Novo Ciclo de Operação e limpar o mapa?\n\n` +
+      `• ${todas.length} ponto(s) do ciclo atual serão arquivados com segurança no histórico permanente.\n` +
+      (rotasCount > 0 ? `• ${rotasCount} rota(s) ativas serão finalizadas e limpas do mapa.\n` : '') +
+      `• O mapa será 100% liberado (exibindo apenas o Hub CD Central) para a nova operação do dia.\n\n` +
+      `Todos os comprovantes com fotos e relatórios de auditoria permanecem 100% preservados na aba Comprovantes.`;
 
     if (window.confirm(confirmMsg)) {
       const res = dbRepo.iniciarNovoCiclo(userEmail);
       setActiveRoutes({});
       setMapRoutes({});
       triggerRefresh();
-      alert(`✓ Ciclo finalizado e Novo Ciclo iniciado!\n${res.entregasArquivadas} ponto(s) arquivado(s) e mapa liberado para novo romaneio.`);
+      alert(`✓ Ciclo anterior encerrado com sucesso!\n${res.entregasArquivadas} ponto(s) arquivado(s) e mapa 100% limpo para o novo romaneio.`);
     }
   };
 
