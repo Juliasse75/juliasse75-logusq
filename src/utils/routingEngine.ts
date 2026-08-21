@@ -509,10 +509,10 @@ export async function fetchDirectNominatimGeocode(
 ): Promise<{ lat: number; lng: number; precision: 'exact' | 'district' | 'fallback' } | null> {
   if (!address || address.length < 3) return null;
 
-  // 1. Try internal backend geocoder (/api/geocode)
+  // 1. Try internal backend geocoder (/api/geocode) with high-precision Gemini 3.7 + ViaCEP + Nominatim
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
     const res = await fetch(`/api/geocode?q=${encodeURIComponent(address)}`, {
       signal: controller.signal,
@@ -531,10 +531,24 @@ export async function fetchDirectNominatimGeocode(
       }
     }
   } catch (e) {
-    // Proceed to browser direct Nominatim
+    // Proceed to browser direct verified Nominatim
   }
 
-  // 2. Browser Direct Nominatim query
+  // 2. Browser Direct Nominatim query with STRICT street verification
+  const streetCore = address
+    .replace(/\b(rua|r\.|avenida|av\.|av|travessa|tv\.|alameda|al\.|estrada|est\.|rodovia|rod\.|praca|praça|pç\.)\b/gi, '')
+    .replace(/\b(n[º°o]?\.?\s*\d+|\d{1,5})\b/gi, '')
+    .replace(/\bcep:?\s*\d{2}\.?\d{3}[-\s]?\d{3}\b/gi, '')
+    .split(/[,-]/)[0]
+    .trim();
+
+  const coreWords = streetCore
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .split(/\s+/)
+    .filter(w => w.length >= 3 && !['rua', 'avenida', 'travessa', 'estrada', 'alameda', 'rodovia', 'bairro', 'centro'].includes(w));
+
   const cleanedAddress = address
     .replace(/ - /g, ', ')
     .replace(/\//g, ', ')
@@ -550,7 +564,7 @@ export async function fetchDirectNominatimGeocode(
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3500);
 
-      const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=2&countrycodes=br&q=${encodeURIComponent(q)}`;
+      const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=4&countrycodes=br&q=${encodeURIComponent(q)}`;
       const res = await fetch(url, {
         signal: controller.signal,
         headers: {
@@ -562,13 +576,22 @@ export async function fetchDirectNominatimGeocode(
       if (res.ok) {
         const results = await res.json();
         if (Array.isArray(results) && results.length > 0) {
-          const top = results[0];
-          const lat = parseFloat(top.lat);
-          const lng = parseFloat(top.lon);
+          for (const top of results) {
+            const lat = parseFloat(top.lat);
+            const lng = parseFloat(top.lon);
+            const dispNorm = (top.display_name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-          if (!isNaN(lat) && !isNaN(lng)) {
-            const precision = (top.type === 'house' || top.type === 'building' || top.class === 'building' || top.class === 'highway' || top.class === 'place') ? 'exact' : 'district';
-            return { lat, lng, precision };
+            let streetMatched = false;
+            if (coreWords.length > 0) {
+              streetMatched = coreWords.some(w => dispNorm.includes(w));
+            } else {
+              streetMatched = top.type === 'house' || top.type === 'building' || top.class === 'highway';
+            }
+
+            if (streetMatched && !isNaN(lat) && !isNaN(lng) && lat >= -34.0 && lat <= 5.5 && lng >= -74.0 && lng <= -34.0) {
+              const precision = (top.type === 'house' || top.type === 'building') ? 'exact' : 'district';
+              return { lat, lng, precision };
+            }
           }
         }
       }
