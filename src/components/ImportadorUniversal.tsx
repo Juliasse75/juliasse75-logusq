@@ -39,6 +39,7 @@ export default function ImportadorUniversal({
   const [localRows, setLocalRows] = useState<string[][]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveProgressMsg, setSaveProgressMsg] = useState('');
+  const [showAiOverride, setShowAiOverride] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -53,6 +54,21 @@ export default function ImportadorUniversal({
   };
 
   if (!isOpen) return null;
+
+  // CORREÇÃO (21/08/2026): Arquivos já estruturados (CSV/TXT/TSV) devem ser lidos
+  // localmente e de forma determinística (parseTextHeuristics), copiando o valor
+  // exato de cada coluna, em vez de passar pela IA. Enviar um CSV limpo para o
+  // Gemini fazia o modelo "reescrever" o endereço (sem temperature:0 e sem
+  // instrução de cópia literal), o que ocasionalmente corrompia CEP/endereço de
+  // algumas linhas e jogava o ponto no mapa para uma cidade completamente errada
+  // (ex: endereços de Rio das Ostras caindo em Nova Friburgo ou Rio Bonito).
+  const isFileTextLike = activeInputMode === 'file' && !!file && (
+    file.name.toLowerCase().endsWith('.csv') ||
+    file.name.toLowerCase().endsWith('.txt') ||
+    file.name.toLowerCase().endsWith('.tsv') ||
+    file.type.includes('csv') ||
+    file.type.includes('text')
+  );
 
   // Header configs depending on what we are importing
   const typeConfigs = {
@@ -328,6 +344,40 @@ export default function ImportadorUniversal({
     }
   };
 
+  // CORREÇÃO (21/08/2026): splitCsvLine substitui o antigo `line.split(delimiter)`,
+  // que quebrava colunas sempre que um campo entre aspas continha o próprio
+  // delimitador (ex: endereço "Rua Sá Pinto, 188 - Barra de São João - Casimiro de
+  // Abreu RJ" contém vírgula). Isso deslocava TODAS as colunas seguintes (CEP Coleta,
+  // Telefone, Peso, etc.) uma ou duas posições para a direita, corrompendo a
+  // planilha inteira silenciosamente. Este parser respeita aspas (RFC 4180) e trata
+  // aspas duplicadas ("") como aspas literais dentro do campo.
+  const splitCsvLine = (line: string, delimiter: string): string[] => {
+    const cells: string[] = [];
+    let current = '';
+    let insideQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+
+      if (char === '"') {
+        if (insideQuotes && line[i + 1] === '"') {
+          // Aspas escapadas ("") dentro de um campo entre aspas -> aspas literal
+          current += '"';
+          i++;
+        } else {
+          insideQuotes = !insideQuotes;
+        }
+      } else if (char === delimiter && !insideQuotes) {
+        cells.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    cells.push(current.trim());
+    return cells;
+  };
+
   // Smart local string line splitted table parser
   const parseTextHeuristics = (text: string) => {
     try {
@@ -342,10 +392,7 @@ export default function ImportadorUniversal({
       if (firstLine.includes(';')) delimiter = ';';
       else if (firstLine.includes('\t')) delimiter = '\t';
 
-      const rows = lines.map(line => {
-        // Split while respecting quotes
-        return line.split(delimiter).map(cell => cell.trim().replace(/^"|"$/g, ''));
-      });
+      const rows = lines.map(line => splitCsvLine(line, delimiter));
 
       const headers = rows[0];
       const dataRows = rows.slice(1);
@@ -674,7 +721,7 @@ export default function ImportadorUniversal({
           const cepValue = item.cep ? item.cep.toString().trim() : '';
           
           // Check if address already specifies city or state
-          const hasCityOrUfInAddress = /\b(rj|sp|mg|es|sc|pr|rs|maca[eé]|rio das ostras|casimiro de abreu|cabo frio|arraial do cabo|b[uú]zios|araruama|saquarema|s[aã]o pedro da aldeia|campos|itabora[ií]|niter[oó]i|s[aã]o gon[cç]alo|rio de janeiro)\b/i.test(addressToGeocode);
+          const hasCityOrUfInAddress = /\b(rj|sp|mg|es|sc|pr|rs|maca[eé]|rio das ostras|casimiro de abreu|cabo frio|arraial do cabo|b[uú]zios|araruama|saquarema|s[aã]o pedro da aldeia|campos|itabora[ií]|niter[oó]i|s[aã]o復gon[cç]alo|rio de janeiro)\b/i.test(addressToGeocode);
 
           let searchTarget = addressToGeocode;
           if (cepValue && !searchTarget.includes(cepValue)) {
@@ -943,23 +990,55 @@ export default function ImportadorUniversal({
                   </div>
                 )}
 
+                {/* Aviso: arquivo já estruturado (CSV/TXT/TSV) deve usar leitor local, não IA */}
+                {isFileTextLike && !showAiOverride && (
+                  <div className="p-3 bg-emerald-950/20 border border-emerald-900/40 rounded-xl flex gap-2.5 text-emerald-300">
+                    <Table className="w-4 h-4 shrink-0 mt-0.5" />
+                    <div className="text-[11px] leading-relaxed">
+                      <p className="font-bold">Este arquivo já é estruturado (CSV/TXT).</p>
+                      <p className="text-emerald-400/80 mt-0.5">
+                        Recomendamos o Analisador Local: ele copia CEP e endereço exatamente como
+                        estão na planilha, sem passar pela IA — evitando que um endereço seja
+                        reescrito ou um dígito de CEP seja alterado durante a extração.
+                      </p>
+                      <button
+                        onClick={() => setShowAiOverride(true)}
+                        className="mt-1.5 text-[10px] underline text-emerald-400/70 hover:text-emerald-300"
+                      >
+                        Usar IA (Gemini) mesmo assim
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Execution CTA Buttons */}
                 <div className="flex gap-3 justify-end pt-2">
                   <button
                     disabled={isProcessing}
                     onClick={runLocalHeuristics}
-                    className="bg-slate-800 hover:bg-slate-750 disabled:opacity-40 text-slate-300 px-4 py-2.5 rounded-xl text-xs font-semibold border border-slate-700/50 transition-colors"
+                    className={
+                      isFileTextLike
+                        ? "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-slate-800 disabled:to-slate-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-emerald-900/20 flex items-center gap-2 transition-all"
+                        : "bg-slate-800 hover:bg-slate-750 disabled:opacity-40 text-slate-300 px-4 py-2.5 rounded-xl text-xs font-semibold border border-slate-700/50 transition-colors"
+                    }
                   >
-                    Análise Local (Heurística CSV)
+                    {isFileTextLike && <Table className="w-4 h-4" />}
+                    {isProcessing ? 'Processando...' : 'Análise Local (Heurística CSV)'}
                   </button>
-                  <button
-                    disabled={isProcessing}
-                    onClick={processWithAI}
-                    className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 disabled:from-slate-800 disabled:to-slate-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-violet-900/20 flex items-center gap-2 transition-all"
-                  >
-                    <Sparkles className="w-4 h-4 text-violet-300 animate-pulse" />
-                    {isProcessing ? 'Processando...' : 'Analisar com IA (Gemini)'}
-                  </button>
+                  {(!isFileTextLike || showAiOverride) && (
+                    <button
+                      disabled={isProcessing}
+                      onClick={processWithAI}
+                      className={
+                        isFileTextLike
+                          ? "bg-slate-800 hover:bg-slate-750 disabled:opacity-40 text-slate-300 px-4 py-2.5 rounded-xl text-xs font-semibold border border-slate-700/50 transition-colors flex items-center gap-2"
+                          : "bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 disabled:from-slate-800 disabled:to-slate-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-violet-900/20 flex items-center gap-2 transition-all"
+                      }
+                    >
+                      <Sparkles className="w-4 h-4 text-violet-300 animate-pulse" />
+                      {isProcessing ? 'Processando...' : 'Analisar com IA (Gemini)'}
+                    </button>
+                  )}
                 </div>
 
                 {/* Loading state animation */}
