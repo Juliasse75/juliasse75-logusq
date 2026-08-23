@@ -327,176 +327,72 @@ const CITY_COORDS: Record<string, { lat: number; lng: number; region: string }> 
 };
 
 /**
- * Normalizes and geocodes an address with multi-tier Brazilian cartographic resolution:
- * Tier 1: 5-Digit & 8-Digit Postal Code (CEP) database lookup (Exact district/neighborhood accuracy)
- * Tier 2: Sub-district & Neighborhood dictionary (Matches Barra de São João, Sana, Praiana, etc. before parent city)
- * Tier 3: City center coordinate registry with region alignment
- * Tier 4: Regional geocode DB & Deterministic street-number dry-land positioning
+ * Offline Synchronous Geocoder
+ * Deterministically resolves addresses using CEP prefixes, district tables,
+ * city coordinates, and fallback spatial offsets.
  */
 export function geocodeAddress(
-  endereco: string,
-  fallbackBaseCoords?: { lat: number; lng: number }
+  address: string,
+  baseCoords?: { lat?: number; lng?: number; latitude?: number; longitude?: number }
 ): { lat: number; lng: number } {
-  const clean = (endereco || '').toLowerCase().trim();
-  const defaultBase = fallbackBaseCoords || { lat: DEFAULT_BASE.latitude, lng: DEFAULT_BASE.longitude };
+  const fallbackLat = baseCoords?.lat ?? baseCoords?.latitude ?? DEFAULT_BASE.latitude;
+  const fallbackLng = baseCoords?.lng ?? baseCoords?.longitude ?? DEFAULT_BASE.longitude;
 
-  if (!clean || clean === '-' || clean.length < 2) {
-    return { lat: defaultBase.lat, lng: defaultBase.lng };
+  if (!address || typeof address !== 'string') {
+    return { lat: fallbackLat, lng: fallbackLng };
   }
 
-  // Extract street number for localized positioning
-  const numMatch = clean.match(/\b(\d{1,5})\b/);
-  const streetNum = numMatch ? parseInt(numMatch[1], 10) : 100;
+  const raw = address.toLowerCase();
+  const normalized = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-  // Compute deterministic hash for reproducible offset calculation
-  let hash = 0;
-  for (let i = 0; i < clean.length; i++) {
-    hash = clean.charCodeAt(i) + ((hash << 5) - hash);
-  }
-
-  // --- TIER 1: CEP (Postal Code) 5-Digit & 8-Digit Extraction ---
-  // Match formats like "28880-000", "28880000", "CEP: 28880-000", "CEP 28880"
-  const cepMatch = clean.match(/\b(\d{2}\.?\d{3})[-.\s]?(\d{3})?\b/);
+  // 1. Check CEP matches
+  const cepMatch = address.match(/\b(\d{5})[-\s]?(\d{3})?\b/);
   if (cepMatch) {
-    const rawCep5 = cepMatch[1].replace(/\D/g, ''); // e.g. "28880"
-    if (CEP_PREFIX_COORDS[rawCep5]) {
-      const anchor = CEP_PREFIX_COORDS[rawCep5];
-      // Micro-dispersion along local street axis (~100m to 400m)
-      const latOffset = (((hash & 0x7f) / 127) - 0.5) * 0.004 + ((streetNum % 30) * 0.00008);
-      // Westward bias for coastal longitudes (lng > -43.0) keeps markers strictly inland
-      const lngOffset = (anchor.lng > -43.0)
-        ? -Math.abs((((hash >> 7) & 0x7f) / 127) * 0.003) - 0.0004
-        : (((hash >> 7) & 0x7f) / 127 - 0.5) * 0.004;
-
+    const cep5 = cepMatch[1];
+    if (CEP_PREFIX_COORDS[cep5]) {
       return {
-        lat: anchor.lat + latOffset,
-        lng: anchor.lng + lngOffset,
+        lat: CEP_PREFIX_COORDS[cep5].lat,
+        lng: CEP_PREFIX_COORDS[cep5].lng
       };
     }
   }
 
-  // 1. Infer client's home region from fallbackBaseCoords if available
-  let baseRegion: string | null = null;
-  if (fallbackBaseCoords) {
-    const { lat, lng } = fallbackBaseCoords;
-    if (lat < -25.5 && lat > -29.8 && lng < -48.0 && lng > -54.5) baseRegion = 'SC';
-    else if (lat < -19.5 && lat > -21.5 && lng < -39.5 && lng > -42.0) baseRegion = 'ES';
-    else if (lat < -20.5 && lat > -23.5 && lng < -40.5 && lng > -45.0) baseRegion = 'RJ';
-    else if (lat < -19.5 && lat > -25.5 && lng < -44.0 && lng > -53.0) baseRegion = 'SP';
-    else if (lat < -14.0 && lat > -23.0 && lng < -39.5 && lng > -51.0) baseRegion = 'MG';
-    else if (lat < -22.5 && lat > -26.8 && lng < -48.0 && lng > -54.8) baseRegion = 'PR';
-    else if (lat < -26.8 && lat > -33.8 && lng < -49.5 && lng > -57.5) baseRegion = 'RS';
-  }
-
-  // 2. Detect explicit region (State / UF) in address string
-  let detectedRegion: string | null = null;
-  if (/(^|\W)(sc|santa catarina)($|\W)/i.test(clean) && !/\b(rua|r\.|avenida|av\.|alameda|al\.|praça|praca|tv\.|travessa)\s+(santa catarina)\b/i.test(clean)) detectedRegion = 'SC';
-  else if (/(^|\W)(rj|rio de janeiro)($|\W)/i.test(clean) && !/\b(rua|r\.|avenida|av\.|alameda|al\.|praça|praca|tv\.|travessa)\s+(rio de janeiro)\b/i.test(clean)) detectedRegion = 'RJ';
-  else if (/(^|\W)(sp|são paulo|sao paulo)($|\W)/i.test(clean) && !/\b(rua|r\.|avenida|av\.|alameda|al\.|praça|praca|tv\.|travessa)\s+(são paulo|sao paulo)\b/i.test(clean)) detectedRegion = 'SP';
-  else if (/(^|\W)(mg|minas gerais)($|\W)/i.test(clean) && !/\b(rua|r\.|avenida|av\.|alameda|al\.|praça|praca|tv\.|travessa)\s+(minas gerais)\b/i.test(clean)) detectedRegion = 'MG';
-  else if (/(^|\W)(es|espírito santo|espirito santo)($|\W)/i.test(clean) && !/\b(rua|r\.|avenida|av\.|alameda|al\.|praça|praca|tv\.|travessa)\s+(espírito santo|espirito santo)\b/i.test(clean)) detectedRegion = 'ES';
-  else if (/(^|\W)(pr|paraná|parana)($|\W)/i.test(clean) && !/\b(rua|r\.|avenida|av\.|alameda|al\.|praça|praca|tv\.|travessa)\s+(paraná|parana)\b/i.test(clean)) detectedRegion = 'PR';
-  else if (/(^|\W)(rs|rio grande do sul)($|\W)/i.test(clean) && !/\b(rua|r\.|avenida|av\.|alameda|al\.|praça|praca|tv\.|travessa)\s+(rio grande do sul)\b/i.test(clean)) detectedRegion = 'RS';
-
-  const activeRegion = detectedRegion || baseRegion;
-
-  // --- TIER 2: Sub-districts, Neighborhoods & Local Logistics Anchors (Evaluated FIRST) ---
-  for (const [distName, distData] of Object.entries(DISTRICT_COORDS)) {
-    const distRegex = new RegExp(`\\b${distName}\\b`, 'i');
-    if (distRegex.test(clean)) {
-      if (!activeRegion || distData.region === activeRegion) {
-        const latOffset = (((hash & 0x7f) / 127) - 0.5) * 0.005 + ((streetNum % 30) * 0.0001);
-        const lngOffset = (distData.lng > -43.0)
-          ? -Math.abs((((hash >> 7) & 0x7f) / 127) * 0.004) - 0.0006
-          : (((hash >> 7) & 0x7f) / 127 - 0.5) * 0.005;
-
-        return {
-          lat: distData.lat + latOffset,
-          lng: distData.lng + lngOffset,
-        };
-      }
+  // 2. Check District / Neighborhood DB
+  for (const [district, coord] of Object.entries(DISTRICT_COORDS)) {
+    const normDistrict = district.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (normalized.includes(normDistrict)) {
+      return { lat: coord.lat, lng: coord.lng };
     }
   }
 
-  // --- TIER 3: City Center Coordinate Lookup ---
-  let bestCityMatch: { coords: { lat: number; lng: number }; region: string } | null = null;
-
-  for (const [cityName, cityData] of Object.entries(CITY_COORDS)) {
-    const cityRegex = new RegExp(`\\b${cityName}\\b`, 'i');
-    if (cityRegex.test(clean)) {
-      const isStreetPrefix = new RegExp(`\\b(rua|r\\.|avenida|av\\.|alameda|al\\.|praça|praca|tv\\.|travessa)\\s+${cityName}\\b`, 'i').test(clean);
-      
-      if (!isStreetPrefix) {
-        if (!activeRegion || cityData.region === activeRegion) {
-          bestCityMatch = { coords: cityData, region: cityData.region };
-          break;
-        } else if (!bestCityMatch) {
-          bestCityMatch = { coords: cityData, region: cityData.region };
-        }
-      }
-    }
-  }
-
-  if (bestCityMatch) {
-    const latOffset = (((hash & 0x7f) / 127) - 0.5) * 0.008 + ((streetNum % 40) * 0.0001);
-    const lngOffset = (bestCityMatch.coords.lng > -43.0)
-      ? -Math.abs((((hash >> 7) & 0x7f) / 127) * 0.006) - 0.0008
-      : (((hash >> 7) & 0x7f) / 127 - 0.5) * 0.008;
-
-    return {
-      lat: bestCityMatch.coords.lat + latOffset,
-      lng: bestCityMatch.coords.lng + lngOffset,
-    };
-  }
-
-  // --- TIER 4: Regional Geocode DB ---
+  // 3. Check Regional DB
   for (const item of REGIONAL_GEOCODE_DB) {
-    if (clean.includes(item.key)) {
-      if (!activeRegion || activeRegion === item.region) {
-        return {
-          lat: item.lat + (((hash & 0x0f) / 15) - 0.5) * 0.004,
-          lng: item.lng + ((((hash >> 4) & 0x0f) / 15) - 0.5) * 0.004,
-        };
-      }
+    const normKey = item.key.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (normalized.includes(normKey)) {
+      return { lat: item.lat, lng: item.lng };
     }
   }
 
-  // --- TIER 5: Regional Fallbacks Anchored Around Client CD Base Hub ---
-  let baseLat = defaultBase.lat;
-  let baseLng = defaultBase.lng;
-
-  if (fallbackBaseCoords && (!detectedRegion || detectedRegion === baseRegion)) {
-    baseLat = fallbackBaseCoords.lat;
-    baseLng = fallbackBaseCoords.lng;
-  } else if (activeRegion === 'SC') {
-    baseLat = -27.5954;
-    baseLng = -48.5480;
-  } else if (activeRegion === 'RJ') {
-    baseLat = -22.9068;
-    baseLng = -43.1729;
-  } else if (activeRegion === 'SP') {
-    baseLat = -23.5505;
-    baseLng = -46.6333;
-  } else if (activeRegion === 'MG') {
-    baseLat = -19.9167;
-    baseLng = -43.9345;
-  } else if (activeRegion === 'ES') {
-    baseLat = -20.1385;
-    baseLng = -40.2920;
-  } else if (activeRegion === 'PR') {
-    baseLat = -25.4284;
-    baseLng = -49.2733;
-  } else if (activeRegion === 'RS') {
-    baseLat = -30.0346;
-    baseLng = -51.2177;
+  // 4. Check City Coordinates DB
+  for (const [city, coord] of Object.entries(CITY_COORDS)) {
+    const normCity = city.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (normalized.includes(normCity)) {
+      return { lat: coord.lat, lng: coord.lng };
+    }
   }
 
-  const latOffset = (((hash & 0x7f) / 127) - 0.5) * 0.006;
-  const lngOffset = -Math.abs((((hash >> 7) & 0x7f) / 127) * 0.005);
+  // 5. Fallback: Base location + deterministic hash jitter (within ~2-5km)
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i++) {
+    hash = (hash << 5) - hash + normalized.charCodeAt(i);
+    hash |= 0;
+  }
+  const jitterLat = ((Math.abs(hash) % 100) - 50) * 0.0003;
+  const jitterLng = ((Math.abs(hash >> 2) % 100) - 50) * 0.0003;
 
   return {
-    lat: baseLat + latOffset,
-    lng: baseLng + lngOffset,
+    lat: fallbackLat + jitterLat,
+    lng: fallbackLng + jitterLng
   };
 }
 
@@ -505,7 +401,9 @@ export function geocodeAddress(
  */
 export async function fetchDirectNominatimGeocode(
   address: string,
-  baseCoords?: { lat: number; lng: number }
+  baseCoords?: { lat: number; lng: number },
+  expectedCity?: string,
+  expectedState?: string
 ): Promise<{ lat: number; lng: number; precision: 'exact' | 'district' | 'fallback' } | null> {
   if (!address || address.length < 3) return null;
 
@@ -514,7 +412,14 @@ export async function fetchDirectNominatimGeocode(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-    const res = await fetch(`/api/geocode?q=${encodeURIComponent(address)}`, {
+    // CORREÇÃO (23/08/2026): agora envia a cidade/estado esperados (cadastro do
+    // cliente) como parâmetro. O backend usa isso como referência de validação
+    // sempre que o ViaCEP não conseguir confirmar a cidade sozinho — antes disso,
+    // uma rua com nome comum (ex: "Rua Santa Catarina") podia ser aceita vindo de
+    // uma cidade errada quando o ViaCEP falhava, jogando o ponto longe do correto.
+    const cityParam = expectedCity ? `&city=${encodeURIComponent(expectedCity)}` : '';
+    const stateParam = expectedState ? `&state=${encodeURIComponent(expectedState)}` : '';
+    const res = await fetch(`/api/geocode?q=${encodeURIComponent(address)}${cityParam}${stateParam}`, {
       signal: controller.signal,
       headers: { 'Accept': 'application/json' }
     });
@@ -1129,5 +1034,3 @@ export async function optimizeRoutesRemoteWorker(
     baseLocation?.longitude ?? DEFAULT_BASE.longitude
   );
 }
-
-

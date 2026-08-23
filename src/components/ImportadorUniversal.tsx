@@ -721,7 +721,7 @@ export default function ImportadorUniversal({
           const cepValue = item.cep ? item.cep.toString().trim() : '';
           
           // Check if address already specifies city or state
-          const hasCityOrUfInAddress = /\b(rj|sp|mg|es|sc|pr|rs|maca[eé]|rio das ostras|casimiro de abreu|cabo frio|arraial do cabo|b[uú]zios|araruama|saquarema|s[aã]o pedro da aldeia|campos|itabora[ií]|niter[oó]i|s[aã]o復gon[cç]alo|rio de janeiro)\b/i.test(addressToGeocode);
+          const hasCityOrUfInAddress = /\b(rj|sp|mg|es|sc|pr|rs|maca[eé]|rio das ostras|casimiro de abreu|cabo frio|arraial do cabo|b[uú]zios|araruama|saquarema|s[aã]o pedro da aldeia|campos|itabora[ií]|niter[oó]i|s[aã]o gon[cç]alo|rio de janeiro)\b/i.test(addressToGeocode);
 
           let searchTarget = addressToGeocode;
           if (cepValue && !searchTarget.includes(cepValue)) {
@@ -735,7 +735,7 @@ export default function ImportadorUniversal({
           let lat = -22.5269;
           let lng = -41.9483;
 
-          const directGeo = await fetchDirectNominatimGeocode(searchTarget, clientBaseCoords);
+          const directGeo = await fetchDirectNominatimGeocode(searchTarget, clientBaseCoords, clientData?.cidade, clientData?.estado);
           if (directGeo && typeof directGeo.lat === 'number' && typeof directGeo.lng === 'number') {
             lat = directGeo.lat;
             lng = directGeo.lng;
@@ -743,6 +743,15 @@ export default function ImportadorUniversal({
             const offlineCoords = geocodeAddress(searchTarget, clientBaseCoords);
             lat = offlineCoords.lat;
             lng = offlineCoords.lng;
+          }
+
+          // CORREÇÃO (22/08/2026): pequena pausa entre geocodificações para respeitar
+          // a política de uso do Nominatim/OpenStreetMap (máx. ~1 req/s). Sem isso,
+          // romaneios grandes disparam requisições rápido demais em sequência e o
+          // OpenStreetMap passa a devolver resultados degradados/vazios, mesmo para
+          // ruas conhecidas.
+          if (i < total - 1) {
+            await new Promise(resolve => setTimeout(resolve, 350));
           }
 
           // 2. Override with explicit latitude/longitude if provided directly in the imported file

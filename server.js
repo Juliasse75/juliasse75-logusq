@@ -895,9 +895,9 @@ function normalizeTipoVeiculo(tipoRaw) {
             ponto_referencia: e.ponto_referencia || null,
             telefone: e.telefone || null,
             whatsapp: e.whatsapp || null,
-            nota_fiscal: e.nota_fiscal || null,
-            foto_comprovante: e.foto_comprovante || null,
-            data_entregue: e.data_entregue || null,
+            nota_fiscal: e.notaFiscal || null,
+            foto_comprovante: e.fotoComprovante || null,
+            data_entregue: e.dataEntregue || null,
             latitude: lat,
             longitude: lng,
             peso_mercadoria_kg: parseFloat(e.pesoMercadoriaKg || e.peso_mercadoria_kg) || 10,
@@ -1546,7 +1546,7 @@ const BRAZIL_CITY_ANCHORS = {
   'maricá': { lat: -22.9194, lng: -42.8186, state: 'RJ' },
   'niteroi': { lat: -22.8833, lng: -43.1036, state: 'RJ' },
   'niterói': { lat: -22.8833, lng: -43.1036, state: 'RJ' },
-  'sao復goncalo': { lat: -22.8269, lng: -43.0539, state: 'RJ' },
+  'sao goncalo': { lat: -22.8269, lng: -43.0539, state: 'RJ' },
   'são gonçalo': { lat: -22.8269, lng: -43.0539, state: 'RJ' },
   'itaborai': { lat: -22.7472, lng: -42.8592, state: 'RJ' },
   'itaboraí': { lat: -22.7472, lng: -42.8592, state: 'RJ' },
@@ -1571,6 +1571,17 @@ const BRAZIL_CITY_ANCHORS = {
   'vitoria': { lat: -20.3155, lng: -40.3128, state: 'ES' },
   'vitória': { lat: -20.3155, lng: -40.3128, state: 'ES' },
   'belo horizonte': { lat: -19.9167, lng: -43.9345, state: 'MG' },
+};
+
+// UF (sigla) -> nome completo do estado, usado para validar cidade/estado do resultado
+// do Nominatim contra o CEP pesquisado (evita aceitar rua de mesmo nome em outra cidade/UF)
+const BRAZIL_UF_TO_STATE_NAME = {
+  ac: 'acre', al: 'alagoas', ap: 'amapa', am: 'amazonas', ba: 'bahia', ce: 'ceara',
+  df: 'distrito federal', es: 'espirito santo', go: 'goias', ma: 'maranhao',
+  mt: 'mato grosso', ms: 'mato grosso do sul', mg: 'minas gerais', pa: 'para',
+  pb: 'paraiba', pr: 'parana', pe: 'pernambuco', pi: 'piaui', rj: 'rio de janeiro',
+  rn: 'rio grande do norte', rs: 'rio grande do sul', ro: 'rondonia', rr: 'roraima',
+  sc: 'santa catarina', sp: 'sao paulo', se: 'sergipe', to: 'tocantins'
 };
 
 async function geocodeSingleAddress(rawAddress, fallbackCity, fallbackState) {
@@ -1630,9 +1641,15 @@ async function geocodeSingleAddress(rawAddress, fallbackCity, fallbackState) {
           const vData = await viaCepRes.json();
           if (vData && !vData.erro) {
             viaCepData = vData;
+          } else {
+            console.warn(`[GEOCODE] ViaCEP não encontrou o CEP ${rawCep} para "${clean}"`);
           }
+        } else {
+          console.warn(`[GEOCODE] ViaCEP respondeu status ${viaCepRes.status} para CEP ${rawCep}`);
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn(`[GEOCODE] ViaCEP falhou/expirou para CEP ${rawCep}: ${e.message || e}`);
+      }
     }
   }
 
@@ -1693,7 +1710,51 @@ async function geocodeSingleAddress(rawAddress, fallbackCity, fallbackState) {
               streetMatched = top.type === 'house' || top.type === 'building' || top.class === 'highway';
             }
 
+            // CORREÇÃO (23/08/2026): CIDADE/ESTADO TAMBÉM PRECISA BATER — mesmo sem ViaCEP.
+            // Antes, essa validação só rodava se o ViaCEP tivesse respondido com sucesso.
+            // Se o ViaCEP falhasse/demorasse (rede instável, fora do ar por um instante),
+            // a trava de cidade era pulada inteiramente, e uma rua com nome comum (ex:
+            // "Rua Santa Catarina", que existe em dezenas de cidades do Brasil) podia ser
+            // aceita vindo de uma cidade totalmente diferente da esperada — jogando o
+            // ponto a centenas de km de distância. Agora também usamos fallbackCity/
+            // fallbackState (enviados pelo próprio app com base no cadastro do cliente)
+            // como referência de cidade esperada sempre que o ViaCEP não estiver disponível.
+            const expectedLocalidade = (viaCepData && viaCepData.localidade) || fallbackCity || '';
+            const expectedUf = (viaCepData && viaCepData.uf) || fallbackState || '';
+
+            if (streetMatched && expectedLocalidade) {
+              const expectedCityNorm = String(expectedLocalidade)
+                .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+              const expectedStateNorm = String(expectedUf || '')
+                .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+              const addr = top.address || {};
+              const resultCityNorm = String(
+                addr.city || addr.town || addr.village || addr.municipality || addr.county || ''
+              ).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+              const resultStateNorm = String(addr.state || '')
+                .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+              const cityMatches = resultCityNorm
+                ? (resultCityNorm.includes(expectedCityNorm) || expectedCityNorm.includes(resultCityNorm) || displayNameNorm.includes(expectedCityNorm))
+                : displayNameNorm.includes(expectedCityNorm); // sem campo de cidade no retorno, cai pro texto completo
+
+              const stateMatches = !expectedStateNorm || !resultStateNorm ||
+                resultStateNorm.includes(expectedStateNorm) || expectedStateNorm.includes(resultStateNorm) ||
+                resultStateNorm.includes(BRAZIL_UF_TO_STATE_NAME[expectedStateNorm] || '__none__');
+
+              if (!cityMatches || !stateMatches) {
+                streetMatched = false; // Rua com nome certo, mas na cidade errada -> descarta e tenta próximo candidato
+                console.warn(`[GEOCODE] Rejeitado por cidade divergente: "${clean}" -> resultado em "${addr.city || addr.town || addr.village || '?'}" (esperado "${expectedLocalidade}")`);
+              }
+            } else if (streetMatched && !expectedLocalidade) {
+              // Nenhuma referência de cidade disponível (nem ViaCEP, nem fallback do app).
+              // Sem essa trava, aceitar o resultado é arriscado -> loga o alerta.
+              console.warn(`[GEOCODE] ATENÇÃO: aceitando "${clean}" sem nenhuma validação de cidade (ViaCEP e fallbackCity ambos indisponíveis).`);
+            }
+
             if (streetMatched && !isNaN(lat) && !isNaN(lng) && lat >= -34.0 && lat <= 5.5 && lng >= -74.0 && lng <= -34.0) {
+              console.log(`[GEOCODE] "${clean}" -> OK via Nominatim ("${q}"): ${top.display_name}`);
               const result = {
                 lat,
                 lng,
@@ -1755,16 +1816,32 @@ REGRAS DE PRECISÃO RIGOROSAS:
       const parsed = JSON.parse(cleanJson);
       if (parsed && typeof parsed.lat === 'number' && typeof parsed.lng === 'number') {
         if (parsed.lat >= -34.0 && parsed.lat <= 5.5 && parsed.lng >= -74.0 && parsed.lng <= -34.0) {
-          const result = {
-            lat: parsed.lat,
-            lng: parsed.lng,
-            city: parsed.cidade,
-            state: parsed.estado,
-            precision: 'gemini_exact_street',
-            source: 'gemini_cartography'
-          };
-          GEOCODE_CACHE.set(cacheKey, result);
-          return result;
+          // CORREÇÃO (23/08/2026): mesma trava de cidade/estado aplicada aqui.
+          // O Gemini pode "alucinar" uma cidade errada para uma rua de nome comum;
+          // sem essa checagem, nada impedia esse ponto de ser aceito.
+          const expectedLocalidadeAi = (viaCepData && viaCepData.localidade) || fallbackCity || '';
+          const expectedUfAi = (viaCepData && viaCepData.uf) || fallbackState || '';
+          let aiCityOk = true;
+          if (expectedLocalidadeAi && parsed.cidade) {
+            const expNorm = String(expectedLocalidadeAi).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            const gotNorm = String(parsed.cidade).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            aiCityOk = gotNorm.includes(expNorm) || expNorm.includes(gotNorm);
+          }
+          if (!aiCityOk) {
+            console.warn(`[GEOCODE] "${clean}" -> Gemini sugeriu cidade "${parsed.cidade}", divergente da esperada "${expectedLocalidadeAi}". Descartado.`);
+          } else {
+            console.log(`[GEOCODE] "${clean}" -> OK via Gemini AI: ${parsed.logradouro || ''}, ${parsed.cidade || ''}`);
+            const result = {
+              lat: parsed.lat,
+              lng: parsed.lng,
+              city: parsed.cidade,
+              state: parsed.estado,
+              precision: 'gemini_exact_street',
+              source: 'gemini_cartography'
+            };
+            GEOCODE_CACHE.set(cacheKey, result);
+            return result;
+          }
         }
       }
     } catch (aiErr) {
@@ -1777,6 +1854,7 @@ REGRAS DE PRECISÃO RIGOROSAS:
   for (const [distName, distData] of Object.entries(BRAZIL_DISTRICT_ANCHORS)) {
     const distRegex = new RegExp(`\\b${distName}\\b`, 'i');
     if (distRegex.test(lowerClean)) {
+      console.warn(`[GEOCODE] "${clean}" -> caiu no fallback de BAIRRO ("${distName}"). Nominatim e Gemini não encontraram a rua exata.`);
       const result = {
         lat: distData.lat,
         lng: distData.lng,
@@ -1795,6 +1873,7 @@ REGRAS DE PRECISÃO RIGOROSAS:
     const rawCep5 = cep5Match[1].replace(/\D/g, '');
     if (BRAZIL_CEP_PREFIX_ANCHORS[rawCep5]) {
       const anchor = BRAZIL_CEP_PREFIX_ANCHORS[rawCep5];
+      console.warn(`[GEOCODE] "${clean}" -> caiu no fallback de CEP ("${rawCep5}" = ${anchor.name}). Nominatim e Gemini não encontraram a rua exata.`);
       const result = {
         lat: anchor.lat,
         lng: anchor.lng,
@@ -1810,6 +1889,7 @@ REGRAS DE PRECISÃO RIGOROSAS:
 
   for (const [cityName, anchor] of Object.entries(BRAZIL_CITY_ANCHORS)) {
     if (lowerClean.includes(cityName)) {
+      console.warn(`[GEOCODE] "${clean}" -> caiu no fallback de CIDADE ("${cityName}"). Só sabemos a cidade, não o bairro/rua.`);
       const result = {
         lat: anchor.lat,
         lng: anchor.lng,
@@ -1823,16 +1903,20 @@ REGRAS DE PRECISÃO RIGOROSAS:
     }
   }
 
+  console.error(`[GEOCODE] "${clean}" -> FALHA TOTAL. Nenhuma camada (Nominatim, Gemini, bairro, CEP, cidade) conseguiu localizar.`);
   return null;
 }
 
 app.get('/api/geocode', async (req, res) => {
   const address = req.query.q || req.query.address;
+  const cityHint = req.query.city || req.query.cidade;
+  const stateHint = req.query.state || req.query.estado;
   if (!address) {
     return res.status(400).json({ error: 'MISSING_ADDRESS', message: 'Parâmetro de endereço (q ou address) é obrigatório.' });
   }
 
-  const result = await geocodeSingleAddress(address);
+  const result = await geocodeSingleAddress(address, cityHint, stateHint);
+  console.log(`[GEOCODE] "${address}" (cidade esperada: ${cityHint || 'nenhuma'}) -> ${result ? `OK precisão=${result.precision} lat=${result.lat} lng=${result.lng} fonte=${result.source || '?'}` : 'FALHOU (nenhum resultado)'}`);
   if (result) {
     res.json({ success: true, ...result });
   } else {
@@ -1850,7 +1934,9 @@ app.post('/api/geocode/batch', async (req, res) => {
   for (const item of addresses) {
     const rawAddr = typeof item === 'string' ? item : item.address || item.endereco;
     const id = typeof item === 'object' ? item.id || item.chave : null;
-    const geo = await geocodeSingleAddress(rawAddr);
+    const cityHint = typeof item === 'object' ? (item.city || item.cidade) : null;
+    const stateHint = typeof item === 'object' ? (item.state || item.estado) : null;
+    const geo = await geocodeSingleAddress(rawAddr, cityHint, stateHint);
     results.push({
       id,
       address: rawAddr,
