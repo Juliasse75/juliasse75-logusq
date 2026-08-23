@@ -1358,6 +1358,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
   const [delLng, setDelLng] = useState<string>('');
   const [delGeocodeStatus, setDelGeocodeStatus] = useState<{ precision: string; msg: string; lat?: number; lng?: number } | null>(null);
   const [isGeocodingLoading, setIsGeocodingLoading] = useState(false);
+  const [recalibrateStatusMsg, setRecalibrateStatusMsg] = useState('');
 
   const handleValidateAddressPrecision = async (addressToTest?: string) => {
     const targetAddr = addressToTest || delEnd;
@@ -1394,40 +1395,58 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
     setIsGeocodingLoading(false);
   };
 
+  // CORREÇÃO (22/08/2026): a função disparava TODAS as geocodificações em paralelo
+  // via Promise.all(...map...) — isso manda várias dezenas de requisições ao
+  // OpenStreetMap/Nominatim no mesmo instante, violando a política de uso deles
+  // (máximo 1 requisição por segundo, sem rajadas paralelas). O servidor público
+  // do Nominatim derruba/degrada a maioria dessas chamadas simultâneas, então a
+  // maior parte das entregas caía no fallback fraco mesmo sendo rua conhecida e
+  // bem mapeada. Agora o processamento é sequencial, com uma pequena pausa entre
+  // cada chamada, respeitando o limite e dando tempo do OpenStreetMap responder
+  // de verdade pra cada endereço.
   const handleRecalibrateDeliveries = async () => {
     if (todasEntregas.length === 0) {
       alert('Não há entregas cadastradas para recalibrar no momento.');
       return;
     }
-    
+
     setIsGeocodingLoading(true);
     let fixedCount = 0;
     try {
-      const updatedDeliveries = await Promise.all(
-        todasEntregas.map(async (ent) => {
-          let searchTarget = (ent.endereco || '').trim();
-          if (ent.cep && !searchTarget.includes(ent.cep)) {
-            searchTarget = `${searchTarget}, CEP: ${ent.cep}`;
-          }
-          if (clientData?.cidade && !searchTarget.toLowerCase().includes(clientData.cidade.toLowerCase())) {
-            searchTarget = `${searchTarget}, ${clientData.cidade} - ${clientData.estado || 'RJ'}`;
-          }
+      const updatedDeliveries: typeof todasEntregas = [];
 
-          // Direct online geocode using high accuracy API (ViaCEP + OSM + Gemini)
-          const direct = await fetchDirectNominatimGeocode(searchTarget, clientBaseCoords);
-          if (direct && typeof direct.lat === 'number' && typeof direct.lng === 'number') {
-            fixedCount++;
-            return { ...ent, latitude: direct.lat, longitude: direct.lng };
-          }
+      for (let i = 0; i < todasEntregas.length; i++) {
+        const ent = todasEntregas[i];
+        setRecalibrateStatusMsg(`Recalibrando ${i + 1} de ${todasEntregas.length}...`);
+
+        let searchTarget = (ent.endereco || '').trim();
+        if (ent.cep && !searchTarget.includes(ent.cep)) {
+          searchTarget = `${searchTarget}, CEP: ${ent.cep}`;
+        }
+        if (clientData?.cidade && !searchTarget.toLowerCase().includes(clientData.cidade.toLowerCase())) {
+          searchTarget = `${searchTarget}, ${clientData.cidade} - ${clientData.estado || 'RJ'}`;
+        }
+
+        // Direct online geocode using high accuracy API (ViaCEP + OSM + Gemini)
+        const direct = await fetchDirectNominatimGeocode(searchTarget, clientBaseCoords);
+        if (direct && typeof direct.lat === 'number' && typeof direct.lng === 'number') {
+          fixedCount++;
+          updatedDeliveries.push({ ...ent, latitude: direct.lat, longitude: direct.lng });
+        } else {
           // Offline terrestrial fallback
           const offline = geocodeAddress(searchTarget, clientBaseCoords);
           if (offline.lat !== ent.latitude || offline.lng !== ent.longitude) {
             fixedCount++;
-            return { ...ent, latitude: offline.lat, longitude: offline.lng };
           }
-          return ent;
-        })
-      );
+          updatedDeliveries.push({ ...ent, latitude: offline.lat, longitude: offline.lng });
+        }
+
+        // Respeita a política de uso do Nominatim (máx. ~1 req/s). Só espera
+        // se ainda houver itens depois deste.
+        if (i < todasEntregas.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1100));
+        }
+      }
 
       dbRepo.saveEntregas(userEmail, updatedDeliveries);
 
@@ -1456,6 +1475,7 @@ export default function DashboardCliente({ userEmail, onLogout }: DashboardClien
       alert('Ocorreu um erro ao recalibrar as coordenadas. Tente novamente.');
     } finally {
       setIsGeocodingLoading(false);
+      setRecalibrateStatusMsg('');
     }
   };
 
@@ -2288,7 +2308,7 @@ Assinatura do Expedidor: _______________________________`;
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setActiveTab('rotas')}
-                      className="bg-red-900/60 hover:bg-red-800 text-red-200 text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-xl transition-all cursor-pointer border border-red-700/60 flex items-center gap-1 shadow"
+                      className="bg-red-900/60 hover:bg-red-800 text-red-200 text-[10px] font-bold uppercase tracking-wider px-3.5 py-1.5 rounded-xl transition-all cursor-pointer border border-red-700/60 flex items-center gap-1 shadow"
                     >
                       <MapPin className="w-3.5 h-3.5 text-red-400" /> Ver no Mapa de Operações
                     </button>
@@ -2631,7 +2651,7 @@ Assinatura do Expedidor: _______________________________`;
                   title="Recalibra todas as coordenadas das entregas existentes com alta precisão terrestre"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isGeocodingLoading ? 'animate-spin' : ''}`} />
-                  {isGeocodingLoading ? 'Recalibrando Pontos...' : 'Recalibrar Romaneio no Mapa'}
+                  {isGeocodingLoading ? (recalibrateStatusMsg || 'Recalibrando Pontos...') : 'Recalibrar Romaneio no Mapa'}
                 </button>
                 {(todasEntregas.some(e => e.status === 'Entregue' || e.status === 'Cancelado') || Object.keys(activeRoutes).length > 0) && (
                   <button
@@ -2865,9 +2885,9 @@ Assinatura do Expedidor: _______________________________`;
                           onClick={handleRecalibrateDeliveries}
                           disabled={isGeocodingLoading}
                           className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 cursor-pointer bg-emerald-950/40 border border-emerald-500/30 px-2 py-0.5 rounded transition-all"
-                          title="Recalibra todas as coordenadas usando dicionário de distritos e geocodificador de alta precisão"
+                          title="Recalibra todas as coordenadas usando dicionário de distritos e geocodificador de alta precisão. Agora processa um endereço por vez (respeitando o limite do OpenStreetMap), então pode levar ~1s por entrega."
                         >
-                          🎯 Recalibrar Precisão
+                          {isGeocodingLoading ? (recalibrateStatusMsg || '🎯 Recalibrando...') : '🎯 Recalibrar Precisão'}
                         </button>
                         <button 
                           onClick={() => {
@@ -3260,921 +3280,637 @@ Assinatura do Expedidor: _______________________________`;
           </div>
         )}
 
-        {/* TAB 2: GESTÃO DE FROTA */}
+        {/* TAB 2: GESTAO DE FROTA */}
         {activeTab === 'frota' && (
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
-                <h1 className="text-xl font-extrabold text-white">Gestão Avançada de Frota</h1>
-                <p className="text-xs text-slate-400">Cadastre veículos individualmente ou realize importação em massa via planilha CSV.</p>
+                <h1 className="text-xl font-extrabold text-white">Gestão da Frota de Veículos</h1>
+                <p className="text-xs text-slate-400">Cadastre seus veículos com capacidade de carga, autonomia e custo médio por km.</p>
               </div>
               <div className="flex flex-wrap gap-2.5">
                 <button
                   onClick={downloadModeloVeiculosCsv}
-                  className="bg-slate-900 hover:bg-slate-800 text-slate-300 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-800 flex items-center gap-2 transition-colors"
+                  className="bg-slate-900 hover:bg-slate-800 text-slate-300 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-800 flex items-center gap-2 transition-colors cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5 text-violet-400" /> Baixar Planilha Modelo
                 </button>
                 <button
                   onClick={() => handleOpenImportModal('veiculos')}
-                  className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-violet-900/20 flex items-center gap-2 transition-all"
+                  className="bg-slate-900 hover:bg-slate-800 text-slate-300 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-800 flex items-center gap-2 transition-colors cursor-pointer"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-violet-200" /> Importar Frota Inteligente (IA / PDF / XLS)
+                  <Sparkles className="w-3.5 h-3.5 text-violet-400" /> Importar Frota (IA / CSV / XLS)
                 </button>
               </div>
             </div>
 
-            {/* Split Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              
-              {/* Left Column: Form (4 cols) */}
-              <div className="lg:col-span-4 space-y-6">
-                
-                {/* Add vehicle form */}
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl">
-                  <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-4 border-b border-slate-800 pb-2">Novo Veículo</h3>
-                  <form onSubmit={handleAddVeiculo} className="space-y-3">
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">ID Interno / Nº Frota</label>
-                        <input
-                          type="text" required placeholder="VEIC-101" value={vId} onChange={e => setVId(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-600"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Placa</label>
-                        <input
-                          type="text" required placeholder="ABC-1234" value={vPlaca} onChange={e => setVPlaca(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-600"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Fabricante</label>
-                        <input
-                          type="text" placeholder="Volvo / Mercedes" value={vFab} onChange={e => setVFab(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-600"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Modelo</label>
-                        <input
-                          type="text" placeholder="FH 540 / Fiorino" value={vMod} onChange={e => setVMod(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-600"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Tipo Modal</label>
-                        <select
-                          value={vTipo} onChange={e => setVTipo(e.target.value as TipoVeiculo)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-white"
-                        >
-                          <option value="Caminhão Pesado">Caminhão Pesado</option>
-                          <option value="Van">Van / Fiorino</option>
-                          <option value="Picape 4x4">Picape 4x4</option>
-                          <option value="Carro Leve">Carro Leve</option>
-                          <option value="Motocicleta">Motocicleta</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Combustível</label>
-                        <select
-                          value={vTipoCombustivel} onChange={e => setVTipoCombustivel(e.target.value as TipoCombustivel)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-white"
-                        >
-                          <option value="Flex">Flex (Gas/Eta)</option>
-                          <option value="Gasolina">Gasolina</option>
-                          <option value="Etanol">Etanol</option>
-                          <option value="Diesel">Diesel</option>
-                          <option value="Elétrico">Elétrico</option>
-                          <option value="GNV">GNV</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Capacidade (KG)</label>
-                        <input
-                          type="number" value={vCap} onChange={e => setVCap(parseInt(e.target.value))}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Ano Fabricação</label>
-                        <input
-                          type="text" placeholder="2021" value={vAnoFabricacao} onChange={e => setVAnoFabricacao(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-600"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Ano Modelo</label>
-                        <input
-                          type="text" placeholder="2022" value={vAnoModelo} onChange={e => setVAnoModelo(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-600"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Cor</label>
-                        <input
-                          type="text" placeholder="Branco" value={vCor} onChange={e => setVCor(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-600"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Status Inicial</label>
-                        <select
-                          value={vStatus} onChange={e => setVStatus(e.target.value as any)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-white"
-                        >
-                          <option value="Disponivel">Disponível</option>
-                          <option value="Manutencao">Em Manutenção</option>
-                          <option value="Inativo">Inativo</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">RENAVAM</label>
-                        <input
-                          type="text" placeholder="12345678901" value={vRenavam} onChange={e => setVRenavam(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-600"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Chassi</label>
-                        <input
-                          type="text" placeholder="9ASDF..." value={vChassi} onChange={e => setVChassi(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-600"
-                        />
-                      </div>
-                    </div>
-
-                    <button type="submit" className="w-full bg-violet-600 hover:bg-violet-500 text-white font-bold py-2 rounded-xl text-xs transition-colors mt-2">
-                      Salvar Veículo na Frota
-                    </button>
-                  </form>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Form add vehicle */}
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div>
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-1">Novo Veículo</h3>
+                  <p className="text-[10px] text-slate-400">Cadastre um novo veículo para sua operação.</p>
                 </div>
-
-                {/* Edit status section */}
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl">
-                  <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Editar Veículo Existente</h3>
-                  <div className="space-y-3">
+                <form onSubmit={handleAddVeiculo} className="space-y-2.5">
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Selecione o Veículo</label>
-                      <select
-                        value={selectedVeiculoEdit}
-                        onChange={e => setSelectedVeiculoEdit(e.target.value)}
+                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Placa *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="EX: ABC-1234"
+                        value={vPlaca}
+                        onChange={e => setVPlaca(e.target.value.toUpperCase())}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white uppercase font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">ID Interno</label>
+                      <input
+                        type="text"
+                        placeholder="EX: VEIC-101"
+                        value={vId}
+                        onChange={e => setVId(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Modelo *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="EX: Master Furgão"
+                        value={vMod}
+                        onChange={e => setVMod(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Fabricante</label>
+                      <input
+                        type="text"
+                        placeholder="EX: Renault"
+                        value={vFab}
+                        onChange={e => setVFab(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Tipo de Veículo</label>
+                      <select
+                        value={vTipo}
+                        onChange={e => setVTipo(e.target.value as TipoVeiculo)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-white"
                       >
-                        <option value="">-- Escolha um Veículo --</option>
-                        {frota.map(v => (
-                          <option key={v.idVeiculo} value={v.idVeiculo}>{v.idVeiculo} - {v.modelo} ({v.placa})</option>
-                        ))}
+                        <option value="Carro Leve">Carro Leve</option>
+                        <option value="Picape 4x4">Picape 4x4</option>
+                        <option value="Van">Van / Furgão</option>
+                        <option value="Caminhão Pesado">Caminhão Pesado</option>
+                        <option value="Motocicleta">Motocicleta</option>
                       </select>
                     </div>
-
-                    {veicSel && (
-                      <form onSubmit={handleUpdateVeiculo} className="space-y-2 pt-2 border-t border-slate-800/60">
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Fabricante</label>
-                            <input
-                              type="text" value={evFabricante} onChange={e => setEvFabricante(e.target.value)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Modelo</label>
-                            <input
-                              type="text" value={evModelo} onChange={e => setEvModelo(e.target.value)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Placa</label>
-                            <input
-                              type="text" value={evPlaca} onChange={e => setEvPlaca(e.target.value)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Tipo Modal</label>
-                            <select
-                              value={evTipo} onChange={e => setEvTipo(e.target.value as any)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
-                            >
-                              <option value="Carro Leve">Carro Leve</option>
-                              <option value="Picape 4x4">Picape 4x4</option>
-                              <option value="Van">Van</option>
-                              <option value="Caminhão Pesado">Caminhão Pesado</option>
-                              <option value="Motocicleta">Motocicleta</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-2">
-                          <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Capacidade (KG)</label>
-                            <input
-                              type="number" value={evCap} onChange={e => setEvCap(parseInt(e.target.value) || 0)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Combustível</label>
-                            <select
-                              value={evTipoCombustivel} onChange={e => setEvTipoCombustivel(e.target.value as TipoCombustivel)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
-                            >
-                              <option value="Flex">Flex (Gas/Eta)</option>
-                              <option value="Gasolina">Gasolina</option>
-                              <option value="Etanol">Etanol</option>
-                              <option value="Diesel">Diesel</option>
-                              <option value="Elétrico">Elétrico</option>
-                              <option value="GNV">GNV</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Cor</label>
-                            <input
-                              type="text" value={evCor} onChange={e => setEvCor(e.target.value)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Ano Fabricação</label>
-                            <input
-                              type="text" value={evAnoFabricacao} onChange={e => setEvAnoFabricacao(e.target.value)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Ano Modelo</label>
-                            <input
-                              type="text" value={evAnoModelo} onChange={e => setEvAnoModelo(e.target.value)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">RENAVAM</label>
-                            <input
-                              type="text" value={evRenavam} onChange={e => setEvRenavam(e.target.value)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Chassi</label>
-                            <input
-                              type="text" value={evChassi} onChange={e => setEvChassi(e.target.value)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="pt-2 border-t border-slate-800/40">
-                          <label className="block text-[10px] font-bold text-violet-400 uppercase tracking-wide mb-1.5">Oficina & Manutenção</label>
-                          <div className="grid grid-cols-2 gap-2 mb-2">
-                            <div>
-                              <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Entrada Oficina</label>
-                              <input
-                                type="text" placeholder="DD/MM/AAAA" value={evDataEntradaManutencao} onChange={e => setEvDataEntradaManutencao(e.target.value)}
-                                className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Saída Oficina</label>
-                              <input
-                                type="text" placeholder="DD/MM/AAAA" value={evDataRetornoManutencao} onChange={e => setEvDataRetornoManutencao(e.target.value)}
-                                className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
-                              />
-                            </div>
-                          </div>
-                          <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Status Operacional</label>
-                            <select
-                              value={evStatus} onChange={e => setEvStatus(e.target.value as any)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white mb-2"
-                            >
-                              <option value="Disponivel">Disponível / Ativo</option>
-                              <option value="Manutencao">Em Manutenção / Oficina</option>
-                              <option value="Inativo">Inativo</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Relatório do Defeito / Observações</label>
-                            <textarea
-                              value={evObs} onChange={e => setEvObs(e.target.value)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white h-12 resize-none"
-                              placeholder="Problemas mecânicos, histórico de consertos..."
-                            />
-                          </div>
-                        </div>
-
-                        <button type="submit" className="w-full bg-violet-600 hover:bg-violet-500 text-white text-[11px] font-bold py-2 rounded transition-colors mt-2">
-                          Confirmar Atualizações
-                        </button>
-                      </form>
-                    )}
+                    <div>
+                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Combustível</label>
+                      <select
+                        value={vTipoCombustivel}
+                        onChange={e => setVTipoCombustivel(e.target.value as TipoCombustivel)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-white"
+                      >
+                        <option value="Flex">Flex</option>
+                        <option value="Diesel">Diesel</option>
+                        <option value="Gasolina">Gasolina</option>
+                        <option value="Etanol">Etanol</option>
+                        <option value="Elétrico">Elétrico</option>
+                        <option value="GNV">GNV</option>
+                      </select>
+                    </div>
                   </div>
-                </div>
 
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Capacidade (KG)</label>
+                      <input
+                        type="number"
+                        value={vCap}
+                        onChange={e => setVCap(parseInt(e.target.value) || 0)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Ano Fab.</label>
+                      <input
+                        type="text"
+                        placeholder="2022"
+                        value={vAnoFabricacao}
+                        onChange={e => setVAnoFabricacao(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-white font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Cor</label>
+                      <input
+                        type="text"
+                        placeholder="Branco"
+                        value={vCor}
+                        onChange={e => setVCor(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Renavam</label>
+                      <input
+                        type="text"
+                        placeholder="11 dígitos"
+                        value={vRenavam}
+                        onChange={e => setVRenavam(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Chassi</label>
+                      <input
+                        type="text"
+                        placeholder="Chassi"
+                        value={vChassi}
+                        onChange={e => setVChassi(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white py-2 rounded-lg text-xs font-bold transition-all mt-3 cursor-pointer"
+                  >
+                    Adicionar Veículo
+                  </button>
+                </form>
+
+                {/* Edit Form */}
+                {frota.length > 0 && (
+                  <div className="border-t border-slate-800 pt-4 mt-4 space-y-3">
+                    <h4 className="text-[11px] font-bold text-white uppercase tracking-wider">Editar Veículo Existente</h4>
+                    <select
+                      value={selectedVeiculoEdit}
+                      onChange={e => setSelectedVeiculoEdit(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
+                    >
+                      {frota.map(v => (
+                        <option key={v.idVeiculo} value={v.idVeiculo}>
+                          {v.placa} — {v.modelo} ({v.capacidadeKg} kg)
+                        </option>
+                      ))}
+                    </select>
+
+                    <form onSubmit={handleUpdateVeiculo} className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[8px] font-mono text-slate-500 uppercase">Capacidade (KG)</label>
+                          <input
+                            type="number"
+                            value={evCap}
+                            onChange={e => setEvCap(parseInt(e.target.value) || 0)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[8px] font-mono text-slate-500 uppercase">Status</label>
+                          <select
+                            value={evStatus}
+                            onChange={e => setEvStatus(e.target.value as any)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                          >
+                            <option value="Disponivel">Disponível</option>
+                            <option value="Manutencao">Manutenção</option>
+                            <option value="Inativo">Inativo</option>
+                          </select>
+                        </div>
+                      </div>
+                      <button
+                        type="submit"
+                        className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer"
+                      >
+                        Salvar Alterações
+                      </button>
+                    </form>
+                  </div>
+                )}
               </div>
 
-              {/* Right Column: List (8 cols) */}
-              <div className="lg:col-span-8 space-y-6">
-                
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
-                  <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-                    <h3 className="text-xs font-bold text-white uppercase tracking-wider">Base de Veículos Ativa ({frota.length})</h3>
-                    <div className="text-[10px] text-slate-500 font-mono">Unidade: Matriz</div>
+              {/* Vehicle list */}
+              <div className="lg:col-span-2 space-y-3">
+                {frota.length === 0 ? (
+                  <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-slate-500 text-xs">
+                    Nenhum veículo cadastrado. Adicione seu primeiro veículo ao lado ou importe via planilha!
                   </div>
-                  
-                  <div className="overflow-x-auto border border-slate-800 rounded-lg">
-                    <table className="w-full text-xs text-left text-slate-400">
-                      <thead className="text-[10px] uppercase font-mono bg-slate-950/50 text-slate-500 border-b border-slate-800">
-                        <tr>
-                          <th className="px-4 py-3">Nº Frota</th>
-                          <th className="px-4 py-3">Placa</th>
-                          <th className="px-4 py-3">Especificações</th>
-                          <th className="px-4 py-3">Tipo / Capacidade</th>
-                          <th className="px-4 py-3 text-center">Status</th>
-                          <th className="px-4 py-3">Documentação</th>
-                          <th className="px-4 py-3 text-center">Ações</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-800">
-                        {frota.length === 0 ? (
-                          <tr>
-                            <td colSpan={7} className="px-4 py-8 text-center text-slate-500 font-mono text-xs">
-                              Nenhum veículo cadastrado na frota. Baixe o modelo e importe acima!
-                            </td>
-                          </tr>
-                        ) : (
-                          frota.map(v => {
-                            const driverName = condutores.find(c => c.veiculo === v.idVeiculo)?.nome || 'Sem motorista alocado';
-                            return (
-                              <tr key={v.idVeiculo} className="hover:bg-slate-800/10">
-                                <td className="px-4 py-3 font-bold text-white text-xs">
-                                  {v.idVeiculo}
-                                </td>
-                                <td className="px-4 py-3">
-                                  <div className="text-[10px] font-mono text-violet-400 bg-violet-400/5 px-1.5 py-0.5 rounded w-fit">{v.placa}</div>
-                                </td>
-                                <td className="px-4 py-3">
-                                  <div className="font-semibold text-slate-300">{v.fabricante} {v.modelo}</div>
-                                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">Ano: {v.anoFabricacao}/{v.anoModelo} • Cor: {v.cor}</div>
-                                  <div className="text-[10px] text-slate-400 font-medium">Motorista: <span className="text-white">{driverName}</span></div>
-                                </td>
-                                <td className="px-4 py-3">
-                                  <div className="text-slate-300">{v.tipo}</div>
-                                  <div className="text-[10px] font-mono text-slate-500 mt-0.5">{v.capacidadeKg.toLocaleString('pt-BR')} kg úteis • <span className="text-amber-400/90 font-semibold">{v.tipoCombustivel || 'Flex'}</span></div>
-                                </td>
-                                <td className="px-4 py-3 text-center">
-                                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase ${
-                                    v.status === 'Disponivel' ? 'bg-emerald-500/10 text-emerald-400' : 
-                                    v.status === 'Manutencao' ? 'bg-amber-500/10 text-amber-400' : 'bg-red-500/10 text-red-400'
-                                  }`}>
-                                    {v.status === 'Disponivel' ? 'Disponível' : v.status === 'Manutencao' ? 'Manutenção' : 'Inativo'}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-3">
-                                  <div className="text-[10px] font-mono text-slate-500">RENAVAM: <span className="text-slate-300">{v.renavam || '-'}</span></div>
-                                  <div className="text-[10px] font-mono text-slate-500">Chassi: <span className="text-slate-300 truncate inline-block max-w-[100px]">{v.chassi || '-'}</span></div>
-                                </td>
-                                <td className="px-4 py-3 text-center">
-                                  <button
-                                    onClick={() => {
-                                      if (confirm(`Remover veículo ${v.idVeiculo} da frota?`)) {
-                                        dbRepo.deletarVeiculo(userEmail, v.idVeiculo);
-                                        triggerRefresh();
-                                      }
-                                    }}
-                                    className="text-red-400 hover:text-red-300 p-1 rounded hover:bg-red-500/10 transition-colors"
-                                    title="Remover veículo"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5 mx-auto" />
-                                  </button>
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {frota.map((v) => (
+                      <div key={v.idVeiculo || v.placa} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
+                        <div>
+                          <div className="flex justify-between items-start border-b border-slate-800/80 pb-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-mono font-bold text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded border border-violet-500/20">
+                                  {v.placa}
+                                </span>
+                                <span className="text-[9px] font-mono text-slate-500">{v.idVeiculo}</span>
+                              </div>
+                              <h4 className="font-extrabold text-white text-xs mt-1.5">{v.modelo}</h4>
+                              <p className="text-[10px] text-slate-400">{v.fabricante ? `${v.fabricante} • ` : ''}{v.tipo}</p>
+                            </div>
+                            <button
+                              onClick={() => {
+                                if (confirm(`Deseja remover o veículo ${v.placa}?`)) {
+                                  dbRepo.deletarVeiculo(userEmail, v.idVeiculo);
+                                  triggerRefresh();
+                                }
+                              }}
+                              className="text-slate-600 hover:text-red-400 p-1 text-xs cursor-pointer"
+                              title="Excluir veículo"
+                            >
+                              ✕
+                            </button>
+                          </div>
 
+                          <div className="grid grid-cols-3 gap-2 mt-3 text-[10px] font-mono text-slate-400 bg-slate-950 p-2.5 rounded-lg border border-slate-800/50">
+                            <div>
+                              <span className="block text-[8px] text-slate-500 uppercase">Capacidade</span>
+                              <span className="text-white font-bold">{v.capacidadeKg} kg</span>
+                            </div>
+                            <div>
+                              <span className="block text-[8px] text-slate-500 uppercase">Combustível</span>
+                              <span className="text-white font-bold">{v.tipoCombustivel || 'Flex'}</span>
+                            </div>
+                            <div>
+                              <span className="block text-[8px] text-slate-500 uppercase">Ano / Cor</span>
+                              <span className="text-slate-300 font-bold">{v.anoFabricacao || '-'} • {v.cor || 'Branco'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[10px] text-slate-500">
+                          <span>Status Operacional:</span>
+                          <span className={`font-bold ${v.status === 'Disponivel' ? 'text-emerald-400' : v.status === 'Manutencao' ? 'text-amber-400' : 'text-red-400'}`}>
+                            ● {v.status || 'Disponível'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-
             </div>
           </div>
         )}
 
-        {/* TAB 2.5: GESTÃO DE CONDUTORES */}
+        {/* TAB 3: GESTAO DE CONDUTORES */}
         {activeTab === 'condutores' && (
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
-                <h1 className="text-xl font-extrabold text-white">Gestão de Motoristas Habilitados</h1>
-                <p className="text-xs text-slate-400">Gerencie a documentação de CNH, valide vencimentos e atribua rotas de forma simplificada.</p>
+                <h1 className="text-xl font-extrabold text-white">Gestão de Motoristas & Condutores</h1>
+                <p className="text-xs text-slate-400">Cadastre seus motoristas para vincular automaticamente às rotas otimizadas.</p>
               </div>
               <div className="flex flex-wrap gap-2.5">
                 <button
                   onClick={downloadModeloMotoristasCsv}
-                  className="bg-slate-900 hover:bg-slate-800 text-slate-300 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-800 flex items-center gap-2 transition-colors"
+                  className="bg-slate-900 hover:bg-slate-800 text-slate-300 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-800 flex items-center gap-2 transition-colors cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5 text-violet-400" /> Baixar Planilha Modelo
                 </button>
                 <button
                   onClick={() => handleOpenImportModal('condutores')}
-                  className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-violet-900/20 flex items-center gap-2 transition-all"
+                  className="bg-slate-900 hover:bg-slate-800 text-slate-300 px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-800 flex items-center gap-2 transition-colors cursor-pointer"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-violet-200" /> Importar Motoristas Inteligente (IA / PDF / XLS)
+                  <Sparkles className="w-3.5 h-3.5 text-violet-400" /> Importar Condutores (IA / CSV / XLS)
                 </button>
               </div>
             </div>
 
-            {/* Split Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              
-              {/* Left Column: Form & Bind (4 cols) */}
-              <div className="lg:col-span-4 space-y-6">
-                
-                {/* Add driver form */}
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl">
-                  <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-4 border-b border-slate-800 pb-2">Novo Motorista</h3>
-                  <form onSubmit={handleAddCondutor} className="space-y-3">
-                    <div>
-                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Nome Completo</label>
-                      <input
-                        type="text" required placeholder="Carlos Alberto da Silva" value={dNome} onChange={e => setDNome(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-650"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">CPF</label>
-                        <input
-                          type="text" required placeholder="111.222.333-44" value={dCpf} onChange={e => setDCpf(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-650"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">RG</label>
-                        <input
-                          type="text" placeholder="MG-12.345.678" value={dRg} onChange={e => setDRg(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-650"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Telefone de Contato</label>
-                        <input
-                          type="text" required placeholder="(31) 98888-7777" value={dTel} onChange={e => setDTel(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-650"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Data Nascimento</label>
-                        <input
-                          type="text" required placeholder="12/03/1985" value={dNascimento} onChange={e => setDNascimento(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-650"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">E-mail corporativo / Login</label>
-                      <input
-                        type="email" required placeholder="carlos.silva@empresa.com.br" value={dEmail} onChange={e => setDEmail(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-650"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="col-span-2">
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Nº Registro CNH</label>
-                        <input
-                          type="text" required placeholder="12345678910" value={dCnh} onChange={e => setDCnh(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-650"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Categoria</label>
-                        <select
-                          value={dCat} onChange={e => setDCat(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-white"
-                        >
-                          <option value="A">A</option>
-                          <option value="B">B</option>
-                          <option value="C">C</option>
-                          <option value="D">D</option>
-                          <option value="E">E</option>
-                          <option value="AB">AB</option>
-                          <option value="AC">AC</option>
-                          <option value="AD">AD</option>
-                          <option value="AE">AE</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Vencimento CNH</label>
-                        <input
-                          type="text" required placeholder="10/12/2030" value={dVencCnh} onChange={e => setDVencCnh(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-650"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Veículo Inicial</label>
-                        <select
-                          value={dVeiculo} onChange={e => setDVeiculo(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-white"
-                        >
-                          <option value="-">Nenhum (Disponível)</option>
-                          {frota.map(v => (
-                            <option key={v.idVeiculo} value={v.idVeiculo}>{v.idVeiculo} - {v.modelo}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
-                    <button type="submit" className="w-full bg-violet-600 hover:bg-violet-500 text-white font-bold py-2 rounded-xl text-xs transition-colors mt-2">
-                      Cadastrar Motorista
-                    </button>
-                  </form>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Form add driver */}
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div>
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-1">Novo Motorista</h3>
+                  <p className="text-[10px] text-slate-400">Cadastre o condutor com seus dados e CNH.</p>
                 </div>
+                <form onSubmit={handleAddCondutor} className="space-y-2.5">
+                  <div>
+                    <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Nome Completo *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="EX: Carlos Eduardo Silva"
+                      value={dNome}
+                      onChange={e => setDNome(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
+                    />
+                  </div>
 
-                {/* Quick Vehicle Allocator Binder */}
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl">
-                  <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Vincular Motorista a Veículo</h3>
-                  <form onSubmit={handleBindDriver} className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Motorista</label>
+                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">CPF *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="000.000.000-00"
+                        value={dCpf}
+                        onChange={e => setDCpf(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">CNH *</label>
+                      <input
+                        type="text"
+                        placeholder="12345678910"
+                        value={dCnh}
+                        onChange={e => setDCnh(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Cat. CNH</label>
                       <select
-                        value={bindDriver} onChange={e => setBindDriver(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-white"
+                        value={dCat}
+                        onChange={e => setDCat(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-white font-mono"
                       >
-                        <option value="">-- Selecione o Motorista --</option>
-                        {condutores.map(c => <option key={c.email} value={c.email}>{c.nome}</option>)}
+                        <option value="A">A</option>
+                        <option value="B">B</option>
+                        <option value="C">C</option>
+                        <option value="D">D</option>
+                        <option value="E">E</option>
+                        <option value="AB">AB</option>
+                        <option value="AD">AD</option>
+                        <option value="AE">AE</option>
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Veículo Alocado</label>
-                      <select
-                        value={bindVehicle} onChange={e => setBindVehicle(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-white"
-                      >
-                        <option value="">-- Selecione o Veículo --</option>
-                        <option value="-">-- Nenhum (Liberar Motorista) --</option>
-                        {frota.map(v => <option key={v.idVeiculo} value={v.idVeiculo}>{v.idVeiculo} - {v.modelo} ({v.placa})</option>)}
-                      </select>
+                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Vencimento CNH</label>
+                      <input
+                        type="text"
+                        placeholder="10/12/2030"
+                        value={dVencCnh}
+                        onChange={e => setDVencCnh(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white font-mono"
+                      />
                     </div>
-                    <button type="submit" className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-1.5 rounded-xl text-xs font-semibold transition-colors">
-                      Efetuar Vínculo Operacional
-                    </button>
-                  </form>
-                </div>
+                  </div>
 
-                {/* Edit driver form */}
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl">
-                  <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Editar Motorista Existente</h3>
-                  <div className="space-y-3">
+                  <div>
+                    <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">E-mail (Login no App) *</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="carlos.motorista@empresa.com.br"
+                      value={dEmail}
+                      onChange={e => setDEmail(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Selecione o Motorista</label>
-                      <select
-                        value={selectedCondutorEdit}
-                        onChange={e => setSelectedCondutorEdit(e.target.value)}
+                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Telefone</label>
+                      <input
+                        type="text"
+                        placeholder="(31) 98888-7777"
+                        value={dTel}
+                        onChange={e => setDTel(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Veículo Padrão</label>
+                      <select
+                        value={dVeiculo}
+                        onChange={e => setDVeiculo(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-white"
                       >
-                        <option value="">-- Escolha um Motorista --</option>
+                        <option value="-">Nenhum (Livre)</option>
+                        {frota.map(v => (
+                          <option key={v.idVeiculo} value={v.idVeiculo}>
+                            {v.placa} ({v.modelo})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white py-2 rounded-lg text-xs font-bold transition-all mt-3 cursor-pointer"
+                  >
+                    Cadastrar Motorista
+                  </button>
+                </form>
+
+                {/* Quick Link Driver - Vehicle */}
+                <div className="border-t border-slate-800 pt-4 mt-4 space-y-3">
+                  <h4 className="text-[11px] font-bold text-white uppercase tracking-wider">Vincular Motorista a Veículo</h4>
+                  <form onSubmit={handleBindDriver} className="space-y-2">
+                    <div>
+                      <label className="block text-[8px] font-mono text-slate-500 uppercase">Motorista</label>
+                      <select
+                        value={bindDriver}
+                        onChange={e => setBindDriver(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                      >
+                        <option value="">Selecione o motorista...</option>
                         {condutores.map(c => (
                           <option key={c.email} value={c.email}>{c.nome} ({c.email})</option>
                         ))}
                       </select>
                     </div>
+                    <div>
+                      <label className="block text-[8px] font-mono text-slate-500 uppercase">Veículo da Frota</label>
+                      <select
+                        value={bindVehicle}
+                        onChange={e => setBindVehicle(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                      >
+                        <option value="">Selecione o veículo...</option>
+                        {frota.map(v => (
+                          <option key={v.idVeiculo} value={v.idVeiculo}>{v.placa} - {v.modelo}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      type="submit"
+                      className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer"
+                    >
+                      Confirmar Vínculo
+                    </button>
+                  </form>
+                </div>
+              </div>
 
-                    {condSel && (
-                      <form onSubmit={handleUpdateCondutor} className="space-y-3 pt-2 border-t border-slate-800/60">
+              {/* Drivers list */}
+              <div className="lg:col-span-2 space-y-3">
+                {condutores.length === 0 ? (
+                  <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-slate-500 text-xs">
+                    Nenhum motorista cadastrado. Adicione seu primeiro condutor ao lado ou importe via planilha!
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {condutores.map((m) => (
+                      <div key={m.email || m.cpf} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
                         <div>
-                          <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Nome Completo</label>
-                          <input
-                            type="text" required value={edDNome} onChange={e => setEdDNome(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-white"
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">CPF</label>
-                            <input
-                              type="text" required value={edDCpf} onChange={e => setEdDCpf(e.target.value)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Senha Portal</label>
-                            <input
-                              type="password" placeholder="Senha de acesso" value={edDSenha} onChange={e => setEdDSenha(e.target.value)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-white"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Telefone</label>
-                            <input
-                              type="text" required value={edDTel} onChange={e => setEdDTel(e.target.value)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Status do Motorista</label>
-                            <select
-                              value={edDStatus} onChange={e => setEdDStatus(e.target.value as any)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
-                            >
-                              <option value="Ativo">Ativo</option>
-                              <option value="Afastado">Afastado</option>
-                              <option value="Férias">Férias</option>
-                              <option value="Licença">Licença</option>
-                              <option value="Desligado">Desligado</option>
-                              <option value="Inativo">Inativo</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">E-mail / Login</label>
-                          <input
-                            type="email" required value={edDEmail} onChange={e => setEdDEmail(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-white"
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Veículo Alocado (Nº Frota)</label>
-                            <select
-                              value={edDVeiculo} 
-                              onChange={e => {
-                                const vId = e.target.value;
-                                setEdDVeiculo(vId);
-                                const matchedVeh = frota.find(v => v.idVeiculo === vId);
-                                if (matchedVeh) {
-                                  setEdDPlacaVeiculo(matchedVeh.placa);
-                                } else if (vId === '-') {
-                                  setEdDPlacaVeiculo('');
+                          <div className="flex justify-between items-start border-b border-slate-800/80 pb-2">
+                            <div>
+                              <h4 className="font-extrabold text-white text-xs">{m.nome}</h4>
+                              <p className="text-[10px] text-violet-400 font-mono mt-0.5">{m.email}</p>
+                            </div>
+                            <button
+                              onClick={() => {
+                                if (confirm(`Deseja excluir o motorista ${m.nome}?`)) {
+                                  dbRepo.deletarCondutor(userEmail, m.email);
+                                  triggerRefresh();
                                 }
                               }}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                              className="text-slate-600 hover:text-red-400 p-1 text-xs cursor-pointer"
+                              title="Excluir motorista"
                             >
-                              <option value="-">Nenhum (Disponível)</option>
-                              {frota.map(v => (
-                                <option key={v.idVeiculo} value={v.idVeiculo}>{v.idVeiculo} - {v.modelo}</option>
-                              ))}
-                            </select>
+                              ✕
+                            </button>
                           </div>
-                          <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Placa do Veículo</label>
-                            <input
-                              type="text" value={edDPlacaVeiculo} onChange={e => setEdDPlacaVeiculo(e.target.value)}
-                              placeholder="Ex: ABC-1234"
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-white"
-                            />
-                          </div>
-                        </div>
 
-                        <div className="grid grid-cols-3 gap-2">
-                          <div className="col-span-2">
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Vencimento CNH</label>
-                            <input
-                              type="text" required value={edDVencCnh} onChange={e => setEdDVencCnh(e.target.value)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[9px] font-mono text-slate-500 uppercase mb-0.5">Cat.</label>
-                            <select
-                              value={edDCat} onChange={e => setEdDCat(e.target.value)}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-white"
-                            >
-                              <option value="A">A</option>
-                              <option value="B">B</option>
-                              <option value="C">C</option>
-                              <option value="D">D</option>
-                              <option value="E">E</option>
-                              <option value="AB">AB</option>
-                              <option value="AC">AC</option>
-                              <option value="AD">AD</option>
-                              <option value="AE">AE</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        <button type="submit" className="w-full bg-violet-600 hover:bg-violet-500 text-white text-[11px] font-bold py-2 rounded transition-colors mt-2">
-                          Confirmar Atualizações
-                        </button>
-                      </form>
-                    )}
-                  </div>
-                </div>
-
-              </div>
-
-              {/* Right Column: List of drivers (8 cols) */}
-              <div className="lg:col-span-8 space-y-6">
-                
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl">
-                  <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
-                    <h3 className="text-xs font-bold text-white uppercase tracking-wider">Base de Motoristas Habilitados ({condutores.length})</h3>
-                    <span className="text-[10px] text-emerald-400 bg-emerald-400/5 px-2 py-0.5 rounded-full font-mono font-bold uppercase animate-pulse">● operacional</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {condutores.length === 0 ? (
-                      <div className="col-span-2 text-center text-slate-500 py-12 font-mono text-xs">
-                        Nenhum motorista cadastrado ainda. Use o formulário ou faça importação em massa via CSV!
-                      </div>
-                    ) : (
-                      condutores.map(c => {
-                        // Check CNH status
-                        const isExpired = () => {
-                          try {
-                            const [day, month, year] = c.vencCnh.split('/').map(Number);
-                            const expiry = new Date(year, month - 1, day);
-                            return expiry < new Date();
-                          } catch (e) {
-                            return false;
-                          }
-                        };
-                        const expired = isExpired();
-                        const currentStatus = c.status || 'Ativo';
-
-                        return (
-                          <div key={c.email} className="bg-slate-950 border border-slate-850 p-4 rounded-xl flex flex-col justify-between hover:border-slate-800 transition-colors">
+                          <div className="grid grid-cols-2 gap-2 mt-3 text-[10px] font-mono text-slate-400 bg-slate-950 p-2.5 rounded-lg border border-slate-800/50">
                             <div>
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <h4 className="font-bold text-white text-sm flex items-center flex-wrap gap-1.5">
-                                    {c.nome}
-                                    <span className={`text-[8px] font-bold uppercase tracking-wider font-mono px-1.5 py-0.5 rounded ${
-                                      currentStatus === 'Ativo' ? 'bg-emerald-500/10 text-emerald-400' :
-                                      currentStatus === 'Férias' ? 'bg-blue-500/10 text-blue-400' :
-                                      currentStatus === 'Licença' ? 'bg-amber-500/10 text-amber-400' :
-                                      currentStatus === 'Afastado' ? 'bg-purple-500/10 text-purple-400' : 'bg-red-500/10 text-red-400'
-                                    }`}>
-                                      {currentStatus}
-                                    </span>
-                                  </h4>
-                                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">CPF: {c.cpf} {c.rg ? `• RG: ${c.rg}` : ''}</div>
-                                </div>
-                                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
-                                  expired ? 'bg-red-500/10 text-red-400' : 'bg-violet-500/10 text-violet-400'
-                                }`}>
-                                  Cat {c.categoriaCnh}
-                                </span>
-                              </div>
-
-                              <div className="mt-3 grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px] font-mono text-slate-400 border-t border-slate-900/60 pt-3">
-                                <div>Telefone: <span className="text-slate-200 font-sans">{c.telefone}</span></div>
-                                <div>Nascimento: <span className="text-slate-200">{c.nascimento || '-'}</span></div>
-                                <div className="col-span-2 truncate">E-mail: <span className="text-slate-200 font-sans">{c.email}</span></div>
-                                <div>
-                                  Vencimento CNH: <span className={expired ? 'text-red-400 font-bold' : 'text-slate-200'}>
-                                    {c.vencCnh} {expired && '(Vencida!)'}
-                                  </span>
-                                </div>
-                                <div>
-                                  Senha Portal: <span className="text-slate-300">{c.senha ? '••••••••' : 'Não cadastrada'}</span>
-                                </div>
-                              </div>
+                              <span className="block text-[8px] text-slate-500 uppercase">CPF</span>
+                              <span className="text-white font-bold">{m.cpf}</span>
                             </div>
-
-                            <div className="mt-4 pt-3 border-t border-slate-900 flex justify-between items-center">
-                              <div className="text-xs">
-                                <span className="text-slate-500 text-[10px] uppercase font-mono block">Veículo Alocado:</span>
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className={`font-semibold ${c.veiculo && c.veiculo !== '-' ? 'text-emerald-400' : 'text-slate-400'}`}>
-                                    {c.veiculo && c.veiculo !== '-' ? `Frota ID: ${c.veiculo}` : 'Sem veículo'}
-                                  </span>
-                                  {c.placaVeiculo && (
-                                    <span className="text-[10px] text-violet-400 font-mono bg-violet-400/10 border border-violet-400/20 px-1.5 py-0.5 rounded">
-                                      {c.placaVeiculo}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <button
-                                onClick={() => {
-                                  if (confirm(`Remover motorista ${c.nome} do sistema?`)) {
-                                    dbRepo.deletarCondutor(userEmail, c.email);
-                                    triggerRefresh();
-                                  }
-                                }}
-                                className="text-red-400 hover:text-red-300 p-1.5 rounded hover:bg-red-500/10 transition-colors"
-                                title="Deletar motorista"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                            <div>
+                              <span className="block text-[8px] text-slate-500 uppercase">CNH / Categoria</span>
+                              <span className="text-white font-bold">{m.cnh || 'N/D'} (Cat {m.categoriaCnh || 'B'})</span>
+                            </div>
+                            <div>
+                              <span className="block text-[8px] text-slate-500 uppercase">Telefone</span>
+                              <span className="text-slate-300">{m.telefone || 'N/D'}</span>
+                            </div>
+                            <div>
+                              <span className="block text-[8px] text-slate-500 uppercase">Veículo Vinculado</span>
+                              <span className="text-emerald-400 font-bold">{m.placaVeiculo || m.veiculo || 'Nenhum'}</span>
                             </div>
                           </div>
-                        );
-                      })
-                    )}
+                        </div>
+
+                        <div className="mt-3 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[10px] text-slate-500">
+                          <span>Status: {m.status || 'Ativo'}</span>
+                          <span className="text-emerald-400 font-mono font-bold">● Acesso App Habilitado</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-
+                )}
               </div>
-
             </div>
           </div>
         )}
 
-        {/* TAB 3: SIMULADOR DE CUSTOS */}
+        {/* TAB 4: SIMULADOR DE CUSTOS */}
         {activeTab === 'custos' && (
           <div className="space-y-6">
             <div>
-              <h1 className="text-xl font-extrabold text-white">Simulador Científico de Custos de Viagem</h1>
-              <p className="text-xs text-slate-400">Estime despesas de combustível, diárias de motoristas e depreciação com precisão matemática.</p>
+              <h1 className="text-xl font-extrabold text-white">Simulador de Custos & Viabilidade Logística</h1>
+              <p className="text-xs text-slate-400">Calcule despesas de combustível, diárias e depreciação/manutenção com base nas rotas ativas.</p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              
-              {/* Calculator Panel */}
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4 h-fit">
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Parâmetros Operacionais</h3>
+              {/* Parameters panel */}
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Parâmetros da Operação</h3>
                 
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Preço Combustível (R$/L)</label>
-                    <input
-                      type="number" step="0.01" value={combustivelPreco}
-                      onChange={e => setCombustivelPreco(parseFloat(e.target.value))}
-                      className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Consumo Médio (KM/L)</label>
-                    <input
-                      type="number" step="0.1" value={veiculoConsumo}
-                      onChange={e => setVeiculoConsumo(parseFloat(e.target.value))}
-                      className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Diária Média Motorista (R$)</label>
-                    <input
-                      type="number" value={diariaMotorista}
-                      onChange={e => setDiariaMotorista(parseFloat(e.target.value))}
-                      className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Fator Depreciação/KM (R$)</label>
-                    <input
-                      type="number" step="0.01" value={fatorManutencao}
-                      onChange={e => setFatorManutencao(parseFloat(e.target.value))}
-                      className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Preço do Combustível (R$/Litro)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={combustivelPreco}
+                    onChange={e => setCombustivelPreco(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Consumo Médio da Frota (KM/L)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={veiculoConsumo}
+                    onChange={e => setVeiculoConsumo(parseFloat(e.target.value) || 0.1)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Diária do Motorista + Ajudante (R$)</label>
+                  <input
+                    type="number"
+                    step="1"
+                    value={diariaMotorista}
+                    onChange={e => setDiariaMotorista(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Manutenção / Depreciação (R$/KM)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={fatorManutencao}
+                    onChange={e => setFatorManutencao(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white font-mono"
+                  />
                 </div>
               </div>
 
-              {/* Cost report and pie chart */}
-              <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl flex flex-col justify-between">
-                <div>
-                  <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-4">Relatório Consolidado de Custos</h3>
-                  
-                  {totalKmRoteado > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {/* Pie Chart */}
-                      <div className="h-44 flex items-center justify-center">
+              {/* Simulation metrics breakdown */}
+              <div className="lg:col-span-2 space-y-4">
+                {numRotas === 0 ? (
+                  <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-slate-500 text-xs">
+                    Nenhuma rota ativa para simular custos. Otimize rotas na aba 'Roteirização Científica' primeiro!
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                        <span className="text-[9px] text-slate-500 uppercase font-mono block">Quilometragem Total</span>
+                        <span className="text-base font-extrabold text-blue-400 mt-1 block font-mono">{totalKmRoteado.toFixed(1)} km</span>
+                      </div>
+                      <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                        <span className="text-[9px] text-slate-500 uppercase font-mono block">Custo Combustível</span>
+                        <span className="text-base font-extrabold text-white mt-1 block font-mono">R$ {custoCombustivel.toFixed(2)}</span>
+                      </div>
+                      <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                        <span className="text-[9px] text-slate-500 uppercase font-mono block">Diárias de Equipe</span>
+                        <span className="text-base font-extrabold text-white mt-1 block font-mono">R$ {custoMotoristas.toFixed(2)}</span>
+                      </div>
+                      <div className="bg-gradient-to-br from-violet-900/40 to-indigo-900/40 border border-violet-500/30 p-4 rounded-xl">
+                        <span className="text-[9px] text-violet-300 uppercase font-mono block">Custo Total Projetado</span>
+                        <span className="text-base font-extrabold text-emerald-400 mt-1 block font-mono">R$ {custoTotalEstimado.toFixed(2)}</span>
+                      </div>
+                    </div>
+
+                    {/* Cost Distribution Chart */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl">
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-4">Composição Percentual dos Custos</h4>
+                      <div className="h-48 w-full">
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
                             <Pie
@@ -4182,7 +3918,7 @@ Assinatura do Expedidor: _______________________________`;
                               cx="50%"
                               cy="50%"
                               innerRadius={45}
-                              outerRadius={65}
+                              outerRadius={70}
                               paddingAngle={4}
                               dataKey="value"
                             >
@@ -4190,1135 +3926,474 @@ Assinatura do Expedidor: _______________________________`;
                                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                               ))}
                             </Pie>
-                            <Tooltip formatter={(value) => `R$ ${value}`} />
+                            <Tooltip formatter={(value: any) => [`R$ ${value}`, 'Valor']} />
+                            <Legend />
                           </PieChart>
                         </ResponsiveContainer>
                       </div>
+                    </div>
 
-                      {/* Details */}
-                      <div className="space-y-3 font-mono text-xs text-slate-400">
-                        <div className="flex justify-between">
-                          <span>Distância Total:</span>
-                          <span className="text-white font-bold">{totalKmRoteado} KM</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Combustível:</span>
-                          <span className="text-violet-400 font-bold">R$ {custoCombustivel.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Diária Motoristas:</span>
-                          <span className="text-emerald-400 font-bold">R$ {custoMotoristas.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Manut./Depreciação:</span>
-                          <span className="text-amber-400 font-bold">R$ {custoManutencao.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</span>
-                        </div>
-                        <div className="border-t border-slate-800 pt-2 flex justify-between text-sm">
-                          <span className="text-slate-300 font-bold">Custo Total:</span>
-                          <span className="text-white font-extrabold text-base">R$ {custoTotalEstimado.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</span>
-                        </div>
+                    {/* Breakdown by Route */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-3">
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">Detalhamento por Rota Expedida</h4>
+                      <div className="space-y-2">
+                        {Object.entries(activeRoutes).map(([rId, r]: [string, any]) => {
+                          const rKm = r.km || 0;
+                          const rFuel = veiculoConsumo > 0 ? (rKm / veiculoConsumo) * combustivelPreco : 0;
+                          const rDriver = diariaMotorista;
+                          const rMaint = rKm * fatorManutencao;
+                          const rTotal = rFuel + rDriver + rMaint;
+
+                          return (
+                            <div key={rId} className="bg-slate-950 p-3 rounded-lg border border-slate-800/80 flex flex-col md:flex-row justify-between items-start md:items-center gap-2 text-xs font-mono">
+                              <div>
+                                <span className="text-emerald-400 font-bold">{rId}</span> — <span className="text-white">{r.driver}</span> ({r.vehicle})
+                                <span className="text-slate-500 block text-[10px]">{rKm} km • {r.path?.length || 0} entregas</span>
+                              </div>
+                              <div className="flex items-center gap-4 text-right">
+                                <span className="text-slate-400 text-[10px]">Comb: R$ {rFuel.toFixed(0)} | Diária: R$ {rDriver.toFixed(0)}</span>
+                                <span className="text-emerald-400 font-bold text-sm">R$ {rTotal.toFixed(2)}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                  ) : (
-                    <div className="bg-slate-950/40 border border-slate-800 border-dashed rounded-xl p-8 text-center text-xs text-slate-500 py-12">
-                      <ShieldAlert className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                      <div>Não existem rotas ativas em trânsito.</div>
-                      <div className="text-[10px] text-slate-600 mt-1">Gere rotas na aba de Roteirização Científica primeiro.</div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-6 pt-4 border-t border-slate-800/60 text-[11px] text-slate-500">
-                  Os valores calculados são estimativas aproximadas baseadas nos modais de frota ativos.
-                </div>
+                  </div>
+                )}
               </div>
-
             </div>
           </div>
         )}
 
-        {/* Comprovantes / Assinaturas Tab */}
+        {/* TAB 5: COMPROVANTES / ASSINATURAS */}
         {activeTab === 'comprovantes' && (
-          <div className="flex-1 p-6 space-y-6 overflow-y-auto">
-            
-            {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800 pb-5">
+          <div className="space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
-                <span className="text-[10px] font-mono font-bold text-violet-400 bg-violet-500/10 px-2.5 py-1 rounded-full uppercase">
-                  Módulo de Conformidade & Auditoria
-                </span>
-                <h1 className="text-xl font-extrabold text-white mt-2">Comprovantes & Assinaturas Digitais</h1>
-                <p className="text-xs text-slate-400 mt-1">
-                  Acompanhe em tempo real as assinaturas digitais e comprovações fotográficas de entregas/coletas.
-                </p>
+                <h1 className="text-xl font-extrabold text-white">Comprovantes & Assinaturas Digitais</h1>
+                <p className="text-xs text-slate-400">Auditoria visual de entregas com foto, rubrica eletrônica do recebedor e geolocalização no ato da baixa.</p>
               </div>
-
-              {/* Data retention informational tag */}
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-start gap-2 max-w-xs">
-                <Info className="w-4 h-4 text-violet-400 mt-0.5 flex-shrink-0" />
-                <p className="text-[10px] text-slate-400 leading-normal">
-                  <span className="text-slate-300 font-bold block">Política de Retenção Ativa:</span>
-                  Imagens retidas por **12 meses (1 ano)** para salvaguarda judicial e LGPD.
-                </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    generateAuditReportPDF();
+                    setShowDossierModal(true);
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-emerald-900/20 transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  <FileCheck className="w-4 h-4" /> Gerar Dossiê Completo (PDF)
+                </button>
               </div>
             </div>
 
-            {/* Filter controls */}
-            <div className="bg-slate-900 border border-slate-800/80 p-4 rounded-xl space-y-4">
-              <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Filtros de Pesquisa Rápidos</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
-                
-                {/* Search by client */}
-                <div>
-                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Cliente</label>
-                  <input
-                    type="text"
-                    placeholder="Nome do cliente..."
-                    value={searchCompClient}
-                    onChange={e => setSearchCompClient(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-violet-500"
-                  />
-                </div>
-
-                {/* Search by NF */}
-                <div>
-                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Nota Fiscal (NF)</label>
-                  <input
-                    type="text"
-                    placeholder="Número da NF..."
-                    value={searchCompNF}
-                    onChange={e => setSearchCompNF(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-violet-500"
-                  />
-                </div>
-
-                {/* Filter by driver */}
-                <div>
-                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Motorista</label>
-                  <select
-                    value={filterCompDriver}
-                    onChange={e => setFilterCompDriver(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-violet-500"
-                  >
-                    <option value="">-- Todos --</option>
-                    {condutores.map(c => (
-                      <option key={c.id} value={c.nome}>{c.nome}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Filter by status */}
-                <div>
-                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Status Final</label>
-                  <select
-                    value={filterCompStatus}
-                    onChange={e => setFilterCompStatus(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-violet-500"
-                  >
-                    <option value="">-- Todos --</option>
-                    <option value="Entregue">Entregues (Sucesso)</option>
-                    <option value="Cancelado">Recusados/Falhas</option>
-                  </select>
-                </div>
-
-                {/* Filter by date */}
-                <div>
-                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Data (Ex: 18/07/2026)</label>
-                  <input
-                    type="text"
-                    placeholder="Ex: 18/07/2026"
-                    value={filterCompDate}
-                    onChange={e => setFilterCompDate(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-violet-500 font-mono placeholder-slate-600"
-                  />
-                </div>
-
+            {/* Filter bar */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-wrap gap-3">
+              <div className="flex-1 min-w-[200px]">
+                <input
+                  type="text"
+                  placeholder="Buscar por cliente..."
+                  value={searchCompClient}
+                  onChange={e => setSearchCompClient(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white"
+                />
               </div>
-
-              {/* Clean Filters Button */}
-              {(searchCompClient || searchCompNF || filterCompDriver || filterCompStatus || filterCompDate) && (
-                <div className="flex justify-end pt-1">
-                  <button
-                    onClick={() => {
-                      setSearchCompClient('');
-                      setSearchCompNF('');
-                      setFilterCompDriver('');
-                      setFilterCompStatus('');
-                      setFilterCompDate('');
-                    }}
-                    className="text-[10px] text-violet-400 hover:text-violet-300 font-mono flex items-center gap-1"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" /> Limpar filtros aplicados
-                  </button>
-                </div>
-              )}
+              <div className="w-48">
+                <input
+                  type="text"
+                  placeholder="Filtrar por NF..."
+                  value={searchCompNF}
+                  onChange={e => setSearchCompNF(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white font-mono"
+                />
+              </div>
             </div>
 
-            {/* List container */}
-            <div className="space-y-4">
-              
-              {/* Filtered list computation */}
-              {(() => {
-                const historico: Entrega[] = dbRepo.getHistoricoEntregas(userEmail);
-                const todasComprovantesMap = new Map<string, Entrega>();
-                [...todasEntregas, ...historico].forEach((e: Entrega) => {
-                  const key = e.chave || e.id || e.notaFiscal;
-                  if (key && !todasComprovantesMap.has(key)) {
-                    todasComprovantesMap.set(key, e);
-                  }
-                });
-                const todasComprovantes: Entrega[] = Array.from(todasComprovantesMap.values());
-
-                const compFiltered: Entrega[] = todasComprovantes.filter((e: Entrega) => {
-                  const hasProof = e.status === 'Entregue' || e.status === 'Cancelado' || !!e.fotoComprovante;
-                  if (!hasProof) return false;
-
-                  if (searchCompClient && !e.cliente.toLowerCase().includes(searchCompClient.toLowerCase())) return false;
-                  if (searchCompNF && (!e.notaFiscal || !e.notaFiscal.toLowerCase().includes(searchCompNF.toLowerCase()))) return false;
-                  if (filterCompDriver && (!e.motoristaNome || !e.motoristaNome.toLowerCase().includes(filterCompDriver.toLowerCase()))) return false;
-                  if (filterCompStatus && e.status !== filterCompStatus) return false;
-                  if (filterCompDate && (!e.dataEntregue || !e.dataEntregue.includes(filterCompDate))) return false;
-
-                  return true;
-                });
-
-                if (compFiltered.length === 0) {
-                  return (
-                    <div className="bg-slate-900/40 border border-slate-800 border-dashed rounded-xl p-12 text-center text-slate-500 space-y-2 py-16">
-                      <FileText className="w-8 h-8 text-slate-600 mx-auto mb-1" />
-                      <div className="text-xs font-bold text-slate-400">Nenhum comprovante encontrado</div>
-                      <p className="text-[10px] text-slate-600 max-w-sm mx-auto">
-                        Acesse o Painel do Motorista (`motorista@logusq.com.br` / `123456`) e registre assinaturas para vê-las listadas e auditadas em tempo real neste painel.
-                      </p>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {compFiltered.map(item => (
-                      <div key={item.id} className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl p-4 flex flex-col justify-between space-y-4 transition-all shadow-lg">
-                        
-                        {/* Header card info */}
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <span className="text-[8px] font-mono bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-bold uppercase">
-                                {item.chave}
-                              </span>
-                              <h4 className="font-extrabold text-white text-xs mt-1.5">{item.cliente}</h4>
-                            </div>
-                            <span className={`text-[8px] font-mono px-2 py-0.5 rounded-full font-bold uppercase ${
-                              item.status === 'Entregue' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                            }`}>
-                              {item.status === 'Entregue' ? 'Entregue' : 'Recusada'}
+            {todasEntregas.filter(e => e.status === 'Entregue').length === 0 ? (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-12 text-center text-slate-500 text-xs">
+                Nenhum comprovante disponível no momento. Quando os motoristas finalizarem entregas no aplicativo deles, as fotos e registros aparecerão aqui instantaneamente.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {todasEntregas
+                  .filter(e => e.status === 'Entregue')
+                  .filter(e => !searchCompClient || e.cliente.toLowerCase().includes(searchCompClient.toLowerCase()))
+                  .filter(e => !searchCompNF || (e.notaFiscal && e.notaFiscal.toLowerCase().includes(searchCompNF.toLowerCase())))
+                  .map((e) => (
+                    <div key={e.chave || e.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between space-y-3">
+                      <div>
+                        <div className="flex justify-between items-start border-b border-slate-800 pb-2">
+                          <div>
+                            <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                              {e.chave || e.id}
                             </span>
+                            <h4 className="font-extrabold text-white text-xs mt-1.5">{e.cliente}</h4>
+                            <p className="text-[10px] text-slate-400 truncate">{e.endereco}</p>
                           </div>
-
-                          <div className="text-[11px] font-mono space-y-1 text-slate-400 bg-slate-950/40 p-2 rounded border border-slate-800/40">
-                            <div><span className="text-slate-500">Nota Fiscal:</span> <span className="text-slate-300 font-bold">{item.notaFiscal || 'N/A'}</span></div>
-                            {item.endereco && <div className="truncate"><span className="text-slate-500">Local:</span> <span className="text-slate-300">{item.endereco}</span></div>}
-                            {item.dataEntregue && <div><span className="text-slate-500">Baixa em:</span> <span className="text-slate-300">{item.dataEntregue}</span></div>}
-                            <div><span className="text-slate-500">Motorista:</span> <span className="text-emerald-400 font-bold">{item.motoristaNome || 'Atribuído em Rota'}</span></div>
-                          </div>
+                          <span className="text-[9px] font-mono font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-full">
+                            ✓ Concluído
+                          </span>
                         </div>
 
-                        {/* Thumbnail of proof */}
-                        <div className="relative group overflow-hidden border border-slate-800 rounded-lg bg-slate-950 h-32 flex items-center justify-center">
-                          {item.fotoComprovante ? (
-                            <>
-                              <img 
-                                src={item.fotoComprovante} 
-                                alt={`Comprovante ${item.chave}`} 
-                                className="h-full w-full object-contain group-hover:scale-105 transition-transform duration-300"
-                              />
-                              <button 
-                                onClick={() => setZoomPhoto(item.fotoComprovante || null)}
-                                className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs font-bold text-white transition-opacity"
-                              >
-                                Ampliar Comprovante
-                              </button>
-                            </>
-                          ) : (
-                            <div className="text-center text-[10px] text-slate-600 p-4 space-y-1">
-                              <ShieldAlert className="w-5 h-5 text-slate-700 mx-auto" />
-                              <div>Sem registro de imagem</div>
-                              <div>Baixado por gestor manualmente</div>
-                            </div>
+                        <div className="mt-3 space-y-2 text-[10px] font-mono text-slate-400">
+                          <div>Motorista: <span className="text-white font-bold">{e.motoristaNome || 'Motorista'}</span></div>
+                          <div>Data/Hora: <span className="text-slate-300">{e.dataEntregue || 'Hoje'}</span></div>
+                          {e.duracaoAtendimentoMinutos ? (
+                            <div>Tempo no Local: <span className="text-emerald-400 font-bold">{e.duracaoAtendimentoMinutos} minutos</span></div>
+                          ) : null}
+                          {e.observacao && (
+                            <div>Obs: <span className="text-amber-300">{e.observacao}</span></div>
                           )}
                         </div>
 
-                        {/* Action buttons */}
-                        {item.fotoComprovante && (
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => {
-                                const link = document.createElement('a');
-                                link.href = item.fotoComprovante || '';
-                                link.download = `Comprovante_${item.chave}_NF${item.notaFiscal || 'N/A'}.png`;
-                                link.click();
-                              }}
-                              className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/50 py-1.5 rounded-lg text-[10px] font-mono font-bold transition-all flex items-center justify-center gap-1"
-                            >
-                              <Download className="w-3 h-3 text-violet-400" /> Baixar Imagem
-                            </button>
+                        {/* Photo Preview */}
+                        {e.fotoComprovante && (
+                          <div className="mt-3 p-2 bg-slate-950 rounded-lg border border-slate-800/80 flex items-center justify-center">
+                            <img
+                              src={e.fotoComprovante}
+                              alt="Comprovante"
+                              className="max-h-32 object-contain rounded cursor-pointer hover:opacity-90 transition-opacity"
+                              onClick={() => setZoomPhoto(e.fotoComprovante || null)}
+                            />
                           </div>
                         )}
-
-                        {item.observacao && (
-                          <div className="text-[10px] bg-indigo-950/20 text-indigo-300 border border-indigo-900/40 rounded p-1.5 font-mono">
-                            <span className="font-bold text-[9px] text-indigo-400 uppercase block mb-0.5">Nota de Entrega</span>
-                            "{item.observacao}"
-                          </div>
-                        )}
-
                       </div>
-                    ))}
-                  </div>
-                );
-              })()}
 
-            </div>
-
+                      <div className="pt-2 border-t border-slate-800/60 flex justify-between items-center text-[10px] text-slate-500">
+                        <span>NF: {e.notaFiscal || 'N/A'}</span>
+                        <span className="text-emerald-400 font-mono">100% Auditado</span>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
         )}
 
         {/* TAB 6: RELATORIO DE JORNADAS */}
         {activeTab === 'jornadas' && (
           <div className="space-y-6">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800 pb-5">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
-                <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full uppercase">
-                  ⏱️ Rastreabilidade de Produtividade & Jornadas
-                </span>
-                <h1 className="text-xl font-extrabold text-white mt-1.5">Relatório Consolidado de Jornadas & Deslocamentos</h1>
-                <p className="text-xs text-slate-400">Rastreabilidade completa de horários de saída, paradas, pausas, tempos de entrega e retornos de percurso.</p>
+                <h1 className="text-xl font-extrabold text-white">Relatório de Jornada de Trabalho</h1>
+                <p className="text-xs text-slate-400">Controle em conformidade com a Lei do Motorista (Lei nº 13.103/2015) com registro de início, pausas e encerramento.</p>
               </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    const firstCondutor = condutores[0]?.email || 'motorista@logusq.com';
-                    handleSimulateShiftData(firstCondutor);
-                  }}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md shadow-indigo-950/40 cursor-pointer"
-                >
-                  <Sparkles className="w-4 h-4" /> ⚡ Simular Dados de Rota Completa (Hoje)
-                </button>
-              </div>
-            </div>
-
-            {/* Filter controls */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="space-y-1">
-                <label className="block text-[10px] font-mono text-slate-400 uppercase">Filtrar por Motorista</label>
-                <select
-                  value={filterJornadaDriver}
-                  onChange={e => setFilterJornadaDriver(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-violet-500 outline-none"
-                >
-                  <option value="">-- Todos os Motoristas --</option>
-                  {condutores.map(c => (
-                    <option key={c.email} value={c.nome}>{c.nome} ({c.email})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-[10px] font-mono text-slate-400 uppercase">Filtrar por Veículo</label>
-                <select
-                  value={filterJornadaVehicle}
-                  onChange={e => setFilterJornadaVehicle(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-violet-500 outline-none"
-                >
-                  <option value="">-- Todos os Veículos --</option>
-                  {frota.map(v => (
-                    <option key={v.idVeiculo} value={v.placa}>{v.modelo} - Placa: {v.placa}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-[10px] font-mono text-slate-400 uppercase">Data da Jornada</label>
+              <div className="flex items-center gap-3">
                 <input
                   type="text"
+                  placeholder="DD/MM/AAAA"
                   value={filterJornadaDate}
                   onChange={e => setFilterJornadaDate(e.target.value)}
-                  placeholder="Ex: 14/08/2026 (ou deixe vazio para ver todas)"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-violet-500 outline-none"
+                  className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white font-mono"
                 />
               </div>
             </div>
 
-            {/* Journey listing */}
-            {(() => {
-              const filteredDrivers = condutores.filter(c => {
-                const matchDriver = !filterJornadaDriver || c.nome.toLowerCase().includes(filterJornadaDriver.toLowerCase());
-                const matchVehicle = !filterJornadaVehicle || (c.veiculo && c.veiculo.toLowerCase().includes(filterJornadaVehicle.toLowerCase()));
-                return matchDriver && matchVehicle;
-              });
-
-              if (filteredDrivers.length === 0) {
-                return (
-                  <div className="bg-slate-900 border border-slate-800 border-dashed rounded-2xl p-12 text-center text-xs text-slate-500">
-                    Nenhum motorista corresponde aos filtros selecionados.
-                  </div>
-                );
-              }
-
-              return (
-                <div className="space-y-6">
-                  {filteredDrivers.map(c => {
-                    const saved = localStorage.getItem(`logusq_atividade_${c.email}`);
-                    const activity = saved ? JSON.parse(saved) : null;
-                    const rawRoute: any = Object.values(activeRoutes).find((r: any) => 
-                      r.driverEmail === c.email || 
-                      r.driver === c.nome ||
-                      (r.driver && c.nome && (r.driver.toLowerCase().includes(c.nome.toLowerCase()) || c.nome.toLowerCase().includes(r.driver.toLowerCase())))
-                    );
-
-                    // Reconcile each stop in the route with live status & timings from todasEntregas
-                    const livePath = (rawRoute?.path || []).map((p: any) => {
-                      const match = todasEntregas.find(e => 
-                        (p.id && e.id === p.id) || 
-                        (p.chave && e.chave === p.chave) || 
-                        (p.notaFiscal && e.notaFiscal && p.notaFiscal === e.notaFiscal) ||
-                        (p.cliente && e.cliente && p.cliente.trim().toLowerCase() === e.cliente.trim().toLowerCase() && p.endereco?.trim().toLowerCase() === e.endereco?.trim().toLowerCase())
-                      );
-                      return match ? { ...p, ...match } : p;
-                    });
-
-                    const route = rawRoute ? { ...rawRoute, path: livePath } : null;
-
-                    if (filterJornadaDate.trim()) {
-                      const dateFilter = filterJornadaDate.trim();
-                      const activityDateStr = activity?.inicioDeslocamento || activity?.fimDeslocamento || '';
-                      const hasDeliveryOnDate = livePath.some((p: any) => {
-                        const t = p.tempoFimAtendimento || p.tempoInicioAtendimento || p.dataHora || p.dataEntregue || '';
-                        return t && t.includes(dateFilter);
-                      });
-                      const matchesActivity = activityDateStr && activityDateStr.includes(dateFilter);
-
-                      if (!matchesActivity && !hasDeliveryOnDate && (activity || livePath.length > 0)) {
-                        const todayStr = new Date().toLocaleDateString('pt-BR');
-                        const isFilteredToday = dateFilter === todayStr;
-                        if (!isFilteredToday) {
-                          return null;
-                        }
-                      }
-                    }
-
-                    if (!activity && (!route || livePath.length === 0)) {
-                      return (
-                        <div key={c.email} className="bg-slate-900 border border-slate-800 p-5 rounded-2xl text-xs text-slate-500 flex justify-between items-center">
-                          <div>
-                            <span className="font-bold text-white block">{c.nome}</span>
-                            <span className="text-[10px] font-mono text-slate-400 uppercase">E-mail: {c.email} | Veículo: {c.veiculo || 'Não associado'}</span>
-                          </div>
-                          <span className="bg-slate-950/60 border border-slate-800/80 px-2.5 py-1 rounded text-[10px] uppercase font-mono">Sem atividade hoje</span>
-                        </div>
-                      );
-                    }
-
-                    const timeline = getJourneyTimeline(route, activity);
-                    const totalPausas = activity?.pausas?.length || 0;
-                    const totalPausasMin = activity?.pausas?.reduce((acc: number, p: any) => {
-                      if (p.inicio && p.fim) {
-                        try {
-                          const start = parsePtBrDate(p.inicio)?.getTime();
-                          const end = parsePtBrDate(p.fim)?.getTime();
-                          if (start && end) {
-                            return acc + Math.round((end - start) / 60000);
-                          }
-                        } catch (e) {}
-                      }
-                      return acc;
-                    }, 0) || 0;
-
-                    const totalEntregas = livePath.length;
-                    const entregues = livePath.filter((p: any) => p.status === 'Entregue').length;
-                    const cancelados = livePath.filter((p: any) => p.status === 'Cancelado').length;
-
-                    return (
-                      <div key={c.email} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
-                        
-                        {/* Header details */}
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-800 pb-4">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-extrabold text-white text-base">{c.nome}</h3>
-                              <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                                activity?.fimDeslocamento 
-                                  ? 'bg-slate-850 text-slate-400 border border-slate-700/50' 
-                                  : activity?.inicioDeslocamento 
-                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 animate-pulse'
-                                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                              }`}>
-                                {activity?.fimDeslocamento ? 'Jornada Concluída' : activity?.inicioDeslocamento ? 'Em trânsito' : 'Aguardando saída CD'}
-                              </span>
-                            </div>
-                            <p className="text-xs text-slate-400 mt-1 font-mono">
-                              E-mail: <b className="text-slate-300">{c.email}</b> | Veículo: <b className="text-slate-300">{c.veiculo || 'N/A'}</b>
-                            </p>
-                          </div>
-                          
-                          <div className="flex items-center gap-4">
-                            <button
-                              onClick={() => handlePrintAudit(c, activity, route, timeline, filterJornadaDate)}
-                              className="bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-md shadow-violet-950/30 cursor-pointer font-sans"
-                            >
-                              <Printer className="w-3.5 h-3.5" />
-                              Imprimir Auditoria
-                            </button>
-
-                            <div className="text-right font-mono">
-                              <span className="text-[10px] text-slate-500 uppercase block">Data da auditoria</span>
-                              <span className="text-white font-bold text-xs">{filterJornadaDate}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Metrics bar */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                          <div className="bg-slate-950/60 border border-slate-800/80 p-3 rounded-xl">
-                            <span className="text-[9px] text-slate-500 font-mono uppercase block mb-1">⏱️ Saída do CD Hub</span>
-                            <span className="text-white font-bold text-xs font-mono">
-                              {activity?.inicioDeslocamento ? activity.inicioDeslocamento.split(', ')[1] || activity.inicioDeslocamento : 'Não iniciou'}
-                            </span>
-                          </div>
-
-                          <div className="bg-slate-950/60 border border-slate-800/80 p-3 rounded-xl">
-                            <span className="text-[9px] text-slate-500 font-mono uppercase block mb-1">🏁 Retorno ao CD Hub</span>
-                            <span className="text-indigo-400 font-bold text-xs font-mono">
-                              {activity?.fimDeslocamento ? activity.fimDeslocamento.split(', ')[1] || activity.fimDeslocamento : 'Não retornou'}
-                            </span>
-                          </div>
-
-                          <div className="bg-slate-950/60 border border-slate-800/80 p-3 rounded-xl">
-                            <span className="text-[9px] text-slate-500 font-mono uppercase block mb-1">⏸️ Pausas / Almoço</span>
-                            <span className="text-amber-400 font-bold text-xs font-mono">
-                              {totalPausas} registradas ({totalPausasMin} min)
-                            </span>
-                          </div>
-
-                          <div className="bg-slate-950/60 border border-slate-800/80 p-3 rounded-xl">
-                            <span className="text-[9px] text-slate-500 font-mono uppercase block mb-1">📊 Status das Entregas</span>
-                            <span className="text-emerald-400 font-bold text-xs font-mono">
-                              {entregues}/{totalEntregas} entregues {cancelados > 0 && <span className="text-red-400 font-bold font-sans">({cancelados} falhas)</span>}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Chronological details */}
-                        <div className="space-y-4">
-                          <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono border-l-2 border-violet-500 pl-2">
-                            Cronologia e Auditoria de Percursos (Trecho a Trecho)
-                          </h4>
-
-                          {timeline.length === 0 ? (
-                            <div className="bg-slate-950/40 p-5 rounded-xl text-center text-xs text-slate-500">
-                              Nenhuma cronologia gerada. O motorista precisa iniciar a rota para registrar os tempos.
-                            </div>
-                          ) : (
-                            <div className="relative border-l border-slate-800 ml-3.5 pl-5 space-y-4 font-sans text-xs">
-                              
-                              <div className="relative">
-                                <span className="absolute -left-[25px] top-0.5 w-2.5 h-2.5 rounded-full bg-violet-500 ring-4 ring-slate-950"></span>
-                                <div className="space-y-0.5">
-                                  <div className="text-[10px] font-mono text-slate-500 uppercase">Partida Original</div>
-                                  <div className="text-white font-bold">Saída do Centro de Distribuição (CD)</div>
-                                  <div className="text-[11px] font-mono text-slate-400">
-                                    Horário de Saída: <span className="text-violet-400 font-bold">{activity?.inicioDeslocamento || 'Aguardando ação do motorista'}</span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {timeline.map((node: any, idx: number) => {
-                                if (node.tipo === 'deslocamento') {
-                                  return (
-                                    <div key={idx} className="relative">
-                                      <span className="absolute -left-[25px] top-1.5 w-2 h-2 rounded-full bg-indigo-500/50 ring-4 ring-slate-950"></span>
-                                      <div className="space-y-0.5 bg-slate-950/40 border border-slate-850 p-2.5 rounded-xl">
-                                        <div className="text-[9px] font-mono text-indigo-400 uppercase tracking-wider font-bold">🛣️ Deslocamento entre Pontos</div>
-                                        <div className="text-slate-300 font-medium">De: <span className="text-white font-bold">{node.origem}</span> ➔ Para: <span className="text-white font-bold">{node.destino}</span></div>
-                                        <div className="text-[11px] font-mono text-slate-400">Tempo decorrido: <span className="text-white font-bold">{node.tempoMsg}</span></div>
-                                      </div>
-                                    </div>
-                                  );
-                                } else {
-                                  return (
-                                    <div key={idx} className="relative">
-                                      <span className={`absolute -left-[25px] top-1.5 w-2 h-2 rounded-full ring-4 ring-slate-950 ${
-                                        node.status === 'Entregue' ? 'bg-emerald-500' : node.status === 'Cancelado' ? 'bg-red-500' : 'bg-amber-500'
-                                      }`}></span>
-                                      <div className="space-y-1 bg-slate-950/60 border border-slate-850 p-3 rounded-xl">
-                                        <div className="flex justify-between items-center gap-2">
-                                          <div className="text-[9px] font-mono text-slate-400 uppercase font-bold">⏱️ Atendimento no Cliente</div>
-                                          <span className={`text-[8px] font-mono px-2 py-0.5 rounded-full font-bold uppercase ${
-                                            node.status === 'Entregue' 
-                                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                                              : node.status === 'Cancelado'
-                                                ? 'bg-red-500/10 text-red-400 border border-red-500/20'
-                                                : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                                          }`}>
-                                            {node.status}
-                                          </span>
-                                        </div>
-                                        <div className="text-white font-bold">{node.cliente}</div>
-                                        <div className="text-[10px] text-slate-400">{node.endereco}</div>
-                                        <div className="text-[11px] font-mono text-slate-300">Tempo de Atendimento: <span className="text-white font-bold">{node.tempoMsg}</span></div>
-                                      </div>
-                                    </div>
-                                  );
-                                }
-                              })}
-
-                              {activity?.pausas && activity.pausas.length > 0 && (
-                                <div className="pt-3 border-t border-slate-800 space-y-2">
-                                  <div className="text-[10px] font-mono text-slate-400 uppercase font-bold tracking-wider">⏸️ Registro de Interrupções / Pausas</div>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    {activity.pausas.map((p: any, pIdx: number) => {
-                                      let durationStr = "Em andamento";
-                                      if (p.inicio && p.fim) {
-                                        try {
-                                          const start = parsePtBrDate(p.inicio)?.getTime();
-                                          const end = parsePtBrDate(p.fim)?.getTime();
-                                          if (start && end) {
-                                            durationStr = `${Math.round((end - start) / 60000)} min`;
-                                          }
-                                        } catch (e) {}
-                                      }
-                                      return (
-                                        <div key={pIdx} className="bg-slate-950/60 border border-slate-850 p-2.5 rounded-xl font-mono text-[11px] space-y-1">
-                                          <div className="flex justify-between text-[10px] text-amber-400 uppercase font-bold">
-                                            <span>Pausa #{pIdx + 1}</span>
-                                            <span>⏱️ {durationStr}</span>
-                                          </div>
-                                          <div className="text-white font-bold">{p.justificativa}</div>
-                                          <div className="text-slate-500 text-[10px]">Início: {p.inicio.split(', ')[1] || p.inicio} {p.fim ? `| Fim: ${p.fim.split(', ')[1] || p.fim}` : ''}</div>
-                                          {p.justificativaRetorno && (
-                                            <div className="text-emerald-400 text-[10px]">Retorno: "{p.justificativaRetorno}"</div>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              )}
-
-                              <div className="relative pt-4 border-t border-slate-800/60">
-                                <span className="absolute -left-[25px] top-5 w-2 h-2 rounded-full bg-indigo-500 ring-4 ring-slate-950"></span>
-                                <div className="space-y-0.5">
-                                  <div className="text-[10px] font-mono text-slate-500 uppercase">Encerramento da Jornada</div>
-                                  <div className="text-indigo-400 font-bold">Retorno / Chegada ao CD Hub Principal</div>
-                                  <div className="text-[11px] font-mono text-slate-400">
-                                    Horário de Chegada: <span className="text-indigo-400 font-bold">{activity?.fimDeslocamento || 'Aguardando retorno do veículo'}</span>
-                                  </div>
-                                </div>
-                              </div>
-
-                            </div>
-                          )}
-                        </div>
-
-                      </div>
-                    );
-                  })}
+            {/* Shift cards per driver */}
+            <div className="space-y-4">
+              {condutores.length === 0 ? (
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-12 text-center text-slate-500 text-xs">
+                  Nenhum motorista cadastrado. Cadastre condutores para visualizar o controle de jornada.
                 </div>
-              );
-            })()}
+              ) : (
+                condutores.map((m) => {
+                  const savedActivity = localStorage.getItem(`logusq_atividade_${m.email}`);
+                  const activity = savedActivity ? JSON.parse(savedActivity) : null;
+                  const isWorking = activity && activity.status === 'em_andamento';
 
+                  return (
+                    <div key={m.email} className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800 pb-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-sm font-extrabold text-white">{m.nome}</h3>
+                            <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full uppercase ${
+                              isWorking ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'
+                            }`}>
+                              {isWorking ? '● Em Jornada Ativa' : 'Encerrada / Aguardando'}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-500 font-mono mt-0.5">{m.email} • CPF: {m.cpf} • CNH: {m.cnh}</p>
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-400">
+                          Data: {filterJornadaDate}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
+                        <div className="bg-slate-950 p-3 rounded-lg border border-slate-800/80">
+                          <span className="text-[8px] text-slate-500 uppercase block mb-1">Início da Jornada</span>
+                          <span className="text-emerald-400 font-bold text-sm">{activity?.inicioJornada || '08:00'}</span>
+                        </div>
+                        <div className="bg-slate-950 p-3 rounded-lg border border-slate-800/80">
+                          <span className="text-[8px] text-slate-500 uppercase block mb-1">Pausa Almoço / Refeição</span>
+                          <span className="text-amber-400 font-bold text-sm">
+                            {activity?.pausaAlmoco || '12:00 - 13:00'}
+                          </span>
+                        </div>
+                        <div className="bg-slate-950 p-3 rounded-lg border border-slate-800/80">
+                          <span className="text-[8px] text-slate-500 uppercase block mb-1">Encerramento</span>
+                          <span className="text-white font-bold text-sm">{activity?.fimJornada || (isWorking ? 'Em trânsito' : '17:00')}</span>
+                        </div>
+                        <div className="bg-slate-950 p-3 rounded-lg border border-slate-800/80">
+                          <span className="text-[8px] text-slate-500 uppercase block mb-1">Horas Trabalhadas</span>
+                          <span className="text-violet-400 font-black text-sm">{activity?.totalHoras || '08h 00min'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         )}
 
-        {/* TAB 7: MEUS DADOS (EMPRESA & CD HUB) */}
+        {/* TAB 7: MEUS DADOS & CD HUB */}
         {activeTab === 'meus_dados' && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900 border border-slate-800 p-5 rounded-2xl">
-              <div>
-                <span className="text-[10px] font-mono font-bold text-violet-400 bg-violet-500/10 px-2.5 py-1 rounded-full uppercase tracking-wider">
-                  Sede & CD Hub de Origem
-                </span>
-                <h1 className="text-xl font-extrabold text-white mt-1.5 flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-violet-400" /> Meus Dados & Localização do CD Hub
-                </h1>
-                <p className="text-xs text-slate-400 mt-1">
-                  Mantenha atualizadas as informações da empresa e o endereço do seu Centro de Distribuição (CD Hub). O mapa de roteirização utilizará este endereço automaticamente como ponto central de expedição.
-                </p>
-              </div>
-
-              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80 text-xs font-mono text-slate-300 flex items-center gap-3">
-                <MapPin className="w-5 h-5 text-emerald-400 shrink-0" />
-                <div>
-                  <span className="text-[10px] text-slate-500 uppercase block font-bold">CD Hub Cadastrado</span>
-                  <span className="font-bold text-white text-xs">{clientData?.cidade || 'Não informado'} - {clientData?.estado || ''}</span>
-                  <p className="text-[10px] text-slate-400 truncate max-w-[200px]">{clientData?.endereco}, {clientData?.numero} - {clientData?.bairro}</p>
-                </div>
-              </div>
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-xl font-extrabold text-white">Configurações da Empresa & CD Hub</h1>
+              <p className="text-xs text-slate-400">Edite as informações cadastrais e as coordenadas geográficas do seu Centro de Distribuição.</p>
             </div>
 
-            {dadosSuccessMsg && (
-              <div className="bg-emerald-950/80 border border-emerald-500/50 text-emerald-200 p-4 rounded-xl text-xs font-bold flex items-center justify-between shadow-lg animate-fade-in">
-                <span>{dadosSuccessMsg}</span>
-                <button onClick={() => setDadosSuccessMsg('')} className="text-emerald-400 hover:text-white font-bold">✕</button>
+            {savedSuccessfully && dadosSuccessMsg && (
+              <div className="bg-emerald-950/80 border border-emerald-500/50 p-4 rounded-xl text-xs text-emerald-300 animate-fade-in">
+                {dadosSuccessMsg}
               </div>
             )}
 
-            <form onSubmit={handleSaveDadosEmpresa} className="space-y-6">
-              {/* Card 1: Informações Gerais da Empresa */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-                <h2 className="text-sm font-black text-white uppercase tracking-wider border-b border-slate-800 pb-3 flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-violet-400" /> 1. Dados Jurídicos e Corporativos
-                </h2>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                  <div>
-                    <label className="block text-slate-400 mb-1 font-medium">Razão Social / Nome da Empresa *</label>
-                    <input
-                      type="text"
-                      required
-                      value={dadosEmpresa.empresa}
-                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, empresa: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
-                      placeholder="Ex: Logística Brasil S.A."
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1 font-medium">CNPJ *</label>
-                    <input
-                      type="text"
-                      required
-                      value={dadosEmpresa.cnpj}
-                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, cnpj: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500 font-mono"
-                      placeholder="00.000.000/0001-00"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1 font-medium">Inscrição Estadual</label>
-                    <input
-                      type="text"
-                      value={dadosEmpresa.inscricaoEstadual}
-                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, inscricaoEstadual: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500 font-mono"
-                      placeholder="Ex: 123.456.789.110 ou Isento"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1 font-medium">Tipo de Unidade</label>
-                    <select
-                      value={dadosEmpresa.tipoUnidade}
-                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, tipoUnidade: e.target.value as any })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
-                    >
-                      <option value="Matriz">Matriz</option>
-                      <option value="Filial">Filial / CD Regional</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1 font-medium">Telefone Fixo Corporativo</label>
-                    <input
-                      type="text"
-                      value={dadosEmpresa.telefoneFixo}
-                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, telefoneFixo: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
-                      placeholder="(00) 0000-0000"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1 font-medium">WhatsApp da Operação / SAC</label>
-                    <input
-                      type="text"
-                      value={dadosEmpresa.whatsapp}
-                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, whatsapp: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
-                      placeholder="(00) 90000-0000"
-                    />
-                  </div>
+            <form onSubmit={handleSaveDadosEmpresa} className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl space-y-5">
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider">Dados Cadastrais da Empresa</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Razão Social / Nome da Empresa *</label>
+                  <input
+                    type="text"
+                    required
+                    value={dadosEmpresa.empresa}
+                    onChange={e => setDadosEmpresa({ ...dadosEmpresa, empresa: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">CNPJ</label>
+                  <input
+                    type="text"
+                    value={dadosEmpresa.cnpj}
+                    onChange={e => setDadosEmpresa({ ...dadosEmpresa, cnpj: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white font-mono"
+                  />
                 </div>
               </div>
 
-              {/* Card 2: Endereço do CD Hub (Ponto de Origem para Roteirização) */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-                <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-                  <h2 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-emerald-400" /> 2. Endereço Completo do CD HUB (Origem da Frota)
-                  </h2>
-                  <span className="text-[10px] text-emerald-400 font-mono font-bold bg-emerald-500/10 px-2.5 py-0.5 rounded-full">
-                    Origem de Roteirização Ativa
-                  </span>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">CEP (com busca automática)</label>
+                  <input
+                    type="text"
+                    placeholder="00000-000"
+                    value={dadosEmpresa.cep}
+                    onChange={e => {
+                      setDadosEmpresa({ ...dadosEmpresa, cep: e.target.value });
+                      handleCepDadosLookup(e.target.value);
+                    }}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white font-mono"
+                  />
+                  {loadingCepDados && <span className="text-[9px] text-violet-400 font-mono mt-1 block">Buscando CEP no ViaCEP...</span>}
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Endereço do Galpão / CD</label>
+                  <input
+                    type="text"
+                    value={dadosEmpresa.endereco}
+                    onChange={e => setDadosEmpresa({ ...dadosEmpresa, endereco: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Número</label>
+                  <input
+                    type="text"
+                    value={dadosEmpresa.numero}
+                    onChange={e => setDadosEmpresa({ ...dadosEmpresa, numero: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Bairro</label>
+                  <input
+                    type="text"
+                    value={dadosEmpresa.bairro}
+                    onChange={e => setDadosEmpresa({ ...dadosEmpresa, bairro: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Cidade</label>
+                  <input
+                    type="text"
+                    value={dadosEmpresa.cidade}
+                    onChange={e => setDadosEmpresa({ ...dadosEmpresa, cidade: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Estado (UF)</label>
+                  <input
+                    type="text"
+                    value={dadosEmpresa.estado}
+                    onChange={e => setDadosEmpresa({ ...dadosEmpresa, estado: e.target.value.toUpperCase() })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white font-mono uppercase"
+                  />
+                </div>
+              </div>
+
+              {/* CD Hub Coordinates & Geocoding */}
+              <div className="border-t border-slate-800 pt-4 space-y-3">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider">Geolocalização do CD Hub (Ponto de Partida e Chegada)</h4>
+                    <p className="text-[10px] text-slate-400">As coordenadas definem o ponto de expedição exato no mapa para roteirização.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRecalculateCdCoordinates}
+                    disabled={geocodingCdHub}
+                    className="bg-violet-600 hover:bg-violet-500 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${geocodingCdHub ? 'animate-spin' : ''}`} />
+                    {geocodingCdHub ? 'Geocodificando...' : 'Recalcular via GPS Online'}
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-slate-400 mb-1 font-medium">CEP *</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        required
-                        value={dadosEmpresa.cep}
-                        onChange={e => setDadosEmpresa({ ...dadosEmpresa, cep: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500 font-mono"
-                        placeholder="00000-000"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleCepDadosLookup(dadosEmpresa.cep)}
-                        disabled={loadingCepDados}
-                        className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-2 rounded-xl text-xs font-bold transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
-                      >
-                        {loadingCepDados ? 'Buscando...' : 'Buscar CEP'}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-slate-400 mb-1 font-medium">Logradouro / Avenida / Rua *</label>
+                    <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Latitude</label>
                     <input
                       type="text"
-                      required
-                      value={dadosEmpresa.endereco}
-                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, endereco: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
-                      placeholder="Ex: Av. Brasil, Rodovia BR-101 Norte"
+                      value={dadosEmpresa.cdLatitude}
+                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, cdLatitude: e.target.value })}
+                      placeholder="-19.9167"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-emerald-400 font-mono"
                     />
                   </div>
-
                   <div>
-                    <label className="block text-slate-400 mb-1 font-medium">Número *</label>
+                    <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Longitude</label>
                     <input
                       type="text"
-                      required
-                      value={dadosEmpresa.numero}
-                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, numero: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
-                      placeholder="Ex: 1250"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1 font-medium">Complemento / Galpão / Bloco</label>
-                    <input
-                      type="text"
-                      value={dadosEmpresa.complemento}
-                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, complemento: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
-                      placeholder="Ex: Galpão 3 - Parque Industrial"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1 font-medium">Bairro *</label>
-                    <input
-                      type="text"
-                      required
-                      value={dadosEmpresa.bairro}
-                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, bairro: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
-                      placeholder="Ex: Civit II, Bonsucesso"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1 font-medium">Cidade *</label>
-                    <input
-                      type="text"
-                      required
-                      value={dadosEmpresa.cidade}
-                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, cidade: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
-                      placeholder="Ex: Serra, Rio de Janeiro, São Paulo"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1 font-medium">Estado (UF) *</label>
-                    <input
-                      type="text"
-                      required
-                      maxLength={2}
-                      value={dadosEmpresa.estado}
-                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, estado: e.target.value.toUpperCase() })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500 uppercase font-mono"
-                      placeholder="ES, RJ, SP, MG..."
+                      value={dadosEmpresa.cdLongitude}
+                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, cdLongitude: e.target.value })}
+                      placeholder="-43.9345"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-emerald-400 font-mono"
                     />
                   </div>
                 </div>
 
-                {/* Calibração Precisa e Visual do CD Hub no Mapa */}
-                <div className="bg-slate-950/90 border border-slate-800 p-5 rounded-2xl space-y-4">
-                  <div className="border-b border-slate-800/80 pb-2.5">
-                    <span className="text-xs font-bold text-violet-300 flex items-center gap-1.5">
-                      <Crosshair className="w-4 h-4 text-violet-400" /> Calibração Cartográfica Precisa do CD HUB
-                    </span>
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      Arraste o pino roxo ou clique diretamente no galpão/sede da sua empresa no mapa abaixo para fixar as coordenadas exatas da sua base central.
-                    </p>
-                  </div>
-
-                  {/* Interactive Leaflet Location Picker */}
+                {/* Visual Picker */}
+                <div className="mt-3">
                   <CdHubMapPicker
-                    latitude={dadosEmpresa.cdLatitude || clientBaseCoords.lat}
-                    longitude={dadosEmpresa.cdLongitude || clientBaseCoords.lng}
-                    endereco={dadosEmpresa.endereco}
-                    numero={dadosEmpresa.numero}
-                    bairro={dadosEmpresa.bairro}
-                    cidade={dadosEmpresa.cidade}
-                    estado={dadosEmpresa.estado}
-                    cep={dadosEmpresa.cep}
-                    empresaNome={dadosEmpresa.empresa || 'CD Hub Central'}
-                    onCoordinatesChange={(newLat, newLng) => {
+                    latitude={dadosEmpresa.cdLatitude ? parseFloat(dadosEmpresa.cdLatitude) : clientBaseCoords.lat}
+                    longitude={dadosEmpresa.cdLongitude ? parseFloat(dadosEmpresa.cdLongitude) : clientBaseCoords.lng}
+                    onCoordinatesChange={(lat, lng) => {
                       setDadosEmpresa(prev => ({
                         ...prev,
-                        cdLatitude: String(newLat),
-                        cdLongitude: String(newLng)
+                        cdLatitude: lat.toFixed(6),
+                        cdLongitude: lng.toFixed(6)
                       }));
-                      setAsyncBaseCoords({ lat: newLat, lng: newLng });
-                      // Auto-save instantly so it's impossible to revert
-                      dbRepo.editarCliente(userEmail, {
-                        cdLatitude: newLat,
-                        cdLongitude: newLng
-                      });
+                      setAsyncBaseCoords({ lat, lng });
                     }}
                   />
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs pt-1">
-                    <div>
-                      <label className="block text-slate-400 mb-1 font-medium">Latitude GPS Exata</label>
-                      <input
-                        type="text"
-                        value={dadosEmpresa.cdLatitude}
-                        onChange={e => {
-                          const val = e.target.value;
-                          setDadosEmpresa(prev => ({ ...prev, cdLatitude: val }));
-                          const parsed = parseFloat(val);
-                          if (!isNaN(parsed) && parsed >= -90 && parsed <= 90) {
-                            setAsyncBaseCoords(prev => ({ lat: parsed, lng: prev?.lng || clientBaseCoords.lng }));
-                            dbRepo.editarCliente(userEmail, {
-                              cdLatitude: parsed,
-                              cdLongitude: parseFloat(dadosEmpresa.cdLongitude) || clientBaseCoords.lng
-                            });
-                          }
-                        }}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-emerald-300 focus:outline-none focus:border-violet-500 font-mono text-xs font-bold"
-                        placeholder="Ex: -22.481100"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-400 mb-1 font-medium">Longitude GPS Exata</label>
-                      <input
-                        type="text"
-                        value={dadosEmpresa.cdLongitude}
-                        onChange={e => {
-                          const val = e.target.value;
-                          setDadosEmpresa(prev => ({ ...prev, cdLongitude: val }));
-                          const parsed = parseFloat(val);
-                          if (!isNaN(parsed) && parsed >= -180 && parsed <= 180) {
-                            setAsyncBaseCoords(prev => ({ lat: prev?.lat || clientBaseCoords.lat, lng: parsed }));
-                            dbRepo.editarCliente(userEmail, {
-                              cdLatitude: parseFloat(dadosEmpresa.cdLatitude) || clientBaseCoords.lat,
-                              cdLongitude: parsed
-                            });
-                          }
-                        }}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-emerald-300 focus:outline-none focus:border-violet-500 font-mono text-xs font-bold"
-                        placeholder="Ex: -42.202800"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[10px] text-slate-400 bg-slate-900/80 p-3 rounded-xl border border-slate-800">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>
-                        Ponto Ativo de Roteirização: <strong className="text-white font-mono">{clientBaseCoords.lat.toFixed(6)}, {clientBaseCoords.lng.toFixed(6)}</strong>
-                      </span>
-                    </div>
-                    <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                      ✓ Salvo nas rotas e otimizador TSP
-                    </span>
-                  </div>
                 </div>
               </div>
 
-              {/* Card 3: Responsável Principal */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-                <h2 className="text-sm font-black text-white uppercase tracking-wider border-b border-slate-800 pb-3 flex items-center gap-2">
-                  <UserCheck className="w-4 h-4 text-blue-400" /> 3. Responsável da Gestão e Contatos
-                </h2>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+              {/* Responsável e Contatos */}
+              <div className="border-t border-slate-800 pt-4 space-y-3">
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Contato do Gestor Responsável</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-slate-400 mb-1 font-medium">Nome do Responsável *</label>
+                    <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Nome do Gestor</label>
                     <input
                       type="text"
-                      required
                       value={dadosEmpresa.respNome}
                       onChange={e => setDadosEmpresa({ ...dadosEmpresa, respNome: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
-                      placeholder="Nome Completo"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
                     />
                   </div>
-
                   <div>
-                    <label className="block text-slate-400 mb-1 font-medium">Cargo / Função</label>
+                    <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">Cargo</label>
                     <input
                       type="text"
                       value={dadosEmpresa.respCargo}
                       onChange={e => setDadosEmpresa({ ...dadosEmpresa, respCargo: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
-                      placeholder="Ex: Gerente Operacional"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
                     />
                   </div>
-
                   <div>
-                    <label className="block text-slate-400 mb-1 font-medium">Email do Responsável *</label>
-                    <input
-                      type="email"
-                      required
-                      value={dadosEmpresa.respEmail}
-                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, respEmail: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
-                      placeholder="responsavel@empresa.com.br"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 mb-1 font-medium">WhatsApp / Celular Direto</label>
+                    <label className="block text-[9px] font-mono text-slate-500 uppercase mb-1">WhatsApp de Contato</label>
                     <input
                       type="text"
-                      value={dadosEmpresa.respWhatsapp}
-                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, respWhatsapp: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-violet-500"
-                      placeholder="(00) 90000-0000"
+                      value={dadosEmpresa.whatsapp || dadosEmpresa.respWhatsapp}
+                      onChange={e => setDadosEmpresa({ ...dadosEmpresa, whatsapp: e.target.value, respWhatsapp: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Botão de Ação Salvar com Feedback Imediato */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 pt-2">
-                {/* Inline status message right next to the action button */}
-                <div className="flex-1">
-                  {dadosSuccessMsg && (
-                    <div className="bg-emerald-950/90 border border-emerald-500/60 text-emerald-200 px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-2.5 shadow-lg shadow-emerald-950/50 animate-fade-in">
-                      <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                      <div className="flex-1">
-                        <span className="block text-emerald-300 font-extrabold text-xs">Alterações Confirmadas e Processadas!</span>
-                        <span className="text-[11px] text-emerald-200/90 font-mono">{dadosSuccessMsg}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center justify-end shrink-0">
-                  <button
-                    type="submit"
-                    disabled={savingDados}
-                    className={`font-extrabold px-8 py-3.5 rounded-xl shadow-xl transition-all flex items-center justify-center gap-2.5 cursor-pointer text-xs ${
-                      savedSuccessfully
-                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/40 ring-2 ring-emerald-400'
-                        : savingDados
-                        ? 'bg-violet-700 text-white/80 cursor-not-allowed'
-                        : 'bg-violet-600 hover:bg-violet-500 text-white shadow-violet-600/30 active:scale-95'
-                    }`}
-                  >
-                    {savingDados ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin text-violet-300" />
-                        <span>Processando e Atualizando CD Hub...</span>
-                      </>
-                    ) : savedSuccessfully ? (
-                      <>
-                        <Check className="w-4 h-4 text-white" />
-                        <span>✓ CD Hub e Dados Salvos com Sucesso!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Save className="w-4 h-4" />
-                        <span>Salvar Alterações e Atualizar CD Hub</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
+              <button
+                type="submit"
+                disabled={savingDados}
+                className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white py-2.5 rounded-xl text-xs font-bold transition-all mt-4 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <Save className="w-4 h-4" />
+                {savingDados ? 'Salvando...' : 'Salvar Alterações'}
+              </button>
             </form>
           </div>
         )}
 
-        {/* Global Floating Toast Alert across viewport */}
-        {savedSuccessfully && (
-          <div className="fixed top-8 left-1/2 -translate-x-1/2 z-50 bg-slate-950/95 border-2 border-emerald-500 text-white px-6 py-4 rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-3.5 animate-bounce max-w-md w-full mx-auto">
-            <div className="w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center text-slate-950 font-black shrink-0 shadow-lg shadow-emerald-500/40">
-              <Check className="w-5 h-5 text-slate-950 stroke-[3]" />
-            </div>
-            <div className="flex-1">
-              <span className="font-extrabold text-xs text-white block uppercase tracking-wider">
-                ✓ Comando Processado com Sucesso!
-              </span>
-              <p className="text-[11px] text-emerald-300 font-mono mt-0.5">
-                CD Hub sincronizado: {dadosEmpresa.cdLatitude || clientBaseCoords.lat}, {dadosEmpresa.cdLongitude || clientBaseCoords.lng}
-              </p>
+        {/* MODAL: UNIVERSAL IMPORTADOR (IA / OCR / CSV) */}
+        <ImportadorUniversal
+          isOpen={isImportModalOpen}
+          onClose={() => setIsImportModalOpen(false)}
+          type={importModalType}
+          userEmail={userEmail}
+          onImportComplete={() => {
+            setIsImportModalOpen(false);
+            triggerRefresh();
+          }}
+          dbRepo={dbRepo}
+        />
+
+        {/* MODAL: AUDIT DOSSIER PDF PREVIEW */}
+        <DossierModal
+          isOpen={showDossierModal}
+          onClose={() => setShowDossierModal(false)}
+        />
+
+        {/* MODAL: ZOOM COMPROVANTE PHOTO */}
+        {zoomPhoto && (
+          <div
+            className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4 cursor-pointer"
+            onClick={() => setZoomPhoto(null)}
+          >
+            <div className="relative max-w-3xl max-h-[90vh] bg-slate-900 border border-slate-800 rounded-2xl p-2 overflow-hidden">
+              <img src={zoomPhoto} alt="Comprovante Ampliado" className="max-w-full max-h-[85vh] object-contain rounded-xl" />
+              <button
+                onClick={() => setZoomPhoto(null)}
+                className="absolute top-4 right-4 bg-slate-950/80 text-white p-2 rounded-full hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
             </div>
           </div>
         )}
 
       </main>
-
-      {/* Zoom Photo Modal */}
-      {zoomPhoto && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-6 space-y-4 shadow-2xl relative">
-            <button 
-              onClick={() => setZoomPhoto(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white font-black text-lg p-1"
-            >
-              ✕
-            </button>
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ampliação de Comprovante de Assinatura</h3>
-            <div className="border border-slate-800 rounded-xl overflow-hidden bg-white">
-              <img 
-                src={zoomPhoto} 
-                alt="Zoomed signature proof" 
-                className="max-h-[70vh] mx-auto object-contain"
-              />
-            </div>
-            <div className="flex justify-between items-center text-[11px] text-slate-400 font-mono">
-              <span>Auditoria LogusQ • GPS & Criptografia Ativa</span>
-              <button
-                onClick={() => {
-                  const link = document.createElement('a');
-                  link.href = zoomPhoto;
-                  link.download = `Comprovante_Auditoria.png`;
-                  link.click();
-                }}
-                className="bg-violet-600 hover:bg-violet-500 text-white font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
-              >
-                <Download className="w-3 h-3" /> Baixar Registro
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <ImportadorUniversal
-        isOpen={isImportModalOpen}
-        onClose={() => setIsImportModalOpen(false)}
-        type={importModalType}
-        userEmail={userEmail}
-        onImportComplete={triggerRefresh}
-        dbRepo={dbRepo}
-      />
-
-      <DossierModal 
-        isOpen={showDossierModal} 
-        onClose={() => setShowDossierModal(false)} 
-      />
     </div>
   );
 }
