@@ -736,7 +736,7 @@ function normalizeTipoVeiculo(tipoRaw) {
   if (t.includes('moto')) return 'Motocicleta';
   if (t.includes('picape') || t.includes('pickup') || t.includes('4x4') || t.includes('utilita') || t.includes('fiorino') || t.includes('kombi')) return 'Picape 4x4';
   if (t.includes('van') || t.includes('furgao') || t.includes('furgão') || t.includes('vuc') || t.includes('3/4') || t.includes('bau') || t.includes('baú')) return 'Van';
-  if (t.includes('caminha') || t.includes('caminhão') || t.includes('truck') || t.includes('toco') || t.includes('carreta') || t.includes('bitrem') || t.includes('pesado')) return 'Caminhão Pesado';
+  if (t.includes('caminha') || t.includes('caminhão') || t.includes('truck') || t.includes('toco') || t.includes('carreta') || t.bitrem || t.includes('pesado')) return 'Caminhão Pesado';
   if (t.includes('carro') || t.includes('leve') || t.includes('passeio')) return 'Carro Leve';
   return 'Van';
 }
@@ -892,7 +892,7 @@ function normalizeTipoVeiculo(tipoRaw) {
             cliente: e.cliente || e.clienteDestino || 'Cliente Destino',
             endereco: e.endereco || 'Endereço Indefinido',
             endereco_coleta: e.enderecoColeta || null,
-            ponto_referencia: e.ponto_referencia || null,
+            ponto_referencia: e.pontoReferencia || null,
             telefone: e.telefone || null,
             whatsapp: e.whatsapp || null,
             nota_fiscal: e.notaFiscal || null,
@@ -1584,6 +1584,25 @@ const BRAZIL_UF_TO_STATE_NAME = {
   sc: 'santa catarina', sp: 'sao paulo', se: 'sergipe', to: 'tocantins'
 };
 
+// CORREÇÃO (23/08/2026): extrai a cidade/estado de destino diretamente do texto
+// do próprio endereço (ex: "..., 552 - Centro - Rio das Ostras RJ, CEP: ..." ->
+// cidade "Rio das Ostras", UF "RJ"). É a fonte MAIS confiável que existe, porque
+// é exatamente o destino informado na importação/cadastro daquela entrega
+// específica — diferente da cidade cadastrada do cliente (fallbackCity), que é
+// só o endereço da EMPRESA e não tem relação com pra onde cada entrega vai.
+// Transportadoras regionais atendem várias cidades vizinhas, então usar a
+// cidade do cliente como se fosse a cidade de toda entrega gerava rejeições
+// erradas sempre que o ViaCEP falhava.
+function extractCityStateFromAddressText(addressText) {
+  const withoutCep = String(addressText).replace(/,?\s*CEP:?\s*\d{2}\.?\d{3}-?\d{3}/gi, '').trim();
+  // Padrão: "... - NomeDaCidade UF" no final do texto (UF = 2 letras maiúsculas)
+  const match = withoutCep.match(/-\s*([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'\.\s]*?)\s+([A-Z]{2})\s*$/);
+  if (match) {
+    return { city: match[1].trim(), state: match[2].trim() };
+  }
+  return { city: null, state: null };
+}
+
 async function geocodeSingleAddress(rawAddress, fallbackCity, fallbackState) {
   if (!rawAddress || String(rawAddress).trim().length < 3) {
     return null;
@@ -1595,6 +1614,10 @@ async function geocodeSingleAddress(rawAddress, fallbackCity, fallbackState) {
   if (GEOCODE_CACHE.has(cacheKey)) {
     return GEOCODE_CACHE.get(cacheKey);
   }
+
+  // Cidade/estado de destino extraídos do próprio texto do endereço — prioridade
+  // máxima na validação (ver expectedLocalidade/expectedUf mais abaixo).
+  const textCityState = extractCityStateFromAddressText(clean);
 
   // Extract street number
   const numMatch = clean.match(/\b(?:n[º°o]?\.?\s*|número\s*|num\s*)?(\d{1,5})\b/i);
@@ -1711,16 +1734,18 @@ async function geocodeSingleAddress(rawAddress, fallbackCity, fallbackState) {
             }
 
             // CORREÇÃO (23/08/2026): CIDADE/ESTADO TAMBÉM PRECISA BATER — mesmo sem ViaCEP.
-            // Antes, essa validação só rodava se o ViaCEP tivesse respondido com sucesso.
-            // Se o ViaCEP falhasse/demorasse (rede instável, fora do ar por um instante),
-            // a trava de cidade era pulada inteiramente, e uma rua com nome comum (ex:
-            // "Rua Santa Catarina", que existe em dezenas de cidades do Brasil) podia ser
-            // aceita vindo de uma cidade totalmente diferente da esperada — jogando o
-            // ponto a centenas de km de distância. Agora também usamos fallbackCity/
-            // fallbackState (enviados pelo próprio app com base no cadastro do cliente)
-            // como referência de cidade esperada sempre que o ViaCEP não estiver disponível.
-            const expectedLocalidade = (viaCepData && viaCepData.localidade) || fallbackCity || '';
-            const expectedUf = (viaCepData && viaCepData.uf) || fallbackState || '';
+            // A cidade esperada agora vem, em ORDEM DE PRIORIDADE: (1) extraída do
+            // próprio texto do endereço [textCityState, a mais confiável — é a cidade
+            // que o operador realmente escreveu na entrega], (2) do ViaCEP, e só por
+            // último (3) do cadastro da empresa (fallbackCity). Antes, o cadastro da
+            // empresa era usado como referência sempre que o ViaCEP falhava — só que
+            // uma transportadora atende VÁRIAS cidades da região, não só a da sua sede,
+            // então isso rejeitava endereços corretos (ex: empresa sediada em Casimiro
+            // de Abreu entregando em Rio das Ostras, cidade vizinha — endereço certo,
+            // mas rejeitado por "divergir" da cidade da sede). Agora o texto do próprio
+            // endereço manda, não o cadastro da empresa.
+            const expectedLocalidade = textCityState.city || (viaCepData && viaCepData.localidade) || fallbackCity || '';
+            const expectedUf = textCityState.state || (viaCepData && viaCepData.uf) || fallbackState || '';
 
             if (streetMatched && expectedLocalidade) {
               const expectedCityNorm = String(expectedLocalidade)
@@ -1819,8 +1844,8 @@ REGRAS DE PRECISÃO RIGOROSAS:
           // CORREÇÃO (23/08/2026): mesma trava de cidade/estado aplicada aqui.
           // O Gemini pode "alucinar" uma cidade errada para uma rua de nome comum;
           // sem essa checagem, nada impedia esse ponto de ser aceito.
-          const expectedLocalidadeAi = (viaCepData && viaCepData.localidade) || fallbackCity || '';
-          const expectedUfAi = (viaCepData && viaCepData.uf) || fallbackState || '';
+          const expectedLocalidadeAi = textCityState.city || (viaCepData && viaCepData.localidade) || fallbackCity || '';
+          const expectedUfAi = textCityState.state || (viaCepData && viaCepData.uf) || fallbackState || '';
           let aiCityOk = true;
           if (expectedLocalidadeAi && parsed.cidade) {
             const expNorm = String(expectedLocalidadeAi).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
